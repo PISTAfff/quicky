@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::{InvokeBody, Request};
 use tauri::menu::{Menu, MenuItem};
@@ -21,13 +23,26 @@ struct Config {
     show_bubble: bool,
     /// Start-with-Windows is switched on once on first run; after that it's the user's toggle.
     autostart_initialized: bool,
+    /// Where the user dragged the bubble (physical px); None = bottom-left corner.
+    bubble_pos: Option<(i32, i32)>,
+    bubble_locked: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { data_dir: None, show_bubble: true, autostart_initialized: false }
+        Self {
+            data_dir: None,
+            show_bubble: true,
+            autostart_initialized: false,
+            bubble_pos: None,
+            bubble_locked: false,
+        }
     }
 }
+
+static SHOW_BUBBLE: AtomicBool = AtomicBool::new(true);
+/// Latest bubble position from a drag, saved by the housekeeping thread (not on every pixel).
+static MOVED_TO: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 #[derive(Serialize)]
 struct Attachment {
@@ -168,31 +183,60 @@ fn set_show_bubble(app: AppHandle, show: bool) -> Result<(), String> {
     let mut cfg = read_config(&app);
     cfg.show_bubble = show;
     write_config(&app, &cfg)?;
-    if let Some(b) = app.get_webview_window("bubble") {
-        if show {
-            place_bubble(&app);
-            let _ = b.show();
-        } else {
-            let _ = b.hide();
-        }
-    }
+    SHOW_BUBBLE.store(show, Ordering::Relaxed);
+    let _ = app.emit("bubble-pref", show);
+    sync_bubble(&app);
     Ok(())
 }
 
-/// Bubble click: open the app just above the bubble, or tuck it away if it's already in front.
 #[tauri::command]
-fn toggle_main(app: AppHandle) {
+fn get_bubble_locked(app: AppHandle) -> bool {
+    read_config(&app).bubble_locked
+}
+
+#[tauri::command]
+fn set_bubble_locked(app: AppHandle, locked: bool) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg.bubble_locked = locked;
+    write_config(&app, &cfg)
+}
+
+/// Puts the bubble back in the bottom-left corner.
+#[tauri::command]
+fn reset_bubble(app: AppHandle) -> Result<(), String> {
+    let mut cfg = read_config(&app);
+    cfg.bubble_pos = None;
+    write_config(&app, &cfg)?;
+    place_bubble(&app);
+    Ok(())
+}
+
+/// Bubble click: open the app right next to wherever the bubble is.
+#[tauri::command]
+fn open_from_bubble(app: AppHandle) {
+    place_main_near_bubble(&app);
+    show_main(&app);
+}
+
+/// Title-bar close: hide to the tray and bring the bubble back straight away.
+#[tauri::command]
+fn hide_main(app: AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.hide();
+    }
+    sync_bubble(&app);
+}
+
+/// Tray click: show the app, or tuck it away if it's already in front.
+fn toggle_main(app: &AppHandle) {
     let Some(main) = app.get_webview_window("main") else { return };
-    let visible = main.is_visible().unwrap_or(false) && !main.is_minimized().unwrap_or(false);
-    if visible && main.is_focused().unwrap_or(false) {
+    if main_on_screen(app) && main.is_focused().unwrap_or(false) {
         let _ = app.emit("flush", ());
         let _ = main.hide();
-        return;
+        sync_bubble(app);
+    } else {
+        show_main(app);
     }
-    if !visible {
-        place_main_above_bubble(&app);
-    }
-    show_main(&app);
 }
 
 #[tauri::command]
@@ -311,6 +355,36 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.set_focus();
     }
+    sync_bubble(app);
+}
+
+fn main_on_screen(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
+        .is_some_and(|m| m.is_visible().unwrap_or(false) && !m.is_minimized().unwrap_or(false))
+}
+
+/// The bubble is only around while the app itself is off screen (hidden to the tray or minimized),
+/// and only if the user hasn't switched it off.
+fn sync_bubble(app: &AppHandle) {
+    let Some(b) = app.get_webview_window("bubble") else { return };
+    let want = SHOW_BUBBLE.load(Ordering::Relaxed) && !main_on_screen(app);
+    let shown = b.is_visible().unwrap_or(false);
+    if want && !shown {
+        show_without_focus(&b);
+    } else if !want && shown {
+        let _ = b.hide();
+    }
+}
+
+/// Showing the bubble must never steal focus from whatever the user is typing in.
+fn show_without_focus(w: &tauri::WebviewWindow) {
+    #[cfg(windows)]
+    if let Ok(hwnd) = w.hwnd() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+        unsafe { ShowWindow(hwnd.0 as _, SW_SHOWNOACTIVATE) };
+        return;
+    }
+    let _ = w.show();
 }
 
 const BUBBLE: f64 = 72.0; // logical px, matches the bubble window size in tauri.conf.json
@@ -323,42 +397,66 @@ fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32
     Some((wa.position, wa.size, m.scale_factor()))
 }
 
-/// Pins the bubble to the bottom-left corner, just above the taskbar.
+/// Puts the bubble where the user last dragged it, or in the bottom-left corner above the taskbar.
 fn place_bubble(app: &AppHandle) {
     let (Some(b), Some((pos, size, scale))) = (app.get_webview_window("bubble"), work_area(app)) else { return };
-    let x = pos.x + (MARGIN * scale) as i32;
-    let y = pos.y + size.height as i32 - ((BUBBLE + MARGIN) * scale) as i32;
     // Windows pads small captioned windows to a minimum width; drop that floor and size it exactly.
     let _ = b.set_min_size(Some(LogicalSize::new(1.0, 1.0)));
     let _ = b.set_size(LogicalSize::new(BUBBLE, BUBBLE));
+    let side = (BUBBLE * scale) as i32;
+    let inside = |(x, y): (i32, i32)| {
+        x >= pos.x && y >= pos.y && x + side <= pos.x + size.width as i32 && y + side <= pos.y + size.height as i32
+    };
+    let corner = (pos.x + (MARGIN * scale) as i32, pos.y + size.height as i32 - ((BUBBLE + MARGIN) * scale) as i32);
+    let (x, y) = read_config(app).bubble_pos.filter(|p| inside(*p)).unwrap_or(corner);
     let _ = b.set_position(PhysicalPosition::new(x, y));
 }
 
-/// The taskbar jumps above other always-on-top windows whenever it's shown or clicked
-/// (always, with auto-hide). Re-assert the bubble's place on top twice a second; it's one cheap
-/// Win32 call that never activates or moves the window.
-#[cfg(windows)]
-fn keep_bubble_above_taskbar(app: &AppHandle) {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
-    };
-    let Some(hwnd) = app.get_webview_window("bubble").and_then(|b| b.hwnd().ok()) else { return };
-    let hwnd = hwnd.0 as isize;
+/// Background housekeeping, twice a second: keep the bubble above the taskbar (which jumps above
+/// other always-on-top windows whenever it's shown, constantly with auto-hide), hide/show it as the
+/// app comes and goes (minimize included), and save where the user dragged it.
+fn bubble_housekeeping(app: &AppHandle) {
+    let app = app.clone();
     std::thread::spawn(move || loop {
-        unsafe {
-            SetWindowPos(hwnd as _, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        sync_bubble(&app);
+        #[cfg(windows)]
+        if let Some(hwnd) = app.get_webview_window("bubble").and_then(|b| b.hwnd().ok()) {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+            };
+            unsafe {
+                SetWindowPos(hwnd.0 as _, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+            }
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        if let Some(p) = MOVED_TO.lock().ok().and_then(|mut m| m.take()) {
+            let mut cfg = read_config(&app);
+            cfg.bubble_pos = Some(p);
+            let _ = write_config(&app, &cfg);
+        }
     });
 }
 
-/// Opens the main window growing up from the bubble, kept inside the work area.
-fn place_main_above_bubble(app: &AppHandle) {
-    let (Some(main), Some((pos, size, scale))) = (app.get_webview_window("main"), work_area(app)) else { return };
-    let Ok(outer) = main.outer_size() else { return };
-    let x = pos.x + (MARGIN * scale) as i32;
-    let bottom = pos.y + size.height as i32 - ((BUBBLE + MARGIN * 2.0) * scale) as i32;
-    let y = (bottom - outer.height as i32).max(pos.y);
+/// Opens the main window next to the bubble: above it when there's room, otherwise below,
+/// lined up with the bubble's side of the screen and kept inside the work area.
+fn place_main_near_bubble(app: &AppHandle) {
+    let (Some(main), Some(b), Some((wa, size, scale))) =
+        (app.get_webview_window("main"), app.get_webview_window("bubble"), work_area(app))
+    else {
+        return;
+    };
+    let (Ok(m), Ok(bp)) = (main.outer_size(), b.outer_position()) else { return };
+    let side = (BUBBLE * scale) as i32;
+    let gap = (8.0 * scale) as i32;
+    let (mw, mh) = (m.width as i32, m.height as i32);
+    let (left, top) = (wa.x, wa.y);
+    let (right, bottom) = (wa.x + size.width as i32, wa.y + size.height as i32);
+
+    let on_right = bp.x + side / 2 > (left + right) / 2;
+    let x = if on_right { bp.x + side - mw } else { bp.x };
+    let y = if bp.y - gap - mh >= top { bp.y - gap - mh } else { bp.y + side + gap };
+    let x = x.clamp(left, (right - mw).max(left));
+    let y = y.clamp(top, (bottom - mh).max(top));
     let _ = main.set_position(PhysicalPosition::new(x, y));
 }
 
@@ -407,21 +505,18 @@ pub fn run() {
                 let _ = write_config(&handle, &cfg);
             }
 
-            if cfg.show_bubble {
-                place_bubble(&handle);
-                if let Some(b) = app.get_webview_window("bubble") {
-                    let _ = b.show();
-                }
-            }
-            #[cfg(windows)]
-            keep_bubble_above_taskbar(&handle);
+            SHOW_BUBBLE.store(cfg.show_bubble, Ordering::Relaxed);
+            place_bubble(&handle);
             if !std::env::args().any(|a| a == STARTUP_ARG) {
                 show_main(&handle);
             }
+            sync_bubble(&handle);
+            bubble_housekeeping(&handle);
 
             let show = MenuItem::with_id(app, "show", "Show Quicky", true, None::<&str>)?;
+            let bubble = MenuItem::with_id(app, "bubble", "Show bubble", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show, &bubble, &quit_item])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Quicky")
@@ -429,6 +524,9 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "show" => show_main(app),
+                    "bubble" => {
+                        let _ = set_show_bubble(app.clone(), true);
+                    }
                     "quit" => quit(app),
                     _ => {}
                 })
@@ -439,22 +537,34 @@ pub fn run() {
                         ..
                     } = e
                     {
-                        toggle_main(tray.app_handle().clone());
+                        toggle_main(tray.app_handle());
                     }
                 })
                 .build(app)?;
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing hides to the tray so Ctrl+Space keeps working.
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.emit("flush", ());
-                let _ = window.hide();
-            }
-            // Keep the bubble in its corner when the taskbar or resolution changes.
-            if window.label() == "bubble" && matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
-                place_bubble(window.app_handle());
+            let app = window.app_handle();
+            match event {
+                // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
+                // closing the bubble (Alt+F4) just switches the bubble off.
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    if window.label() == "bubble" {
+                        let _ = set_show_bubble(app.clone(), false);
+                    } else {
+                        let _ = window.emit("flush", ());
+                        let _ = window.hide();
+                        sync_bubble(app);
+                    }
+                }
+                WindowEvent::Moved(p) if window.label() == "bubble" => {
+                    if let Ok(mut m) = MOVED_TO.lock() {
+                        *m = Some((p.x, p.y));
+                    }
+                }
+                WindowEvent::ScaleFactorChanged { .. } if window.label() == "bubble" => place_bubble(app),
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -470,7 +580,11 @@ pub fn run() {
             open_data_dir,
             get_show_bubble,
             set_show_bubble,
-            toggle_main
+            get_bubble_locked,
+            set_bubble_locked,
+            reset_bubble,
+            open_from_bubble,
+            hide_main
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quicky");

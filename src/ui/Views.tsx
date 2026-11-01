@@ -92,43 +92,50 @@ export function MiniView() {
   );
 }
 
-/** Pointer-based drag (HTML5 DnD is taken over by the file-drop handler on Windows). */
+/**
+ * Pointer-based drag (HTML5 DnD is taken over by the file-drop handler on Windows).
+ * A floating copy of the card follows the pointer above everything, so the columns'
+ * scroll areas can't clip it; the original stays as a faded placeholder.
+ */
 function useCardDrag() {
   const [dragId, setDragId] = createSignal<string | null>(null);
   const [overCol, setOverCol] = createSignal<Status | null>(null);
 
   const start = (e: PointerEvent) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest(".dot, .audio-play")) return;
+    if (e.button !== 0 || (e.target as HTMLElement).closest(".dot, .audio-play, button.x")) return;
     const card = e.currentTarget as HTMLElement;
     const id = card.dataset.id!;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    let dragging = false;
+    let ghost: HTMLElement | null = null;
+    let offset = { x: 0, y: 0 };
 
-    const colAt = (x: number, y: number) => {
-      card.style.pointerEvents = "none";
-      const col = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-col]");
-      card.style.pointerEvents = "";
-      return (col?.dataset.col as Status | undefined) ?? null;
-    };
+    const colAt = (x: number, y: number) =>
+      (document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-col]")?.dataset.col as Status | undefined) ?? null;
+
     const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - x0;
-      const dy = ev.clientY - y0;
-      if (!dragging && Math.hypot(dx, dy) < 6) return;
-      if (!dragging) {
-        dragging = true;
+      if (!ghost) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return;
+        const r = card.getBoundingClientRect();
+        offset = { x: x0 - r.left, y: y0 - r.top };
+        ghost = card.cloneNode(true) as HTMLElement;
+        ghost.classList.add("drag-ghost");
+        ghost.style.width = `${r.width}px`;
+        document.body.append(ghost);
         setDragId(id);
-        card.setPointerCapture(ev.pointerId);
+        document.body.style.cursor = "grabbing";
       }
-      card.style.transform = `translate(${dx}px, ${dy}px) rotate(2deg)`;
+      ghost.style.left = `${ev.clientX - offset.x}px`;
+      ghost.style.top = `${ev.clientY - offset.y}px`;
       setOverCol(colAt(ev.clientX, ev.clientY));
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (!dragging) return;
+      if (!ghost) return;
       const col = colAt(ev.clientX, ev.clientY);
-      card.style.transform = "";
+      ghost.remove();
+      document.body.style.cursor = "";
       setDragId(null);
       setOverCol(null);
       // Swallow the click that follows a drag so the task sheet doesn't open.
@@ -187,7 +194,7 @@ export function BoardView() {
                   <div class="col-list">
                     <For each={col(c.key)}>
                       {(t) => (
-                        <div classList={{ dragging: drag.dragId() === t.id }}>
+                        <div classList={{ "drag-source": drag.dragId() === t.id }}>
                           <TaskCard task={t} onPointerDown={drag.start} />
                         </div>
                       )}

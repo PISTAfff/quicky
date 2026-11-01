@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { Blob, IClose, IGear, IMin, IPin } from "./icons";
 import { pinned, setPinned, setSheet } from "./state";
 import { flush } from "../lib/store";
@@ -40,7 +41,7 @@ export function TitleBar() {
           title="Close (keeps running in the tray, Ctrl+Space to open)"
           onClick={async () => {
             await flush();
-            await win.hide();
+            await invoke("hide_main");
           }}
         >
           <IClose size={12} />

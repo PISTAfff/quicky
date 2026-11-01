@@ -16,6 +16,7 @@ const modeFor = (w: number, h: number): Mode => (w < 330 || h < 340 ? "mini" : w
 export default function App() {
   const [mode, setMode] = createSignal<Mode>(modeFor(innerWidth, innerHeight));
   const unlisten: (() => void)[] = [];
+  let appEl: HTMLDivElement | undefined;
 
   // Keep the bottom-left bubble's badge in sync with the number of open tasks.
   const openCount = createMemo(() => data.tasks.filter((t) => t.status !== "done").length);
@@ -39,6 +40,15 @@ export default function App() {
       }
     };
     addEventListener("keydown", onKey);
+    // Little pop each time the window comes back from the tray or the bubble.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !appEl) return;
+      appEl.classList.remove("pop-in");
+      void appEl.offsetWidth;
+      appEl.classList.add("pop-in");
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    unlisten.push(() => document.removeEventListener("visibilitychange", onVisible));
     unlisten.push(
       () => removeEventListener("resize", onResize),
       () => removeEventListener("focus", tick),
@@ -78,7 +88,7 @@ export default function App() {
   onCleanup(() => unlisten.forEach((u) => u()));
 
   return (
-    <div class="app" data-mode={mode()}>
+    <div class="app pop-in" data-mode={mode()} ref={appEl}>
       <TitleBar />
       <main class="content">
         <Show when={ready()}>

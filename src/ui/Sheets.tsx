@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { ACCENTS, setTheme, theme } from "../lib/theme";
@@ -177,7 +178,6 @@ function TaskSheet(p: { id: string }) {
               <ITrash size={15} />
             </button>
           </div>
-          <p class="hint">Tip: drop files anywhere on the window or paste images into the add box.</p>
         </Panel>
       )}
     </Show>
@@ -278,6 +278,9 @@ function SettingsSheet() {
   const [bubble, setBubble] = createSignal(true);
   isEnabled().then(setStartup).catch(() => {});
   invoke<boolean>("get_show_bubble").then(setBubble).catch(() => {});
+  // The bubble can also be hidden from its own right-click menu or brought back from the tray.
+  const stop = listen<boolean>("bubble-pref", (e) => setBubble(e.payload));
+  onCleanup(() => void stop.then((u) => u()));
   const toggleStartup = async () => {
     const next = !startup();
     await (next ? enable() : disable());
@@ -323,7 +326,7 @@ function SettingsSheet() {
           <input type="checkbox" role="switch" checked={startup()} onChange={toggleStartup} />
         </label>
         <label class="switch-row">
-          <span>Bubble on screen<small>Little Quicky in the bottom-left corner, click it to open</small></span>
+          <span>Bubble on screen<small>Little Quicky that waits while the app is closed. Drag it anywhere; right-click for options</small></span>
           <input type="checkbox" role="switch" checked={bubble()} onChange={toggleBubble} />
         </label>
       </div>
@@ -333,8 +336,6 @@ function SettingsSheet() {
         <button class="btn ghost" onClick={() => invoke("open_data_dir")}><IFolder size={15} /> Open folder</button>
         <button class="btn ghost" onClick={change}>Change…</button>
       </div>
-      <p class="hint">Quicky makes a “Quicky” folder inside the place you pick. Changing it doesn't move files: copy the old Quicky folder over to bring them along.</p>
-      <p class="hint">Ctrl+Space opens Quicky from anywhere. Closing hides it to the tray.</p>
     </Panel>
   );
 }
