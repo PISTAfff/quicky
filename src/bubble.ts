@@ -260,8 +260,12 @@ function split(hx: number, hy: number) {
 }
 
 // Normal bubble vs. an app's mini Quicky (Rust resizes the window around the same centre).
-listen<boolean>("bubble-mini", ({ payload }) => {
-  isMini = payload;
+let mySpace: string | null = null;
+listen<{ mini: boolean; space: string | null }>("bubble-mini", ({ payload: { mini, space } }) => {
+  isMini = mini;
+  mySpace = space;
+  showCount();
+  const payload = mini;
   if (splitting && payload) {
     // Hand over from the dividing animation (which ended at mini size) without a jump.
     button.style.transition = "none";
@@ -335,6 +339,23 @@ button.addEventListener("pointercancel", () => {
   letGo();
   endWall();
 });
+// If the page loses the pointer mid-gesture (or Rust ends a drag on its own), settle down:
+// never leave the face stuck in its angry pose.
+button.addEventListener("lostpointercapture", () => {
+  if (tugging) letGo();
+  if (walled) endWall();
+  press = null;
+  calm();
+});
+listen("bubble-calm", () => {
+  walled = false;
+  press = null;
+  squish.style.transform = "";
+  calm();
+});
+addEventListener("blur", () => {
+  if (!tugging && !walled) calm();
+});
 button.addEventListener("pointerleave", () => !tugging && !walled && button.classList.remove("pressed"));
 button.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") void invoke("open_from_bubble");
@@ -382,9 +403,15 @@ button.addEventListener("contextmenu", async (e) => {
   await (await Menu.new({ items })).popup();
 });
 // ---- badge -----------------------------------------------------------------------
+// The normal bubble counts the general list; an app's mini counts that app's list.
 let lastOpen = -1;
-listen<{ open: number }>("counts", ({ payload }) => {
-  const { open } = payload;
+let counts: { open: number; spaces: Record<string, number> } = { open: 0, spaces: {} };
+listen<{ open: number; spaces?: Record<string, number> }>("counts", ({ payload }) => {
+  counts = { open: payload.open, spaces: payload.spaces ?? {} };
+  showCount();
+});
+function showCount() {
+  const open = mySpace ? counts.spaces[mySpace] ?? 0 : counts.open;
   badge.hidden = open === 0;
   badge.textContent = open > 99 ? "99+" : String(open);
   button.classList.toggle("clear", open === 0);
@@ -393,7 +420,7 @@ listen<{ open: number }>("counts", ({ payload }) => {
   const label = open ? `${open} task${open === 1 ? "" : "s"} left · click to open, drag to move` : "All clear! Click to open Quicky";
   button.title = label;
   button.setAttribute("aria-label", label);
-});
+}
 
 // ---- animations ------------------------------------------------------------------
 const replay = (el: Element, cls: string) => {

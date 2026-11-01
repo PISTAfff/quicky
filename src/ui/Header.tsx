@@ -1,5 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
-import { data, today } from "../lib/store";
+import { spaceTasks, today } from "../lib/store";
 import { parseDay } from "../lib/model";
 import { WEEK_LONG } from "./state";
 
@@ -8,7 +8,7 @@ export const useProgress = () =>
     const t = today();
     let done = 0;
     let total = 0;
-    for (const task of data.tasks) {
+    for (const task of spaceTasks()) {
       if (task.status !== "done") total++;
       else if (task.doneDay === t) {
         done++;

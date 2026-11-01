@@ -7,7 +7,7 @@ import { ACCENTS, setTheme, theme } from "../lib/theme";
 import { onAccent } from "../lib/theme-colors";
 import {
   addAttachments, chooseDataDir, clock, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
-  renameRepeat, setRemind, setRepeatDays, setStatus, showToast, snoozeTask, toggleRepeatPaused, today, updateTask,
+  renameRepeat, setRemind, spaceRepeats, spaceTasks, setRepeatDays, setStatus, showToast, snoozeTask, toggleRepeatPaused, today, updateTask,
 } from "../lib/store";
 import { EVERY_DAY, parseDay, type Status, type Task } from "../lib/model";
 import { pickFiles, startRecording, type Recording } from "../lib/media";
@@ -215,7 +215,7 @@ function TaskSheet(p: { id: string }) {
 function DoneDrawer() {
   const groups = createMemo(() => {
     const map = new Map<string, typeof data.tasks>();
-    for (const t of data.tasks) {
+    for (const t of spaceTasks()) {
       if (t.status !== "done") continue;
       const k = t.doneDay ?? t.day;
       map.set(k, [...(map.get(k) ?? []), t]);
@@ -267,10 +267,10 @@ function RepeatsSheet() {
   return (
     <Panel title="Repeating tasks" class="repeats-sheet">
       <Show
-        when={data.repeats.length}
+        when={spaceRepeats().length}
         fallback={<div class="empty"><Blob size={44} /><p>No repeating tasks. Tap the repeat button in the add box, or “Make it repeat” on any task.</p></div>}
       >
-        <For each={data.repeats}>
+        <For each={spaceRepeats()}>
           {(r) => (
             <div class="repeat-row" classList={{ paused: r.paused }}>
               <div class="box-row">

@@ -31,6 +31,10 @@ pub struct StuckApp {
     pub bottom: bool,
     pub dx: i32,
     pub dy: i32,
+    /// Where the app's own Quicky window sits inside it: gaps to its left/top/right/bottom edges
+    /// (physical px). None = cover the app with a small margin.
+    #[serde(default)]
+    pub area: Option<[i32; 4]>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -201,6 +205,7 @@ fn quicky_folder(picked: PathBuf) -> PathBuf {
 /// Title-bar close: hide to the tray and bring the bubble back straight away.
 #[tauri::command]
 fn hide_main(app: AppHandle) {
+    bubble::remember_app_window(&app);
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.hide();
     }
@@ -212,10 +217,11 @@ fn toggle_main(app: &AppHandle) {
     let Some(main) = app.get_webview_window("main") else { return };
     if main_on_screen(app) && main.is_focused().unwrap_or(false) {
         let _ = app.emit("flush", ());
+        bubble::remember_app_window(app);
         let _ = main.hide();
         bubble::sync(app);
     } else {
-        show_main(app);
+        bubble::open_for_context(app, false);
     }
 }
 
@@ -373,7 +379,8 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
                     if shortcut == &quick_key && event.state() == ShortcutState::Pressed {
-                        show_main(app);
+                        // In an app with a mini Quicky: that app's tasks; anywhere else: the general list.
+                        bubble::open_for_context(app, false);
                         let _ = app.emit("quick-add", ());
                     }
                 })
@@ -411,7 +418,7 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
-                    "show" => show_main(app),
+                    "show" => bubble::open_for_context(app, false),
                     "bubble" => {
                         let _ = bubble::set_show_bubble(app.clone(), true);
                     }
@@ -443,10 +450,13 @@ pub fn run() {
                         let _ = bubble::set_show_bubble(app.clone(), false);
                     } else {
                         let _ = window.emit("flush", ());
+                        bubble::remember_app_window(app);
                         let _ = window.hide();
                         bubble::sync(app);
                     }
                 }
+                // A popover: losing focus to another app tucks Quicky away (unless pinned).
+                WindowEvent::Focused(false) if window.label() == "main" => bubble::on_main_blur(app),
                 WindowEvent::ScaleFactorChanged { .. } if window.label() == "bubble" => bubble::place(app),
                 _ => {}
             }
@@ -478,6 +488,8 @@ pub fn run() {
             bubble::mini_drag_to,
             bubble::mini_drag_end,
             bubble::mini_pop,
+            bubble::set_pinned,
+            bubble::app_icon,
             reminder::show_reminder,
             reminder::reminder_payload,
             reminder::reminder_ready,

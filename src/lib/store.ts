@@ -94,6 +94,22 @@ export const mediaUrl = (rel: string) => {
   return dir ? convertFileSrc(`${dir}\\${rel.replace(/\//g, "\\")}`) : "";
 };
 
+// ---- task spaces ----------------------------------------------------------------
+// Each app with a mini Quicky has its own list; `null` is the general list.
+
+export const [space, setSpace] = createSignal<string | null>(null);
+export const inSpace = (key?: string) => (key ?? null) === space();
+export const spaceTasks = () => data.tasks.filter((t) => inSpace(t.space));
+export const spaceRepeats = () => data.repeats.filter((r) => inSpace(r.space));
+export const spaceName = (key: string | null) => (key ? data.spaces?.[key] ?? "App" : "General");
+
+export function nameSpace(key: string, name: string) {
+  if (data.spaces?.[key] === name) return;
+  mutate((d) => {
+    d.spaces = { ...(d.spaces ?? {}), [key]: name };
+  });
+}
+
 // ---- toast -------------------------------------------------------------------
 
 export interface Toast { text: string; action?: { label: string; run: () => void } }
@@ -115,7 +131,7 @@ export function addTask(title: string, attachments: Attachment[], repeatDays?: n
   let repeatId: string | undefined;
   if (repeatDays?.length) {
     repeatId = uid();
-    const repeat: Repeat = { id: repeatId, title, days: repeatDays, lastSpawned: t };
+    const repeat: Repeat = { id: repeatId, title, days: repeatDays, lastSpawned: t, ...(space() ? { space: space()! } : {}) };
     mutate((d) => void d.repeats.push(repeat));
     if (!repeatDays.includes(weekday(t))) {
       showToast(`“${title}” will show up on its next repeat day`);
@@ -124,6 +140,7 @@ export function addTask(title: string, attachments: Attachment[], repeatDays?: n
   }
   const task: Task = {
     id: uid(), title, status: "todo", day: t, since: t, repeatId, attachments, created: Date.now(),
+    ...(space() ? { space: space()! } : {}),
   };
   mutate((d) => void d.tasks.push(task));
 }
@@ -198,7 +215,7 @@ export function makeRepeat(taskId: string, days: number[]) {
   mutate((d) => {
     const t = find(d, taskId);
     if (!t) return;
-    d.repeats.push({ id, title: t.title, days, lastSpawned: today() });
+    d.repeats.push({ id, title: t.title, days, lastSpawned: today(), ...(t.space ? { space: t.space } : {}) });
     t.repeatId = id;
   });
 }

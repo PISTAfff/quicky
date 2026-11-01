@@ -35,7 +35,15 @@ struct State {
     /// Where the window is now (top-left, sub-pixel, for smooth gliding) and where it's heading.
     at: Option<(f64, f64)>,
     goal: Option<(i32, i32)>,
-    mini: Option<bool>,
+    /// What the bubble is showing as: None = not set yet, Some(None) = the normal bubble,
+    /// Some(Some(key)) = the mini of the app with that space key.
+    mode: Option<Option<String>>,
+    /// The main window is currently open as this app's Quicky (inside the app's window), and the
+    /// frame we gave it, so we only remember a size the user actually changed.
+    space: Option<(String, win::Hwnd)>,
+    placed_frame: Option<Rect>,
+    /// Size and spot of the general (non-app) window, to restore after an app's window.
+    general: Option<(i32, i32, u32, u32)>,
     /// A "dividing" animation is playing in the page; hold everything still until it ends.
     split_until: Option<Instant>,
     /// A mini is being dragged around inside its app (the app's window is its walls).
@@ -54,7 +62,10 @@ static STATE: Mutex<State> = Mutex::new(State {
     focus: None,
     at: None,
     goal: None,
-    mini: None,
+    mode: None,
+    space: None,
+    placed_frame: None,
+    general: None,
     split_until: None,
     wall: None,
 });
@@ -149,15 +160,20 @@ fn active_stuck(app: &AppHandle) -> Option<(StuckApp, AppWindow, Rect)> {
     Some((entry, focus, rect))
 }
 
-/// Top-left to put the bubble at, and whether it's the mini (inside a focused app) or the normal one.
-fn target(app: &AppHandle) -> Option<((i32, i32), bool)> {
+/// The task-space key for an app (its .exe path, lower-cased).
+pub fn space_key(exe: &str) -> String {
+    exe.to_lowercase()
+}
+
+/// Top-left to put the bubble at, and which app's mini it is (None = the normal bubble).
+fn target(app: &AppHandle) -> Option<((i32, i32), Option<String>)> {
     match active_stuck(app) {
         Some((entry, _, rect)) => {
             let (cx, cy) = stuck_spot(&entry, rect);
             let half = (MINI * scale(app) / 2.0) as i32;
-            Some(((cx - half, cy - half), true))
+            Some(((cx - half, cy - half), Some(space_key(&entry.exe))))
         }
-        None => normal_spot(app).map(|p| (p, false)),
+        None => normal_spot(app).map(|p| (p, None)),
     }
 }
 
@@ -172,13 +188,15 @@ fn apply(app: &AppHandle, force: bool) {
             return;
         }
     }
-    let (Some(b), Some(h), Some((spot, mini))) = (window(app), hwnd(app), target(app)) else { return };
+    let (Some(b), Some(h), Some((spot, space))) = (window(app), hwnd(app), target(app)) else { return };
+    let mini = space.is_some();
     let visible = b.is_visible().unwrap_or(false);
     let mut st = state();
     st.split_until = None;
-    if force || st.mini != Some(mini) {
+    let was_mini = st.mode.as_ref().map(|m| m.is_some());
+    if force || was_mini != Some(mini) {
         // Switching between the normal bubble and an app's mini: resize around the same centre
-        // (so it shrinks/grows in place, then glides), and tell the page.
+        // (so it shrinks/grows in place, then glides).
         let old = b.outer_size().map(|s| s.width as f64).unwrap_or(0.0);
         let size = if mini { MINI } else { SIZE };
         let _ = b.set_size(LogicalSize::new(size, size));
@@ -188,8 +206,11 @@ fn apply(app: &AppHandle, force: bool) {
             st.at = Some((x + shift, y + shift));
             win::move_to(h, (x + shift).round() as i32, (y + shift).round() as i32);
         }
-        let _ = app.emit_to("bubble", "bubble-mini", mini);
-        st.mini = Some(mini);
+    }
+    if force || st.mode.as_ref() != Some(&space) {
+        // Tell the page which it is now (and whose task count to show on the badge).
+        let _ = app.emit_to("bubble", "bubble-mini", serde_json::json!({ "mini": mini, "space": space }));
+        st.mode = Some(space);
     }
     st.goal = Some(spot);
     if force || !visible || st.at.is_none() {
@@ -257,7 +278,8 @@ fn save_drop(app: &AppHandle) {
         Some((under, rect)) => {
             let (right, bottom, dx, dy) = anchor(rect, center);
             let is_new = !read_config(app).stuck_apps.iter().any(|s| s.exe.eq_ignore_ascii_case(&under.exe));
-            let entry = StuckApp { exe: under.exe.clone(), name: pretty_name(&under.exe), right, bottom, dx, dy };
+            let insets = read_config(app).stuck_apps.iter().find(|s| s.exe.eq_ignore_ascii_case(&under.exe)).and_then(|s| s.area);
+            let entry = StuckApp { exe: under.exe.clone(), name: pretty_name(&under.exe), right, bottom, dx, dy, area: insets };
             let _ = update_config(app, |c| {
                 c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&entry.exe));
                 c.stuck_apps.push(entry);
@@ -314,6 +336,7 @@ pub fn housekeeping(app: &AppHandle) {
             // A walled mini drag whose page lost track of the mouse: finish it where it is.
             if state().wall.is_some() && !win::left_button_down() {
                 mini_drag_end(app.clone());
+                let _ = app.emit_to("bubble", "bubble-calm", ());
             }
 
             let dragging = state().dragging;
@@ -414,11 +437,119 @@ pub fn reset_bubble(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Bubble click: open the app right next to wherever the bubble is.
+/// Bubble click: open Quicky. From an app's mini that's the app's own Quicky, inside the app;
+/// from the normal bubble it's the general list, right next to the bubble.
 #[tauri::command]
 pub fn open_from_bubble(app: AppHandle) {
-    place_main_near(&app);
-    show_main(&app);
+    open_for_context(&app, true);
+}
+
+/// Opens Quicky for whatever the user is in: the focused app's own space if that app has a
+/// mini, otherwise the general list.
+pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
+    let Some(main) = app.get_webview_window("main") else { return };
+    remember_app_window(app);
+    match active_stuck(app) {
+        Some((entry, focus, rect)) => {
+            // Leaving the general window: remember its size and spot to restore later.
+            if state().space.is_none() {
+                if let Some(f) = main.hwnd().ok().and_then(|h| win::frame(h.0 as win::Hwnd)) {
+                    state().general = Some((f.left, f.top, (f.right - f.left) as u32, (f.bottom - f.top) as u32));
+                }
+            }
+            // Inside the app, covering it with a small margin unless the user resized it there.
+            let margin = (14.0 * scale(app)) as i32;
+            let [l, t, r, b] = entry.area.unwrap_or([margin; 4]).map(|v| v.max(0));
+            let (x, y) = (rect.left + l, rect.top + t);
+            let w = (rect.right - r - x).max(260);
+            let h = (rect.bottom - b - y).max(160);
+            set_visible_frame(&main, x, y, w, h);
+            let mut st = state();
+            st.space = Some((entry.exe.clone(), focus.hwnd));
+            st.placed_frame = main.hwnd().ok().and_then(|h| win::frame(h.0 as win::Hwnd));
+            drop(st);
+            let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": space_key(&entry.exe), "name": entry.name }));
+        }
+        None => {
+            if state().space.take().is_some() {
+                if let Some((x, y, w, h)) = state().general {
+                    set_visible_frame(&main, x, y, w as i32, h as i32);
+                }
+            }
+            let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
+            if near_bubble {
+                place_main_near(app);
+            }
+        }
+    }
+    show_main(app);
+}
+
+/// Places a window so its *visible* frame is exactly (x, y, w, h): Windows adds invisible resize
+/// borders around it, so measure them and compensate.
+fn set_visible_frame(w: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
+    let (Ok(h), Ok(outer), Ok(inner)) = (w.hwnd(), w.outer_position(), w.inner_size()) else { return };
+    let (bl, bt, extra_w, extra_h) = match win::frame(h.0 as win::Hwnd) {
+        Some(f) => (f.left - outer.x, f.top - outer.y, (f.right - f.left) - inner.width as i32, (f.bottom - f.top) - inner.height as i32),
+        None => (0, 0, 0, 0),
+    };
+    let _ = w.set_size(PhysicalSize::new((width - extra_w).max(1) as u32, (height - extra_h).max(1) as u32));
+    let _ = w.set_position(PhysicalPosition::new(x - bl, y - bt));
+}
+
+/// If the main window is open as an app's Quicky, remember where it sits inside that app.
+pub fn remember_app_window(app: &AppHandle) {
+    let Some((exe, app_hwnd)) = state().space.clone() else { return };
+    let Some(main) = app.get_webview_window("main") else { return };
+    if !main.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Ok(mh) = main.hwnd() else { return };
+    let (Some(q), Some(rect)) = (win::frame(mh.0 as win::Hwnd), win::frame(app_hwnd)) else { return };
+    // Untouched since we placed it: nothing to remember (keeps the cover-with-a-margin default).
+    if state().placed_frame == Some(q) {
+        return;
+    }
+    let insets = [
+        (q.left - rect.left).max(0),
+        (q.top - rect.top).max(0),
+        (rect.right - q.right).max(0),
+        (rect.bottom - q.bottom).max(0),
+    ];
+    let _ = update_config(app, |c| {
+        if let Some(s) = c.stuck_apps.iter_mut().find(|s| s.exe.eq_ignore_ascii_case(&exe)) {
+            s.area = Some(insets);
+        }
+    });
+}
+
+/// Pinned (📌) keeps the window open when it loses focus.
+pub static PINNED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub fn set_pinned(pinned: bool) {
+    PINNED.store(pinned, Ordering::Relaxed);
+}
+
+/// Quicky is a popover: when the main window loses focus to another app, it tucks itself away
+/// and the bubble / the app's mini comes back. Its own dialogs and pickers don't count.
+pub fn on_main_blur(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(180));
+        let Some(main) = app.get_webview_window("main") else { return };
+        if PINNED.load(Ordering::Relaxed) || main.is_focused().unwrap_or(true) || !main_on_screen(&app) {
+            return;
+        }
+        let Ok(h) = main.hwnd() else { return };
+        if win::foreground_is_related(h.0 as win::Hwnd) {
+            return;
+        }
+        let _ = app.emit_to("main", "flush", ());
+        remember_app_window(&app);
+        let _ = main.hide();
+        sync(&app);
+    });
 }
 
 /// Called by the bubble right before it starts a native drag.
@@ -521,7 +652,7 @@ pub fn stick_bubble(app: AppHandle) -> Result<String, String> {
     let rect = win::frame(under.hwnd).ok_or("Couldn't read that window")?;
     let (right, bottom, dx, dy) = anchor(rect, (x, y));
     let name = pretty_name(&under.exe);
-    let entry = StuckApp { exe: under.exe.clone(), name: name.clone(), right, bottom, dx, dy };
+    let entry = StuckApp { exe: under.exe.clone(), name: name.clone(), right, bottom, dx, dy, area: None };
     update_config(&app, |c| {
         c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&entry.exe));
         c.stuck_apps.push(entry);
@@ -537,6 +668,21 @@ pub fn unstick_bubble(app: AppHandle, exe: String) -> Result<(), String> {
     let _ = app.emit("stuck-apps", ());
     apply(&app, true);
     Ok(())
+}
+
+/// An app's own icon as a data URL, for the task-list menu. Cached; None if it has none.
+#[tauri::command]
+pub async fn app_icon(exe: String) -> Option<String> {
+    use base64::Engine as _;
+    use std::collections::HashMap;
+    static CACHE: Mutex<Option<HashMap<String, Option<String>>>> = Mutex::new(None);
+    if let Some(hit) = CACHE.lock().ok()?.get_or_insert_with(HashMap::new).get(&exe) {
+        return hit.clone();
+    }
+    let url = win::exe_icon_png(&exe, 48)
+        .map(|png| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)));
+    CACHE.lock().ok()?.get_or_insert_with(HashMap::new).insert(exe, url.clone());
+    url
 }
 
 #[derive(Serialize)]
@@ -559,13 +705,20 @@ mod tests {
         let rect = Rect { left: 100, top: 100, right: 900, bottom: 700 };
         for spot in [(120, 130), (800, 120), (110, 600), (790, 610)] {
             let (right, bottom, dx, dy) = anchor(rect, spot);
-            let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy };
+            let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy, area: None };
             assert_eq!(stuck_spot(&entry, rect), spot);
         }
         // Near the bottom-right: follows that corner when the window grows.
         let (right, bottom, dx, dy) = anchor(rect, (790, 610));
-        let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy };
+        let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy, area: None };
         assert_eq!(stuck_spot(&entry, Rect { right: 1000, bottom: 800, ..rect }), (890, 710));
+    }
+
+    #[test]
+    fn reads_a_real_app_icon_as_png() {
+        let png = win::exe_icon_png(r"C:\Windows\explorer.exe", 48).expect("explorer has an icon");
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        assert!(png.len() > 300, "suspiciously small icon: {} bytes", png.len());
     }
 
     #[test]

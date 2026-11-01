@@ -27,6 +27,8 @@ export interface Task {
   snoozeUntil?: number;
   /** The last reminder already shown, so each one shows once. */
   lastFired?: string;
+  /** Which app's task space it belongs to (the app's .exe key); none = the general list. */
+  space?: string;
 }
 
 export interface Repeat {
@@ -37,12 +39,15 @@ export interface Repeat {
   paused?: boolean;
   /** Reminder times copied onto each new copy of the task. */
   remind?: string[];
+  space?: string;
 }
 
 export interface Data {
   version: 1;
   tasks: Task[];
   repeats: Repeat[];
+  /** Display names of app task spaces, by key (e.g. "c:\\...\\chrome.exe" → "Chrome"). */
+  spaces?: Record<string, string>;
 }
 
 export const emptyData = (): Data => ({ version: 1, tasks: [], repeats: [] });
@@ -101,6 +106,7 @@ export function rollover(data: Data, today: string): Data {
         attachments: [],
         created: Date.now(),
         ...(r.remind?.length ? { remind: [...r.remind] } : {}),
+        ...(r.space ? { space: r.space } : {}),
       });
     }
     return { ...r, lastSpawned: today };

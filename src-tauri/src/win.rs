@@ -11,7 +11,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, GetAsyncKeySt
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowRect,
     GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow,
-    GA_ROOT, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE,
+    GA_ROOT, GA_ROOTOWNER, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE,
     SW_SHOWNOACTIVATE,
 };
 
@@ -110,6 +110,20 @@ pub fn foreground_is_ours() -> bool {
     fg != 0 && is_ours(fg)
 }
 
+/// Whether focus went somewhere that still belongs to `owner`: one of our own windows (file
+/// dialogs, the reminder), a window it owns, or a WebView2 popup (colour/date pickers, menus).
+/// No foreground at all (mid-switch) also counts, to be safe.
+pub fn foreground_is_related(owner: Hwnd) -> bool {
+    let fg = unsafe { GetForegroundWindow() } as Hwnd;
+    if fg == 0 || is_ours(fg) {
+        return true;
+    }
+    if unsafe { GetAncestor(h(fg), GA_ROOTOWNER) } as Hwnd == owner {
+        return true;
+    }
+    exe_of(fg).is_some_and(|e| e.to_ascii_lowercase().ends_with("msedgewebview2.exe"))
+}
+
 /// The topmost real app window under a screen point (Quicky's own windows are skipped).
 pub fn app_under(x: i32, y: i32) -> Option<AppWindow> {
     struct Search {
@@ -138,6 +152,75 @@ pub fn app_under(x: i32, y: i32) -> Option<AppWindow> {
     }
     let root = unsafe { GetAncestor(h(s.found), GA_ROOT) } as Hwnd;
     Some(AppWindow { hwnd: root, exe: exe_of(root)? })
+}
+
+/// An app's icon (from its .exe) as a PNG, `size` px square. None if it has no icon.
+pub fn exe_icon_png(exe: &str, size: i32) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, PrivateExtractIconsW, HICON, ICONINFO};
+
+    let wide: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut path = [0u16; 260];
+    let n = wide.len().min(path.len());
+    path[..n].copy_from_slice(&wide[..n]);
+    let mut icon: HICON = std::ptr::null_mut();
+    let got = unsafe { PrivateExtractIconsW(path.as_ptr(), 0, size, size, &mut icon, std::ptr::null_mut(), 1, 0) };
+    if got == 0 || got == u32::MAX || icon.is_null() {
+        return None;
+    }
+    let mut ii: ICONINFO = unsafe { std::mem::zeroed() };
+    if unsafe { GetIconInfo(icon, &mut ii) } == 0 {
+        unsafe { DestroyIcon(icon) };
+        return None;
+    }
+    let read = |bmp| -> Option<Vec<u8>> {
+        let mut bi: BITMAPINFO = unsafe { std::mem::zeroed() };
+        bi.bmiHeader = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: size,
+            biHeight: -size, // top-down rows
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            ..unsafe { std::mem::zeroed() }
+        };
+        let mut buf = vec![0u8; (size * size * 4) as usize];
+        let dc = unsafe { CreateCompatibleDC(std::ptr::null_mut()) };
+        let lines = unsafe { GetDIBits(dc, bmp, 0, size as u32, buf.as_mut_ptr() as _, &mut bi, DIB_RGB_COLORS) };
+        unsafe { DeleteDC(dc) };
+        (lines > 0).then_some(buf)
+    };
+    let color = if ii.hbmColor.is_null() { None } else { read(ii.hbmColor) };
+    let mask = if ii.hbmMask.is_null() { None } else { read(ii.hbmMask) };
+    unsafe {
+        if !ii.hbmColor.is_null() {
+            DeleteObject(ii.hbmColor);
+        }
+        if !ii.hbmMask.is_null() {
+            DeleteObject(ii.hbmMask);
+        }
+        DestroyIcon(icon);
+    }
+    let mut px = color?;
+    // Old-style icons carry no alpha: take transparency from the mask instead.
+    let has_alpha = px.chunks(4).any(|p| p[3] != 0);
+    for (i, p) in px.chunks_mut(4).enumerate() {
+        p.swap(0, 2); // BGRA → RGBA
+        if !has_alpha {
+            let transparent = mask.as_ref().is_some_and(|m| m[i * 4] != 0);
+            p[3] = if transparent { 0 } else { 255 };
+        }
+    }
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, size as u32, size as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().ok()?.write_image_data(&px).ok()?;
+    }
+    Some(out)
 }
 
 pub fn left_button_down() -> bool {

@@ -1,7 +1,9 @@
 import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { addAttachments, data, dataDir, flush, init, loadError, ready, setToast, showToast, tick, toast } from "./lib/store";
+import {
+  addAttachments, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, tick, toast,
+} from "./lib/store";
 import { importPaths } from "./lib/media";
 import { startReminders } from "./lib/reminders";
 import { TitleBar } from "./ui/TitleBar";
@@ -19,10 +21,19 @@ export default function App() {
   const unlisten: (() => void)[] = [];
   let appEl: HTMLDivElement | undefined;
 
-  // Keep the bottom-left bubble's badge in sync with the number of open tasks.
-  const openCount = createMemo(() => data.tasks.filter((t) => t.status !== "done").length);
-  const sendCounts = () => void emitTo("bubble", "counts", { open: openCount() });
-  createEffect(on(openCount, sendCounts));
+  // Keep the bubble's badge in sync: open tasks in the general list, and per app space for minis.
+  const counts = createMemo(() => {
+    const spaces: Record<string, number> = {};
+    let open = 0;
+    for (const t of data.tasks) {
+      if (t.status === "done") continue;
+      if (t.space) spaces[t.space] = (spaces[t.space] ?? 0) + 1;
+      else open++;
+    }
+    return { open, spaces };
+  });
+  const sendCounts = () => void emitTo("bubble", "counts", counts());
+  createEffect(on(counts, sendCounts));
 
   onMount(async () => {
     let frame = 0;
@@ -59,6 +70,14 @@ export default function App() {
 
     unlisten.push(await listen("quick-add", focusQuickAdd));
     unlisten.push(await listen("bubble-ready", sendCounts));
+    // Opened from an app's mini Quicky: show that app's own tasks (null = the general list).
+    unlisten.push(
+      await listen<{ key: string | null; name?: string }>("open-space", ({ payload }) => {
+        if (payload.key && payload.name) nameSpace(payload.key, payload.name);
+        if (payload.key !== space()) setSheet(null);
+        setSpace(payload.key);
+      }),
+    );
     unlisten.push(await listen("flush", () => void flush()));
     unlisten.push(
       await getCurrentWebview().onDragDropEvent(async (e) => {
