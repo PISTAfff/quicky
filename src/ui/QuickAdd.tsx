@@ -1,11 +1,12 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
-import { IClip, IMic, IPlus, IRepeat, IClose } from "./icons";
+import { IClip, IMic, IPlus, IRepeat, IClose, IStop } from "./icons";
 import { registerQuickInput, setStaged, staged } from "./state";
 import { addTask, showToast } from "../lib/store";
 import { invoke } from "@tauri-apps/api/core";
 import { EVERY_DAY, type Attachment } from "../lib/model";
 import { fromClipboard, pickFiles, startRecording, type Recording } from "../lib/media";
 import { Thumb } from "./Media";
+import { RecStrip } from "./LiveWave";
 
 const REPEATS = [
   { label: "", days: undefined },
@@ -17,8 +18,6 @@ export function QuickAdd(p: { compact?: boolean }) {
   const [text, setText] = createSignal("");
   const [repeat, setRepeat] = createSignal(0);
   const [rec, setRec] = createSignal<Recording | null>(null);
-  const [secs, setSecs] = createSignal(0);
-  let clock: number | undefined;
 
   const submit = () => {
     if (rec()) return;
@@ -48,7 +47,6 @@ export function QuickAdd(p: { compact?: boolean }) {
   const toggleRecord = async () => {
     const current = rec();
     if (current) {
-      clearInterval(clock);
       setRec(null);
       const att = await current.stop();
       if (att) stage([att]);
@@ -56,16 +54,15 @@ export function QuickAdd(p: { compact?: boolean }) {
     }
     try {
       setRec(await startRecording());
-      setSecs(0);
-      clock = window.setInterval(() => setSecs(secs() + 1), 1000);
-    } catch (e) {
+    } catch {
       showToast("Microphone isn't available");
     }
   };
-  onCleanup(() => {
-    clearInterval(clock);
+  const cancelRecord = () => {
     rec()?.cancel();
-  });
+    setRec(null);
+  };
+  onCleanup(() => rec()?.cancel());
 
   const onPaste = async (e: ClipboardEvent) => {
     try {
@@ -75,25 +72,33 @@ export function QuickAdd(p: { compact?: boolean }) {
     }
   };
 
-  const mmss = () => `${Math.floor(secs() / 60)}:${String(secs() % 60).padStart(2, "0")}`;
 
   return (
     <div class="quick" classList={{ compact: p.compact }}>
       <div class="quick-row">
-        <div class="quick-box">
-          <label for="quick-input" class="sr">Add a task</label>
-          <input
-            id="quick-input"
-            ref={registerQuickInput}
-            placeholder={rec() ? `Recording… ${mmss()}` : "Add a mini task…"}
-            value={text()}
-            autocomplete="off"
-            onInput={(e) => setText(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-            onPaste={onPaste}
-          />
-          <span class="kbd hide-narrow">Ctrl Space</span>
-          <Show when={!p.compact}>
+        <div class="quick-box" classList={{ recording: !!rec() }}>
+          <Show
+            when={rec()}
+            fallback={
+              <>
+                <label for="quick-input" class="sr">Add a task</label>
+                <input
+                  id="quick-input"
+                  ref={registerQuickInput}
+                  placeholder="Add a mini task…"
+                  value={text()}
+                  autocomplete="off"
+                  onInput={(e) => setText(e.currentTarget.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                  onPaste={onPaste}
+                />
+                <span class="kbd hide-narrow">Ctrl Space</span>
+              </>
+            }
+          >
+            {(r) => <RecStrip analyser={r().analyser} onCancel={cancelRecord} />}
+          </Show>
+          <Show when={!p.compact && !rec()}>
             <button
               class="ib"
               classList={{ on: repeat() > 0 }}
@@ -115,7 +120,7 @@ export function QuickAdd(p: { compact?: boolean }) {
             onClick={toggleRecord}
           >
             <Show when={rec()} fallback={<IMic size={16} />}>
-              <i class="rec-dot" />
+              <IStop size={14} />
             </Show>
           </button>
         </div>

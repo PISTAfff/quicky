@@ -40,6 +40,7 @@ export async function fromClipboard(e: ClipboardEvent): Promise<Attachment[]> {
 }
 
 export interface Recording {
+  analyser: AnalyserNode;
   stop(): Promise<Attachment | null>;
   cancel(): void;
 }
@@ -51,14 +52,23 @@ export async function startRecording(): Promise<Recording> {
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   rec.start();
+
+  // Tap the same stream for the live waveform.
+  const ctx = new AudioContext();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+
   const end = () => new Promise<void>((resolve) => {
     rec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
+      void ctx.close();
       resolve();
     };
     rec.stop();
   });
   return {
+    analyser,
     async stop() {
       await end();
       if (!chunks.length) return null;

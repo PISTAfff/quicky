@@ -9,8 +9,9 @@ import {
 } from "../lib/store";
 import { EVERY_DAY, parseDay, type Status } from "../lib/model";
 import { pickFiles, startRecording, type Recording } from "../lib/media";
-import { Blob, IClip, IClose, IMic, IRepeat, IRestore, ITrash, IFolder } from "./icons";
+import { Blob, IClip, IClose, IMic, IRepeat, IRestore, ITrash, IFolder, IStop } from "./icons";
 import { MediaView } from "./Media";
+import { RecStrip } from "./LiveWave";
 import { setSheet, sheet, WEEK, WEEK_LONG } from "./state";
 
 function Panel(p: { title: string; children: JSX.Element; class?: string }) {
@@ -142,13 +143,27 @@ function TaskSheet(p: { id: string }) {
             </div>
           </Show>
 
+          <Show when={rec()}>
+            {(r) => (
+              <div class="rec-box">
+                <RecStrip
+                  analyser={r().analyser}
+                  onCancel={() => {
+                    r().cancel();
+                    setRec(null);
+                  }}
+                />
+              </div>
+            )}
+          </Show>
+
           <div class="sheet-actions">
             <button class="btn ghost" onClick={async () => addAttachments(p.id, await pickFiles())}>
               <IClip size={15} /> Attach
             </button>
             <button class="btn ghost" classList={{ recording: !!rec() }} onClick={record}>
               <Show when={rec()} fallback={<><IMic size={15} /> Record</>}>
-                <i class="rec-dot" /> Stop
+                <IStop size={13} /> Stop &amp; save
               </Show>
             </button>
             <button
