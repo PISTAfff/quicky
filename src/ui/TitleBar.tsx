@@ -18,7 +18,7 @@ export function TitleBar() {
         <span data-tauri-drag-region>Quicky</span>
       </div>
       <div class="winbtns">
-        <button class="wb" aria-label="Settings" title="Data folder" onClick={() => setSheet({ kind: "settings" })}>
+        <button class="wb" aria-label="Settings" title="Settings and data folder" onClick={() => setSheet({ kind: "settings" })}>
           <IFolder size={14} />
         </button>
         <button

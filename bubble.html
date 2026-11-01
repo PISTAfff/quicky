@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quicky bubble</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+      button {
+        position: absolute; left: 6px; top: 10px; width: 58px; height: 54px; padding: 0; border: 0; background: none;
+        cursor: pointer; transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+      }
+      button:hover { transform: translateY(-2px) scale(1.06); }
+      button:active { transform: scale(0.95); }
+      button:focus-visible { outline: 2.5px solid #6d4cff; outline-offset: 2px; border-radius: 50%; }
+      svg { display: block; overflow: visible; }
+      .badge {
+        position: absolute; right: -4px; top: -6px; min-width: 22px; height: 22px; padding: 0 5px; box-sizing: border-box;
+        border-radius: 11px; background: #2b2540; color: #fff; border: 2px solid #f4f1ff;
+        font: 800 12px/18px "Segoe UI", system-ui, sans-serif; text-align: center;
+      }
+      .badge[hidden] { display: none; }
+      .eyes-done { display: none; }
+      .clear .eyes-open { display: none; }
+      .clear .eyes-done { display: inline; }
+      .clear .body { fill: #7fe0b9; }
+    </style>
+  </head>
+  <body>
+    <button id="b" aria-label="Open Quicky">
+      <svg width="58" height="52" viewBox="0 0 40 36" aria-hidden="true">
+        <path d="M20 1C31 1 39 9 39 20c0 9-6 15-19 15S1 29 1 20C1 9 9 1 20 1z" fill="#2b2540" transform="translate(2 2)" />
+        <path class="body" d="M20 1C31 1 39 9 39 20c0 9-6 15-19 15S1 29 1 20C1 9 9 1 20 1z" fill="#6d4cff" stroke="#2b2540" stroke-width="1.6" />
+        <g class="eyes-open" fill="#fff"><rect x="12" y="13" width="4" height="7" rx="2" /><rect x="24" y="13" width="4" height="7" rx="2" /></g>
+        <g class="eyes-done" fill="none" stroke="#2b2540" stroke-width="2.6" stroke-linecap="round"><path d="M11 18q3-3 6 0M23 18q3-3 6 0" /></g>
+      </svg>
+      <span class="badge" id="n" hidden></span>
+    </button>
+    <script type="module" src="/src/bubble.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import {
   addAttachments, chooseDataDir, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
   renameRepeat, setRepeatDays, setStatus, showToast, toggleRepeatPaused, today, updateTask,
@@ -257,8 +258,32 @@ function SettingsSheet() {
       showToast("Now using the new folder");
     }
   };
+  const [startup, setStartup] = createSignal(false);
+  const [bubble, setBubble] = createSignal(true);
+  isEnabled().then(setStartup).catch(() => {});
+  invoke<boolean>("get_show_bubble").then(setBubble).catch(() => {});
+  const toggleStartup = async () => {
+    const next = !startup();
+    await (next ? enable() : disable());
+    setStartup(next);
+  };
+  const toggleBubble = async () => {
+    const next = !bubble();
+    await invoke("set_show_bubble", { show: next });
+    setBubble(next);
+  };
   return (
-    <Panel title="Your data" class="settings-sheet">
+    <Panel title="Settings" class="settings-sheet">
+      <div class="box">
+        <label class="switch-row">
+          <span>Start with Windows<small>Opens quietly in the tray when you sign in</small></span>
+          <input type="checkbox" role="switch" checked={startup()} onChange={toggleStartup} />
+        </label>
+        <label class="switch-row">
+          <span>Bubble on screen<small>Little Quicky in the bottom-left corner, click it to open</small></span>
+          <input type="checkbox" role="switch" checked={bubble()} onChange={toggleBubble} />
+        </label>
+      </div>
       <p class="muted">Tasks and media live in this folder on your PC:</p>
       <code class="path">{dataDir()}</code>
       <div class="sheet-actions">

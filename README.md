@@ -32,7 +32,9 @@ On first launch Quicky asks for a folder to keep your data in. Everything stays 
 - **Done drawer:** finished tasks hide in the drawer, grouped by day. Restore any of them to today. Ticking a task off shows a quick Undo.
 - **Media:** attach files with the paperclip, record a voice note with the mic, paste images into the add box, or drop files anywhere on the window. If a task is open, dropped files attach to it.
 - **Any size:** drag the window to any shape. It becomes a mini "next up" panel when small, a list by default, and a board with To do / Doing / Done columns when wide (drag cards between columns). The pin button keeps it on top.
-- **Close** hides Quicky to the tray so Ctrl+Space keeps working. Quit from the tray icon.
+- **Bubble:** a little Quicky sits in the bottom-left corner, always on top (even over the taskbar), with a badge showing how many tasks are left. Click it to open the app right above it, click again to tuck it away.
+- **Starts with Windows:** on by default. Quicky starts quietly at sign-in (tray icon and bubble only). Turn it off, or hide the bubble, in Settings (the folder button in the title bar).
+- **Tray icon:** left-click opens or hides Quicky. Right-click for *Show* and *Quit*. **Close** only hides Quicky, so Ctrl+Space and the bubble keep working.
 
 ## Your data
 
@@ -69,7 +71,7 @@ The installer lands in `src-tauri/target/release/bundle/nsis/`.
 **Releasing:** bump `version` in `src-tauri/tauri.conf.json`, then push a tag. GitHub Actions builds the installer and publishes the release.
 
 ```bash
-git tag v0.1.1 && git push origin v0.1.1
+git tag v0.1.2 && git push origin v0.1.2
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + WebView2) and [SolidJS](https://www.solidjs.com).

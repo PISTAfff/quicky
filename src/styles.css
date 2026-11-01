@@ -247,6 +247,18 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .repeat-row { background: var(--card); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .repeat-row.paused { opacity: 0.6; }
 .repeat-title { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-weight: 800; font-size: 15px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; font-weight: 800; }
+.switch-row small { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+.switch-row input {
+  appearance: none; flex-shrink: 0; width: 44px; height: 26px; border-radius: 13px; border: 2px solid var(--ink); background: var(--soft);
+  position: relative; cursor: pointer; transition: background 0.15s; margin: 0;
+}
+.switch-row input::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--card);
+  border: 2px solid var(--ink); box-sizing: border-box; transition: transform 0.15s;
+}
+.switch-row input:checked { background: var(--accent); }
+.switch-row input:checked::after { transform: translateX(18px); }
 .path { display: block; background: var(--card); border-radius: 10px; padding: 10px 12px; font: 12px "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; user-select: text; }
 
 /* ---- setup ---- */

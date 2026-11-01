@@ -1,7 +1,7 @@
-import { createSignal, Match, onCleanup, onMount, Show, Switch } from "solid-js";
-import { listen } from "@tauri-apps/api/event";
+import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { addAttachments, dataDir, flush, init, loadError, ready, showToast, tick, toast } from "./lib/store";
+import { addAttachments, data, dataDir, flush, init, loadError, ready, showToast, tick, toast } from "./lib/store";
 import { importPaths } from "./lib/media";
 import { TitleBar } from "./ui/TitleBar";
 import { FolderSetup } from "./ui/FolderSetup";
@@ -16,6 +16,11 @@ const modeFor = (w: number, h: number): Mode => (w < 330 || h < 340 ? "mini" : w
 export default function App() {
   const [mode, setMode] = createSignal<Mode>(modeFor(innerWidth, innerHeight));
   const unlisten: (() => void)[] = [];
+
+  // Keep the bottom-left bubble's badge in sync with the number of open tasks.
+  const openCount = createMemo(() => data.tasks.filter((t) => t.status !== "done").length);
+  const sendCounts = () => void emitTo("bubble", "counts", { open: openCount() });
+  createEffect(on(openCount, sendCounts));
 
   onMount(async () => {
     let frame = 0;
@@ -42,6 +47,7 @@ export default function App() {
     );
 
     unlisten.push(await listen("quick-add", focusQuickAdd));
+    unlisten.push(await listen("bubble-ready", sendCounts));
     unlisten.push(await listen("flush", () => void flush()));
     unlisten.push(
       await getCurrentWebview().onDragDropEvent(async (e) => {
