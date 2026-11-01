@@ -23,16 +23,20 @@ pub static SHOW: AtomicBool = AtomicBool::new(true);
 /// A full-screen reminder is up: keep the bubble out of its way.
 pub static OVERLAY_UP: AtomicBool = AtomicBool::new(false);
 
+/// Logical px of the mini Quicky shown inside an app (smaller window, smaller blob).
+pub const MINI: f64 = 64.0;
+
 struct State {
     /// The user is dragging the bubble; don't move it, save where it lands.
     dragging: bool,
     /// The last app (not Quicky) that had focus.
     focus: Option<AppWindow>,
-    /// Where we last put the bubble, to skip pointless moves.
+    /// Where we last put the bubble (top-left) and at which size, to skip pointless work.
     placed: Option<(i32, i32)>,
+    mini: Option<bool>,
 }
 
-static STATE: Mutex<State> = Mutex::new(State { dragging: false, focus: None, placed: None });
+static STATE: Mutex<State> = Mutex::new(State { dragging: false, focus: None, placed: None, mini: None });
 
 fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
@@ -63,12 +67,19 @@ fn work_area_at(app: &AppHandle, x: i32, y: i32) -> Option<(PhysicalPosition<i32
     })
 }
 
-fn side(app: &AppHandle) -> i32 {
-    let scale = window(app)
+fn scale(app: &AppHandle) -> f64 {
+    window(app)
         .and_then(|b| b.scale_factor().ok())
         .or_else(|| work_area(app).map(|w| w.2))
-        .unwrap_or(1.0);
-    (SIZE * scale) as i32
+        .unwrap_or(1.0)
+}
+
+/// The bubble window's current width in physical px (normal or mini).
+fn side(app: &AppHandle) -> i32 {
+    window(app)
+        .and_then(|b| b.outer_size().ok())
+        .map(|s| s.width as i32)
+        .unwrap_or((SIZE * scale(app)) as i32)
 }
 
 /// Spot the user dragged it to, nudged fully onto whichever screen it's mostly on. Falls back to
@@ -86,16 +97,17 @@ fn normal_spot(app: &AppHandle) -> Option<(i32, i32)> {
     Some((pos.x + (MARGIN * scale) as i32, pos.y + size.height as i32 - ((SIZE + MARGIN) * scale) as i32))
 }
 
-/// Offset from the window corner nearest to the bubble, so it stays put when the window resizes.
-fn anchor(rect: Rect, (x, y): (i32, i32), side: i32) -> (bool, bool, i32, i32) {
-    let (cx, cy) = (x + side / 2, y + side / 2);
+/// Where the mini sits in an app: its centre as an offset from the app window's nearest corner,
+/// so it stays put when the window moves or resizes.
+fn anchor(rect: Rect, (cx, cy): (i32, i32)) -> (bool, bool, i32, i32) {
     let right = cx - rect.left > rect.right - cx;
     let bottom = cy - rect.top > rect.bottom - cy;
-    let dx = x - if right { rect.right } else { rect.left };
-    let dy = y - if bottom { rect.bottom } else { rect.top };
+    let dx = cx - if right { rect.right } else { rect.left };
+    let dy = cy - if bottom { rect.bottom } else { rect.top };
     (right, bottom, dx, dy)
 }
 
+/// Centre of the mini for an app whose window is at `rect`.
 fn stuck_spot(entry: &StuckApp, rect: Rect) -> (i32, i32) {
     let x = if entry.right { rect.right } else { rect.left } + entry.dx;
     let y = if entry.bottom { rect.bottom } else { rect.top } + entry.dy;
@@ -113,10 +125,15 @@ fn active_stuck(app: &AppHandle) -> Option<(StuckApp, AppWindow, Rect)> {
     Some((entry, focus, rect))
 }
 
-fn target(app: &AppHandle) -> Option<(i32, i32)> {
+/// Top-left to put the bubble at, and whether it's the mini (inside a focused app) or the normal one.
+fn target(app: &AppHandle) -> Option<((i32, i32), bool)> {
     match active_stuck(app) {
-        Some((entry, _, rect)) => Some(stuck_spot(&entry, rect)),
-        None => normal_spot(app),
+        Some((entry, _, rect)) => {
+            let (cx, cy) = stuck_spot(&entry, rect);
+            let half = (MINI * scale(app) / 2.0) as i32;
+            Some(((cx - half, cy - half), true))
+        }
+        None => normal_spot(app).map(|p| (p, false)),
     }
 }
 
@@ -125,8 +142,16 @@ fn apply(app: &AppHandle, force: bool) {
     if state().dragging {
         return;
     }
-    let (Some(h), Some(spot)) = (hwnd(app), target(app)) else { return };
+    let (Some(b), Some(h), Some((spot, mini))) = (window(app), hwnd(app), target(app)) else { return };
     let mut st = state();
+    if force || st.mini != Some(mini) {
+        // Switching between the normal bubble and an app's mini: resize the window, tell the page.
+        let size = if mini { MINI } else { SIZE };
+        let _ = b.set_size(LogicalSize::new(size, size));
+        let _ = app.emit_to("bubble", "bubble-mini", mini);
+        st.mini = Some(mini);
+        st.placed = None;
+    }
     if force || st.placed != Some(spot) {
         win::move_to(h, spot.0, spot.1);
         st.placed = Some(spot);
@@ -138,7 +163,6 @@ pub fn place(app: &AppHandle) {
     if let Some(b) = window(app) {
         // Windows pads small captioned windows to a minimum width; drop that floor.
         let _ = b.set_min_size(Some(LogicalSize::new(1.0, 1.0)));
-        let _ = b.set_size(LogicalSize::new(SIZE, SIZE));
     }
     apply(app, true);
 }
@@ -154,25 +178,40 @@ pub fn sync(app: &AppHandle) {
     }
 }
 
-/// Saves where a drag ended: on the stuck app if one is in focus, otherwise as the normal spot.
+/// Where a drag ended decides what happens:
+/// - dropped on an app's window: that app gets (or moves) its mini Quicky to that spot;
+/// - dropped on the desktop: it's the normal bubble's new spot, and if it was an app's mini that
+///   was dragged out, that app no longer has one.
 fn save_drop(app: &AppHandle) {
     let Some(pos) = window(app).and_then(|b| b.outer_position().ok()) else { return };
-    let spot = (pos.x, pos.y);
     let side = side(app);
-    match active_stuck(app) {
-        Some((entry, _, rect)) => {
-            let (right, bottom, dx, dy) = anchor(rect, spot, side);
+    let center = (pos.x + side / 2, pos.y + side / 2);
+    let was = active_stuck(app).map(|(entry, _, _)| entry.exe);
+    match win::app_under(center.0, center.1).and_then(|w| win::frame(w.hwnd).map(|r| (w, r))) {
+        Some((under, rect)) => {
+            let (right, bottom, dx, dy) = anchor(rect, center);
+            let entry = StuckApp { exe: under.exe.clone(), name: pretty_name(&under.exe), right, bottom, dx, dy };
             let _ = update_config(app, |c| {
-                if let Some(s) = c.stuck_apps.iter_mut().find(|s| s.exe == entry.exe) {
-                    (s.right, s.bottom, s.dx, s.dy) = (right, bottom, dx, dy);
-                }
+                c.stuck_apps.retain(|s| {
+                    !s.exe.eq_ignore_ascii_case(&entry.exe) && !was.as_ref().is_some_and(|w| s.exe.eq_ignore_ascii_case(w))
+                });
+                c.stuck_apps.push(entry);
             });
+            state().focus = Some(under);
         }
         None => {
-            let _ = update_config(app, |c| c.bubble_pos = Some(spot));
+            let normal = (SIZE * scale(app)) as i32;
+            let spot = (center.0 - normal / 2, center.1 - normal / 2);
+            let _ = update_config(app, |c| {
+                if let Some(w) = &was {
+                    c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(w));
+                }
+                c.bubble_pos = Some(spot);
+            });
         }
     }
-    state().placed = Some(spot);
+    let _ = app.emit("stuck-apps", ());
+    state().placed = None;
 }
 
 /// Background loop: drag tracking, focus tracking, staying on top of the taskbar, following a
@@ -327,8 +366,7 @@ pub fn stick_bubble(app: AppHandle) -> Result<String, String> {
     let (x, y) = center(&app).ok_or("Bubble not found")?;
     let under = win::app_under(x, y).ok_or("Drag the bubble onto an app window first")?;
     let rect = win::frame(under.hwnd).ok_or("Couldn't read that window")?;
-    let pos = window(&app).and_then(|b| b.outer_position().ok()).ok_or("Bubble not found")?;
-    let (right, bottom, dx, dy) = anchor(rect, (pos.x, pos.y), side(&app));
+    let (right, bottom, dx, dy) = anchor(rect, (x, y));
     let name = pretty_name(&under.exe);
     let entry = StuckApp { exe: under.exe.clone(), name: name.clone(), right, bottom, dx, dy };
     update_config(&app, |c| {
@@ -367,12 +405,12 @@ mod tests {
     fn anchors_to_the_nearest_corner_and_back() {
         let rect = Rect { left: 100, top: 100, right: 900, bottom: 700 };
         for spot in [(120, 130), (800, 120), (110, 600), (790, 610)] {
-            let (right, bottom, dx, dy) = anchor(rect, spot, 88);
+            let (right, bottom, dx, dy) = anchor(rect, spot);
             let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy };
             assert_eq!(stuck_spot(&entry, rect), spot);
         }
         // Near the bottom-right: follows that corner when the window grows.
-        let (right, bottom, dx, dy) = anchor(rect, (790, 610), 88);
+        let (right, bottom, dx, dy) = anchor(rect, (790, 610));
         let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy };
         assert_eq!(stuck_spot(&entry, Rect { right: 1000, bottom: 800, ..rect }), (890, 710));
     }

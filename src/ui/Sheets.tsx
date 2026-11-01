@@ -387,15 +387,15 @@ function SettingsSheet() {
         </label>
         <Show
           when={stuck().length}
-          fallback={<small class="muted">Drag the bubble onto any app and right-click it → “Stick here” to give that app its own bubble.</small>}
+          fallback={<small class="muted">Drag the bubble onto any app to give that app its own mini Quicky.</small>}
         >
           <div class="stuck-list">
-            <span class="box-label"><IPin2 size={14} /> Stuck to</span>
+            <span class="box-label"><IPin2 size={14} /> Mini Quicky in</span>
             <For each={stuck()}>
               {(s) => (
                 <span class="time-chip" title={s.exe}>
                   {s.name}
-                  <button aria-label={`Unstick from ${s.name}`} onClick={() => invoke("unstick_bubble", { exe: s.exe })}>
+                  <button aria-label={`Remove mini Quicky from ${s.name}`} onClick={() => invoke("unstick_bubble", { exe: s.exe })}>
                     <IClose size={10} />
                   </button>
                 </span>

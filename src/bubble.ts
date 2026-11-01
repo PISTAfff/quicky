@@ -176,12 +176,12 @@ button.addEventListener("contextmenu", async (e) => {
   const stickItems = ctx
     ? [
         await MenuItem.new({
-          text: ctx.stuck ? `Unstick from ${ctx.name}` : `Stick here on ${ctx.name}`,
+          text: ctx.stuck ? `Remove mini Quicky from ${ctx.name}` : `Make a mini Quicky here on ${ctx.name}`,
           action: () =>
             void (ctx.stuck ? invoke("unstick_bubble", { exe: ctx.exe }) : invoke("stick_bubble")).catch(() => {}),
         }),
       ]
-    : [await MenuItem.new({ text: "Drag me onto an app to stick here", enabled: false })];
+    : [await MenuItem.new({ text: "Drag me onto an app to give it a mini Quicky", enabled: false })];
   const menu = await Menu.new({
     items: [
       await MenuItem.new({ text: "Open Quicky", action: () => void invoke("open_from_bubble") }),
@@ -203,6 +203,12 @@ button.addEventListener("contextmenu", async (e) => {
   await menu.popup();
 });
 
+// Normal bubble vs. an app's mini Quicky (Rust also shrinks the window).
+listen<boolean>("bubble-mini", ({ payload }) => {
+  button.classList.toggle("mini", payload);
+  replay(button, "appear");
+});
+
 // ---- badge -----------------------------------------------------------------------
 let lastOpen = -1;
 listen<{ open: number }>("counts", ({ payload }) => {
@@ -222,6 +228,9 @@ const replay = (el: Element, cls: string) => {
   el.classList.remove(cls);
   void (el as HTMLElement).offsetWidth; // restart the CSS animation
   el.classList.add(cls);
+  // Drop the class once it has played, so nothing (like pausing animations while tugging) can
+  // accidentally start it again: the entrance one begins fully transparent.
+  el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
 };
 // Hop in whenever the bubble comes back on screen.
 document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && replay(button, "appear"));
