@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-import { ACCENTS, THEME_KEY } from "./lib/theme-colors";
+import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
 
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
@@ -97,12 +97,11 @@ setTimeout(blink, 2500);
 // ---- theme -----------------------------------------------------------------------
 // Follows the accent colour picked in Settings (shared localStorage; `storage` fires on change).
 const applyAccent = () => {
-  let id = "grape";
+  let stored = {};
   try {
-    id = JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}").accent ?? id;
+    stored = JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}") ?? {};
   } catch {}
-  const color = ACCENTS.find((a) => a.id === id)?.color ?? ACCENTS[0].color;
-  document.documentElement.style.setProperty("--accent", color);
+  document.documentElement.style.setProperty("--accent", resolveAccent(stored));
 };
 applyAccent();
 addEventListener("storage", (e) => e.key === THEME_KEY && applyAccent());

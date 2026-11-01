@@ -1,31 +1,34 @@
 // Accent colour + light/dark mode. Stored per PC in the WebView's localStorage, which the
 // bubble window shares (same origin) and hears about through the `storage` event.
 import { createSignal } from "solid-js";
-import { ACCENTS, THEME_KEY } from "./theme-colors";
+import { ACCENTS, DEFAULT_CUSTOM, THEME_KEY, isHex, onAccent, resolveAccent } from "./theme-colors";
 
 export { ACCENTS, THEME_KEY };
 
-export type AccentId = (typeof ACCENTS)[number]["id"];
+export type AccentId = (typeof ACCENTS)[number]["id"] | "custom";
 export type Mode = "light" | "dark" | "auto";
-export interface Theme { accent: AccentId; mode: Mode }
+export interface Theme { accent: AccentId; custom: string; mode: Mode }
 
-const DEFAULT: Theme = { accent: "grape", mode: "light" };
+const DEFAULT: Theme = { accent: "grape", custom: DEFAULT_CUSTOM, mode: "light" };
 
 export function readTheme(): Theme {
   try {
     const t = JSON.parse(localStorage.getItem(THEME_KEY) ?? "null");
-    if (t && ACCENTS.some((a) => a.id === t.accent) && ["light", "dark", "auto"].includes(t.mode)) return t;
+    const accentOk = t && (t.accent === "custom" || ACCENTS.some((a) => a.id === t.accent));
+    if (accentOk && ["light", "dark", "auto"].includes(t.mode)) {
+      return { ...DEFAULT, ...t, custom: isHex(t.custom) ? t.custom : DEFAULT_CUSTOM };
+    }
   } catch {}
   return DEFAULT;
 }
-
-export const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)!.color;
 
 const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 
 function apply(t: Theme) {
   const root = document.documentElement;
-  root.style.setProperty("--accent", accentColor(t.accent));
+  const accent = resolveAccent(t);
+  root.style.setProperty("--accent", accent);
+  root.style.setProperty("--on-accent", onAccent(accent));
   root.dataset.mode = t.mode === "auto" ? (darkQuery.matches ? "dark" : "light") : t.mode;
 }
 

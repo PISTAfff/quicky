@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { ACCENTS, setTheme, theme } from "../lib/theme";
+import { onAccent } from "../lib/theme-colors";
 import {
   addAttachments, chooseDataDir, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
   renameRepeat, setRepeatDays, setStatus, showToast, toggleRepeatPaused, today, updateTask,
@@ -309,6 +310,29 @@ function SettingsSheet() {
               />
             )}
           </For>
+          {/* Your own colour: the native picker sits invisibly on top of the swatch. */}
+          <label
+            class="swatch custom"
+            classList={{ on: theme().accent === "custom" }}
+            style={{
+              background: theme().accent === "custom" ? theme().custom : "conic-gradient(#ff6b6b, #ffd166, #06d6a0, #4cc9f0, #7b61ff, #ff6bd6, #ff6b6b)",
+              color: onAccent(theme().custom),
+            }}
+            title="Pick your own colour"
+          >
+            <input
+              type="color"
+              aria-label="Custom colour"
+              value={theme().custom}
+              onInput={(e) => setTheme({ accent: "custom", custom: e.currentTarget.value })}
+              onClick={() => theme().accent !== "custom" && setTheme({ accent: "custom" })}
+            />
+            <Show when={theme().accent !== "custom"}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2b2540" stroke-width="3" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </Show>
+          </label>
         </div>
         <div class="segment modes" role="group" aria-label="Light or dark">
           <For each={[["light", "Light"], ["dark", "Dark"], ["auto", "Match Windows"]] as const}>
