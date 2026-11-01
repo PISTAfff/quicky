@@ -17,43 +17,111 @@ invoke<boolean>("get_bubble_locked").then((v) => (locked = v)).catch(() => {});
 
 let press: { x: number; y: number } | null = null;
 
-// Locked in place: tugging doesn't move it, it squishes towards your pointer, gets angrier the
-// further you pull, and springs back with a recoil when you let go.
-const squish = document.querySelector(".squish") as HTMLElement;
-let tug: { x: number; y: number; transform: string } | null = null;
+// ---- jelly (locked in place) -------------------------------------------------------
+// Tugging a locked bubble doesn't move it: its outline is re-drawn as a soft body. The side you
+// pull bulges after the pointer, the far side stays anchored, the waist thins to keep its volume,
+// and a spring with momentum makes it lag, overshoot and wobble back when you let go. It gets
+// angrier the harder you pull.
+const bodyPath = document.getElementById("body") as unknown as SVGPathElement;
+const shadowPath = document.getElementById("shadow") as unknown as SVGPathElement;
+const face = document.getElementById("face") as unknown as SVGGElement;
 
-function stretch(dx: number, dy: number) {
+const CX = 20, CY = 19, RX = 19, R_TOP = 18, R_BOTTOM = 16; // resting blob, in view-box units
+const POINTS = 32;
+const MAX_PULL = 13; // how far (view-box units, ~1.45 px each) the jelly can be drawn out
+const STIFF = 0.14; // spring towards where the pointer wants it
+const DAMP = 0.16; // lower = wobblier
+
+/** Smooth closed outline of the blob deformed by a pull of (px, py). */
+function outline(px: number, py: number): string {
+  const len = Math.hypot(px, py);
+  const ux = len ? px / len : 0;
+  const uy = len ? py / len : 0;
+  const amount = len / MAX_PULL;
+  const pts: [number, number][] = [];
+  for (let i = 0; i < POINTS; i++) {
+    const a = (i / POINTS) * Math.PI * 2;
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const ox = RX * c;
+    const oy = (s < 0 ? R_TOP : R_BOTTOM) * s;
+    const facing = c * ux + s * uy; // 1 = side being pulled, -1 = far side
+    const follow = 0.06 + 0.94 * ((facing + 1) / 2) ** 4; // far side stays put, front stretches into a drop
+    const perp = ox * -uy + oy * ux; // distance from the pull axis
+    const waist = 0.3 * amount * (1 - facing * facing); // sides draw in to keep the volume
+    pts.push([
+      CX + ox + px * follow - -uy * perp * waist,
+      CY + oy + py * follow - ux * perp * waist,
+    ]);
+  }
+  // Catmull-Rom through the points, as cubic Béziers.
+  const p = (i: number) => pts[(i + POINTS) % POINTS];
+  let d = `M${p(0)[0].toFixed(2)} ${p(0)[1].toFixed(2)}`;
+  for (let i = 0; i < POINTS; i++) {
+    const [p0, p1, p2, p3] = [p(i - 1), p(i), p(i + 1), p(i + 2)];
+    d += `C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(2)} ${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(2)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(2)} ${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(2)} ${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`;
+  }
+  return d + "Z";
+}
+
+const jelly = { x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0, running: false, last: 0 };
+let tugging = false;
+
+function draw() {
+  const d = outline(jelly.x, jelly.y);
+  bodyPath.setAttribute("d", d);
+  shadowPath.setAttribute("d", d);
+  // The face rides along a bit and leans with the wobble.
+  face.setAttribute("transform", `translate(${(jelly.x * 0.45).toFixed(2)} ${(jelly.y * 0.45).toFixed(2)})`);
+}
+
+function frame(t: number) {
+  const dt = Math.min(2.5, jelly.last ? (t - jelly.last) / 16.67 : 1);
+  jelly.last = t;
+  jelly.vx += ((jelly.tx - jelly.x) * STIFF - jelly.vx * DAMP) * dt;
+  jelly.vy += ((jelly.ty - jelly.y) * STIFF - jelly.vy * DAMP) * dt;
+  jelly.x += jelly.vx * dt;
+  jelly.y += jelly.vy * dt;
+  draw();
+  const still = Math.hypot(jelly.x - jelly.tx, jelly.y - jelly.ty) < 0.02 && Math.hypot(jelly.vx, jelly.vy) < 0.02;
+  if (!tugging && still) {
+    Object.assign(jelly, { x: 0, y: 0, vx: 0, vy: 0, running: false, last: 0 });
+    draw();
+    return;
+  }
+  requestAnimationFrame(frame);
+}
+
+function wake() {
+  if (jelly.running) return;
+  jelly.running = true;
+  jelly.last = 0;
+  requestAnimationFrame(frame);
+}
+
+/** Pointer offset (screen px) → where the jelly wants to be, with rubber-band resistance. */
+function pull(dx: number, dy: number) {
   const dist = Math.hypot(dx, dy);
-  const k = Math.min(dist, 160) / 160; // how hard it's being pulled, 0..1
-  const ang = Math.atan2(dy, dx);
-  const tx = Math.cos(ang) * k * 7;
-  const ty = Math.sin(ang) * k * 7;
-  const transform = `translate(${tx}px, ${ty}px) rotate(${ang}rad) scale(${1 + k * 0.2}, ${1 - k * 0.18}) rotate(${-ang}rad)`;
-  squish.style.transform = transform;
-  button.style.setProperty("--anger", String(Math.min(1, dist / 140)));
-  button.classList.toggle("furious", dist > 110);
-  tug = { x: tx, y: ty, transform };
+  const reach = MAX_PULL * (1 - Math.exp(-dist / 90));
+  jelly.tx = dist ? (dx / dist) * reach : 0;
+  jelly.ty = dist ? (dy / dist) * reach : 0;
+  button.style.setProperty("--anger", String(Math.min(1, dist / 150)));
+  button.classList.toggle("furious", dist > 120);
+  wake();
 }
 
-function recoil() {
-  if (!tug) return;
-  const { x, y, transform } = tug;
-  tug = null;
-  squish.style.transform = "";
-  button.classList.remove("furious");
+function letGo() {
+  if (!tugging) return;
+  tugging = false;
+  button.classList.remove("tugging", "furious");
   button.style.setProperty("--anger", "0");
-  // Snap back past the middle, wobble, settle.
-  squish.animate(
-    [
-      { transform },
-      { transform: `translate(${-x * 0.7}px, ${-y * 0.7}px) scale(0.84, 1.16)`, offset: 0.3 },
-      { transform: `translate(${x * 0.3}px, ${y * 0.3}px) scale(1.08, 0.93)`, offset: 0.55 },
-      { transform: `translate(${-x * 0.1}px, ${-y * 0.1}px) scale(0.97, 1.03)`, offset: 0.8 },
-      { transform: "none" },
-    ],
-    { duration: 650, easing: "ease-out" },
-  );
+  // A flick of extra speed back through the middle makes the snap feel like it has weight.
+  jelly.vx -= jelly.x * 0.35;
+  jelly.vy -= jelly.y * 0.35;
+  jelly.tx = jelly.ty = 0;
+  wake();
 }
+draw();
 
 button.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
@@ -66,9 +134,13 @@ button.addEventListener("pointermove", (e) => {
   const dx = e.screenX - press.x;
   const dy = e.screenY - press.y;
   if (locked) {
-    if (tug || Math.hypot(dx, dy) > 4) {
-      button.classList.remove("pressed");
-      stretch(dx, dy);
+    if (tugging || Math.hypot(dx, dy) > 4) {
+      if (!tugging) {
+        tugging = true;
+        button.classList.remove("pressed");
+        button.classList.add("tugging");
+      }
+      pull(dx, dy);
     }
     return;
   }
@@ -83,14 +155,14 @@ button.addEventListener("pointerup", () => {
   button.classList.remove("pressed");
   if (!press) return;
   press = null;
-  if (tug) return recoil();
+  if (tugging) return letGo();
   void invoke("open_from_bubble");
 });
 button.addEventListener("pointercancel", () => {
   press = null;
-  recoil();
+  letGo();
 });
-button.addEventListener("pointerleave", () => !tug && button.classList.remove("pressed"));
+button.addEventListener("pointerleave", () => !tugging && button.classList.remove("pressed"));
 button.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") void invoke("open_from_bubble");
 });

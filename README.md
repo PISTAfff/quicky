@@ -32,7 +32,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 - **Done drawer:** finished tasks hide in the drawer, grouped by day. Restore any of them to today. Ticking a task off shows a quick Undo.
 - **Media:** attach files with the paperclip, record a voice note with the mic (a live wave shows your voice while it records; ✕ discards, ■ saves), paste images into the add box, or drop files anywhere on the window. If a task is open, dropped files attach to it.
 - **Any size:** drag the window to any shape. It becomes a mini "next up" panel when small, a list by default, and a board with To do / Doing / Done columns when wide (drag cards between columns). The pin button keeps it on top.
-- **Bubble:** while the app is closed or minimized, a little Quicky waits on screen (bottom-left at first), always on top, even over the taskbar, with a badge showing how many tasks are left. Click it to open the app right next to it. Drag it anywhere, on any screen; right-click to lock it in place, send it back to the corner, or hide it. Locked, it won't move: tug it and it squishes, gets angrier the harder you pull, and springs back when you let go. Bring a hidden bubble back from Settings or the tray menu.
+- **Bubble:** while the app is closed or minimized, a little Quicky waits on screen (bottom-left at first), always on top, even over the taskbar, with a badge showing how many tasks are left. Click it to open the app right next to it. Drag it anywhere, on any screen; right-click to lock it in place, send it back to the corner, or hide it. Locked, it won't move: tug it and it behaves like jelly: the side you pull stretches after your pointer, it gets angrier the harder you pull, and it snaps back and wobbles to a stop when you let go. Bring a hidden bubble back from Settings or the tray menu.
 - **Starts with Windows:** on by default. Quicky starts quietly at sign-in (tray icon and bubble only). Turn it off, or hide the bubble, in Settings (the gear in the title bar).
 - **Reminders:** in a task, *Remind me* takes one or more times; it reminds you every day at those times while the task is still to do, or once in 30 min / 1 hour. When it's time, Quicky pours out of the bubble and fills every screen (the task shows on the bubble's screen) until you answer: **D** I'm on it, **Enter** Done, **O** open the task, **S**/**Esc** snooze 10 min, **1/3/4** snooze 5/30/60 min. Settings → Reminders → *Preview one* shows what it looks like.
 - **Stick the bubble to an app:** drag the bubble onto any app's window, right-click it → *Stick here on …*. From then on, whenever that app is focused (and Quicky is closed) the bubble sits right there on that app, following its window; switch away and it goes back to its usual spot. Drag it while the app is focused to fine-tune; unstick from the bubble's menu or Settings. (Store apps all share one host process, so sticking to one sticks to all of them.)
@@ -74,7 +74,7 @@ The installer lands in `src-tauri/target/release/bundle/nsis/`.
 **Releasing:** bump `version` in `src-tauri/tauri.conf.json`, then push a tag. GitHub Actions builds the installer and publishes the release.
 
 ```bash
-git tag v0.1.10 && git push origin v0.1.10
+git tag v0.1.11 && git push origin v0.1.11
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + WebView2) and [SolidJS](https://www.solidjs.com).

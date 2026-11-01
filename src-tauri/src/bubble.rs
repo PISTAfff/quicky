@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
 
 /// Logical px; matches the bubble window in tauri.conf.json (room around the blob to bounce).
-pub const SIZE: f64 = 88.0;
-const MARGIN: f64 = 2.0;
+pub const SIZE: f64 = 104.0;
+const MARGIN: f64 = -6.0; // the blob sits ~23 px inside its (roomy) window
 
 pub static SHOW: AtomicBool = AtomicBool::new(true);
 /// A full-screen reminder is up: keep the bubble out of its way.
