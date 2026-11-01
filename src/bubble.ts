@@ -123,11 +123,166 @@ function letGo() {
 }
 draw();
 
+// ---- minis: walls, pushing, popping, dividing ---------------------------------------------
+// A mini can only be dragged around inside its app's window (Rust clamps it to the window and
+// reports how hard it's being pushed past a wall). Pushed against a wall it squashes flat like a
+// rubber ball, gets angrier, and if pushed hard enough it pops out: that app's mini is gone.
+const squish = document.querySelector(".squish") as HTMLElement;
+const POP_AT = 90; // logical px of push past a wall that pops it out
+let isMini = false;
+let walled = false;
+let popping = false;
+let splitting = false;
+let pending: { dx: number; dy: number } | null = null;
+let inFlight = false;
+
+function sparkle(count = 7) {
+  for (let i = 0; i < count; i++) {
+    const dot = document.createElement("i");
+    dot.className = "spark";
+    document.body.append(dot);
+    const a = (i / count) * Math.PI * 2 + Math.random() * 0.6;
+    const r = 26 + Math.random() * 14;
+    dot
+      .animate(
+        [
+          { transform: "translate(-50%, -50%) scale(1)", opacity: 1 },
+          { transform: `translate(calc(-50% + ${Math.cos(a) * r}px), calc(-50% + ${Math.sin(a) * r}px)) scale(0.2)`, opacity: 0 },
+        ],
+        { duration: 480 + Math.random() * 200, easing: "cubic-bezier(.2,.8,.3,1)" },
+      )
+      .finished.then(() => dot.remove());
+  }
+}
+
+/** Squash flat against the wall being pushed into; angrier the closer it gets to popping. */
+function squash(px: number, py: number) {
+  const push = Math.hypot(px, py);
+  const a = Math.min(1, push / POP_AT);
+  if (push < 0.5) {
+    squish.style.transform = "";
+  } else {
+    const ang = Math.atan2(py, px);
+    squish.style.transform = `rotate(${ang}rad) translateX(${a * 4}px) scale(${1 - a * 0.38}, ${1 + a * 0.28}) rotate(${-ang}rad)`;
+  }
+  button.style.setProperty("--anger", String(a));
+  button.classList.toggle("furious", a > 0.7);
+  if (a >= 1) pop();
+}
+
+async function sendWall() {
+  if (inFlight || !pending || popping) return;
+  inFlight = true;
+  const { dx, dy } = pending;
+  pending = null;
+  const push = await invoke<{ x: number; y: number }>("mini_drag_to", { dx, dy }).catch(() => ({ x: 0, y: 0 }));
+  inFlight = false;
+  if (walled) squash(push.x, push.y);
+  if (pending) void sendWall();
+}
+
+function calm() {
+  button.style.setProperty("--anger", "0");
+  button.classList.remove("furious");
+}
+
+/** Pushed too hard: burst and vanish; the app no longer has a mini until Quicky is dropped on it again. */
+function pop() {
+  if (popping) return;
+  popping = true;
+  walled = false;
+  press = null;
+  const from = squish.style.transform || "none";
+  squish
+    .animate(
+      [
+        { transform: from, opacity: 1 },
+        { transform: "scale(1.4)", opacity: 1, offset: 0.3 },
+        { transform: "scale(0)", opacity: 0 },
+      ],
+      { duration: 340, easing: "ease-in", fill: "forwards" },
+    )
+    .finished.then(async () => {
+      sparkle(9);
+      await invoke("mini_pop").catch(() => {});
+      squish.getAnimations().forEach((a) => a.cancel());
+      squish.style.transform = "";
+      calm();
+      popping = false;
+    });
+}
+
+function endWall() {
+  if (!walled) return;
+  walled = false;
+  pending = null;
+  void invoke("mini_drag_end");
+  // Spring back off the wall.
+  const t = squish.style.transform;
+  squish.style.transform = "";
+  calm();
+  if (t) squish.animate([{ transform: t }, { transform: "scale(1.07, 0.94)", offset: 0.5 }, { transform: "none" }], { duration: 320, easing: "ease-out" });
+}
+
+/** Dropped on a new app: Quicky divides. One half stays as the app's mini, the other heads home. */
+function split(hx: number, hy: number) {
+  splitting = true;
+  const len = Math.hypot(hx, hy) || 1;
+  const [ux, uy] = [hx / len, hy / len];
+  const twin = squish.cloneNode(true) as HTMLElement;
+  twin.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  twin.classList.add("twin");
+  squish.parentElement!.append(twin);
+  const ease = "cubic-bezier(.3,.9,.3,1.15)";
+  // Both start as one blob, swell into a peanut as they pull apart, then separate.
+  squish.animate(
+    [
+      { transform: "none" },
+      { transform: `translate(${-ux * 3}px, ${-uy * 3}px) scale(1.08, 0.94)`, offset: 0.2 },
+      { transform: `translate(${-ux * 8}px, ${-uy * 8}px) scale(0.84)`, offset: 0.42 },
+      { transform: `translate(${-ux * 2}px, ${-uy * 2}px) scale(0.62)`, offset: 0.75 },
+      { transform: "scale(0.66)" },
+    ],
+    { duration: 950, easing: ease, fill: "forwards" },
+  );
+  twin
+    .animate(
+      [
+        { transform: "none", opacity: 1 },
+        { transform: `translate(${ux * 3}px, ${uy * 3}px) scale(1.08, 0.94)`, offset: 0.2, opacity: 1 },
+        { transform: `translate(${ux * 8}px, ${uy * 8}px) scale(0.84)`, offset: 0.42, opacity: 1 },
+        { transform: `translate(${ux * 70}px, ${uy * 70}px) scale(0.3)`, opacity: 0 },
+      ],
+      { duration: 950, easing: "cubic-bezier(.5,0,.25,1)", fill: "forwards" },
+    )
+    .finished.then(() => twin.remove());
+  setTimeout(() => sparkle(6), 400);
+}
+
+// Normal bubble vs. an app's mini Quicky (Rust resizes the window around the same centre).
+listen<boolean>("bubble-mini", ({ payload }) => {
+  isMini = payload;
+  if (splitting && payload) {
+    // Hand over from the dividing animation (which ended at mini size) without a jump.
+    button.style.transition = "none";
+    button.classList.add("mini");
+    squish.getAnimations().forEach((a) => a.cancel());
+    void button.offsetWidth;
+    button.style.transition = "";
+    splitting = false;
+    return;
+  }
+  button.classList.toggle("mini", payload);
+});
+listen<{ dx: number; dy: number }>("bubble-split", ({ payload }) => split(payload.dx, payload.dy));
+
+// ---- pointer --------------------------------------------------------------------------------
 button.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || popping) return;
   press = { x: e.screenX, y: e.screenY };
   button.classList.add("pressed");
-  if (locked) button.setPointerCapture(e.pointerId); // keep tugging even outside the little window
+  // Keep getting moves outside the little window (tugging, pushing against walls).
+  button.setPointerCapture(e.pointerId);
 });
 button.addEventListener("pointermove", (e) => {
   if (!press) return;
@@ -144,25 +299,43 @@ button.addEventListener("pointermove", (e) => {
     }
     return;
   }
-  if (Math.hypot(dx, dy) > 4) {
-    press = null;
-    button.classList.remove("pressed");
-    // Tell Rust first: it pauses repositioning and saves the spot when the button comes up.
-    void invoke("bubble_drag_start").then(() => win.startDragging());
+  if (walled) {
+    pending = { dx, dy };
+    void sendWall();
+    return;
   }
+  if (Math.hypot(dx, dy) <= 4) return;
+  button.classList.remove("pressed");
+  if (isMini) {
+    // A mini moves inside its app only.
+    walled = true;
+    pending = { dx, dy };
+    void invoke<boolean>("mini_drag_start").then((ok) => {
+      if (ok) return void sendWall();
+      walled = false;
+      press = null;
+      void invoke("bubble_drag_start").then(() => win.startDragging());
+    });
+    return;
+  }
+  press = null;
+  // Tell Rust first: it pauses repositioning and saves the spot when the button comes up.
+  void invoke("bubble_drag_start").then(() => win.startDragging());
 });
 button.addEventListener("pointerup", () => {
   button.classList.remove("pressed");
   if (!press) return;
   press = null;
   if (tugging) return letGo();
+  if (walled) return endWall();
   void invoke("open_from_bubble");
 });
 button.addEventListener("pointercancel", () => {
   press = null;
   letGo();
+  endWall();
 });
-button.addEventListener("pointerleave", () => !tugging && button.classList.remove("pressed"));
+button.addEventListener("pointerleave", () => !tugging && !walled && button.classList.remove("pressed"));
 button.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") void invoke("open_from_bubble");
 });
@@ -171,44 +344,43 @@ button.addEventListener("keydown", (e) => {
 button.addEventListener("contextmenu", async (e) => {
   e.preventDefault();
   press = null;
-  // Offer to stick the bubble to the app window it's sitting on (or unstick it).
   const ctx = await invoke<{ exe: string; name: string; stuck: boolean } | null>("bubble_context").catch(() => null);
-  const stickItems = ctx
-    ? [
-        await MenuItem.new({
-          text: ctx.stuck ? `Remove mini Quicky from ${ctx.name}` : `Make a mini Quicky here on ${ctx.name}`,
-          action: () =>
-            void (ctx.stuck ? invoke("unstick_bubble", { exe: ctx.exe }) : invoke("stick_bubble")).catch(() => {}),
-        }),
-      ]
-    : [await MenuItem.new({ text: "Drag me onto an app to give it a mini Quicky", enabled: false })];
-  const menu = await Menu.new({
-    items: [
-      await MenuItem.new({ text: "Open Quicky", action: () => void invoke("open_from_bubble") }),
-      await PredefinedMenuItem.new({ item: "Separator" }),
-      ...stickItems,
-      await CheckMenuItem.new({
-        text: "Lock in place",
-        checked: locked,
-        action: async () => {
-          locked = !locked;
-          await invoke("set_bubble_locked", { locked });
-        },
-      }),
-      await MenuItem.new({ text: "Move back to corner", action: () => void invoke("reset_bubble") }),
-      await PredefinedMenuItem.new({ item: "Separator" }),
-      await MenuItem.new({ text: "Hide bubble", action: () => void invoke("set_show_bubble", { show: false }) }),
-    ],
+  const open = await MenuItem.new({ text: "Open Quicky", action: () => void invoke("open_from_bubble") });
+  const lock = await CheckMenuItem.new({
+    text: "Lock in place",
+    checked: locked,
+    action: async () => {
+      locked = !locked;
+      await invoke("set_bubble_locked", { locked });
+    },
   });
-  await menu.popup();
+  const sep = () => PredefinedMenuItem.new({ item: "Separator" });
+  // A mini's own menu: hiding it removes just this app's mini (drop Quicky on the app to get it back).
+  const items =
+    isMini && ctx?.stuck
+      ? [
+          open,
+          await sep(),
+          lock,
+          await sep(),
+          await MenuItem.new({
+            text: `Hide this mini Quicky (${ctx.name})`,
+            action: () => void invoke("unstick_bubble", { exe: ctx.exe }),
+          }),
+        ]
+      : [
+          open,
+          await sep(),
+          ctx && !ctx.stuck
+            ? await MenuItem.new({ text: `Make a mini Quicky here on ${ctx.name}`, action: () => void invoke("stick_bubble").catch(() => {}) })
+            : await MenuItem.new({ text: "Drop me on an app to give it a mini Quicky", enabled: false }),
+          lock,
+          await MenuItem.new({ text: "Move back to corner", action: () => void invoke("reset_bubble") }),
+          await sep(),
+          await MenuItem.new({ text: "Hide bubble", action: () => void invoke("set_show_bubble", { show: false }) }),
+        ];
+  await (await Menu.new({ items })).popup();
 });
-
-// Normal bubble vs. an app's mini Quicky (Rust also shrinks the window).
-listen<boolean>("bubble-mini", ({ payload }) => {
-  button.classList.toggle("mini", payload);
-  replay(button, "appear");
-});
-
 // ---- badge -----------------------------------------------------------------------
 let lastOpen = -1;
 listen<{ open: number }>("counts", ({ payload }) => {

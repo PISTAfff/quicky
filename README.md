@@ -35,7 +35,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 - **Bubble:** while the app is closed or minimized, a little Quicky waits on screen (bottom-left at first), always on top, even over the taskbar, with a badge showing how many tasks are left. Click it to open the app right next to it. Drag it anywhere, on any screen; right-click to lock it in place, send it back to the corner, or hide it. Locked, it won't move: tug it and it behaves like jelly: the side you pull stretches after your pointer, it gets angrier the harder you pull, and it snaps back and wobbles to a stop when you let go. Bring a hidden bubble back from Settings or the tray menu.
 - **Starts with Windows:** on by default. Quicky starts quietly at sign-in (tray icon and bubble only). Turn it off, or hide the bubble, in Settings (the gear in the title bar).
 - **Reminders:** in a task, *Remind me* takes one or more times; it reminds you every day at those times while the task is still to do, or once in 30 min / 1 hour. When it's time, Quicky pours out of the bubble and fills every screen (the task shows on the bubble's screen) until you answer: **D** I'm on it, **Enter** Done, **O** open the task, **S**/**Esc** snooze 10 min, **1/3/4** snooze 5/30/60 min. Settings → Reminders → *Preview one* shows what it looks like.
-- **Mini Quicky in your apps:** drag the bubble onto any app's window and that app gets its own mini Quicky right there. Whenever that app is focused (and Quicky is closed) the mini sits at that spot, following the window; in any other app you get the normal bubble. Drag a mini to move it within its app, or out onto the desktop to remove it. Settings lists the apps that have one. (Store apps all share one host process, so they share one mini.)
+- **Mini Quicky in your apps:** drop the bubble on any app's window and Quicky *divides*: one half stays as that app's own mini Quicky right there, the other heads home. Whenever that app is focused (and Quicky is closed) the mini sits at its spot, gliding along with the window; other apps get the normal bubble. A mini lives inside its app: drag it around and the window edges are walls. Push it against a wall and it squashes and gets angry; push hard enough and it pops out, and that app's mini is gone. You can also right-click a mini → *Hide this mini Quicky*. Either way, drop Quicky on the app again to bring it back. Settings lists the apps that have one. (Store apps all share one host process, so they share one mini.)
 - **Colours:** Settings (gear in the title bar) has five accents (Grape, Bubblegum, Mint, Tangerine, Ocean) plus a rainbow swatch to pick any colour you like, and Light / Dark / Match Windows. The bubble follows along.
 - **Tray icon:** left-click opens or hides Quicky. Right-click for *Show* and *Quit*. **Close** only hides Quicky, so Ctrl+Space and the bubble keep working.
 
@@ -74,7 +74,7 @@ The installer lands in `src-tauri/target/release/bundle/nsis/`.
 **Releasing:** bump `version` in `src-tauri/tauri.conf.json`, then push a tag. GitHub Actions builds the installer and publishes the release.
 
 ```bash
-git tag v0.1.12 && git push origin v0.1.12
+git tag v0.1.13 && git push origin v0.1.13
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + WebView2) and [SolidJS](https://www.solidjs.com).
