@@ -5,7 +5,7 @@ A tiny, cute task manager for Windows. Add mini tasks fast, mark them **To do â†
 ## Install
 
 1. Open the [latest release](../../releases/latest).
-2. Download **`Quicky_x.y.z_x64-setup.exe`** and run it. It installs for your user only, no admin needed.
+2. Download **`Quicky_x.y.z_x64-setup.exe`** and run it. It installs for your user only, no admin needed, and adds Quicky to the Start menu (and a desktop shortcut).
 3. If Windows shows *"Windows protected your PC"*, click **More info â†’ Run anyway**. The installer isn't code-signed yet.
 
 Or from a terminal, with the [GitHub CLI](https://cli.github.com) signed in:
