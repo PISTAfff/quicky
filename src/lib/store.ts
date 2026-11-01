@@ -1,9 +1,10 @@
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { sfx } from "./sfx";
 import {
   rollover, emptyData, dayKey, uid, weekday,
-  type Data, type Task, type Status, type Attachment, type Repeat,
+  type Data, type Task, type Status, type Attachment, type Repeat, type Reminder,
 } from "./model";
 
 export const [data, setData] = createStore<Data>(emptyData());
@@ -143,6 +144,7 @@ export function addTask(title: string, attachments: Attachment[], repeatDays?: n
     ...(space() ? { space: space()! } : {}),
   };
   mutate((d) => void d.tasks.push(task));
+  sfx.add();
 }
 
 const find = (d: Data, id: string) => d.tasks.find((t) => t.id === id);
@@ -159,6 +161,7 @@ export function setStatus(id: string, status: Status) {
       t.day = today();
     }
   });
+  if (prev !== status) (status === "done" ? sfx.done : status === "doing" ? sfx.doing : sfx.undo)();
   if (status === "done" && prev && prev !== "done") {
     const title = find(unwrap(data), id)?.title ?? "";
     showToast(`“${title}” done`, { label: "Undo", run: () => setStatus(id, prev) });
@@ -195,6 +198,7 @@ export function removeTask(id: string) {
   if (index < 0) return;
   const task = structuredClone(current.tasks[index]);
   mutate((d) => void d.tasks.splice(index, 1));
+  sfx.delete();
   // Media is deleted only once the undo window has passed.
   const purge = window.setTimeout(() => {
     for (const a of task.attachments) invoke("remove_media", { rel: a.path }).catch(() => {});
@@ -203,6 +207,7 @@ export function removeTask(id: string) {
     label: "Undo",
     run: () => {
       clearTimeout(purge);
+      sfx.undo();
       mutate((d) => void d.tasks.splice(Math.min(index, d.tasks.length), 0, task));
     },
   }, 5500);
@@ -250,21 +255,29 @@ export function deleteRepeat(id: string) {
 
 // ---- reminders -----------------------------------------------------------------
 
-/** Sets a task's reminder times (and its repeat's, so future copies remind too). */
-export function setRemind(id: string, times: string[]) {
-  const sorted = [...new Set(times)].sort();
+/** Sets (or with undefined, stops) a task's reminder, and its repeat's so future copies match. */
+export function setReminder(id: string, reminder: Reminder | undefined) {
+  const clean = reminder && { ...reminder, times: [...new Set(reminder.times)].sort(), days: [...new Set(reminder.days)].sort() };
   mutate((d) => {
     const t = find(d, id);
     if (!t) return;
-    if (sorted.length) t.remind = sorted;
-    else delete t.remind;
-    delete t.snoozeUntil;
+    delete t.remind;
+    if (clean) t.reminder = clean;
+    else {
+      delete t.reminder;
+      delete t.snoozeUntil;
+    }
     const r = t.repeatId ? d.repeats.find((r) => r.id === t.repeatId) : undefined;
     if (r) {
-      if (sorted.length) r.remind = [...sorted];
-      else delete r.remind;
+      delete r.remind;
+      if (clean) r.reminder = structuredClone({ ...clean, skip: undefined });
+      else delete r.reminder;
     }
   });
+}
+
+export function clearSnooze(id: string) {
+  mutate((d) => void delete find(d, id)?.snoozeUntil);
 }
 
 export function markReminderShown(id: string, key: string) {

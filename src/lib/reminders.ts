@@ -2,14 +2,16 @@
 // Checks are driven by a tick from Rust (reliable even while this window is hidden) plus a timer.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { dueReminder } from "./model";
+import { dueReminder, time12 } from "./model";
 import { data, markReminderShown, setStatus, snoozeTask } from "./store";
 import { setSheet } from "../ui/state";
 
 const PREVIEW = "__preview";
 let showing: string | null = null;
 
-const label = (key: string) => (key.startsWith("snooze") ? "Snoozed reminder" : key.slice(-5));
+// Shown on the reminder: "3:30 PM" (keys keep 24-hour time; once/snooze keys carry a timestamp).
+const label = (key: string) =>
+  key.startsWith("snooze") ? "Snoozed reminder" : key.startsWith("once") ? time12(new Date(Number(key.slice(5)))) : time12(key.slice(-5));
 
 /** Shows the first reminder that's due (one at a time; the rest follow after an answer). */
 export async function checkReminders() {
@@ -34,7 +36,7 @@ export function previewReminder() {
   if (showing) return;
   showing = PREVIEW;
   const now = new Date();
-  const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const time = time12(now);
   invoke("show_reminder", {
     payload: { id: PREVIEW, title: "Water the plants", note: "This is what a reminder looks like.", time },
   }).catch(() => (showing = null));

@@ -7,18 +7,22 @@ import { ACCENTS, setTheme, theme } from "../lib/theme";
 import { onAccent } from "../lib/theme-colors";
 import {
   addAttachments, chooseDataDir, clock, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
-  renameRepeat, setRemind, spaceRepeats, spaceTasks, setRepeatDays, setStatus, showToast, snoozeTask, toggleRepeatPaused, today, updateTask,
+  renameRepeat, setReminder, setSpace, spaceName, spaceRepeats, spaceTasks, setRepeatDays, setStatus, showToast, toggleRepeatPaused, today, updateTask,
 } from "../lib/store";
-import { EVERY_DAY, parseDay, type Status, type Task } from "../lib/model";
+import { EVERY_DAY, describeReminder, parseDay, reminderOf, upcoming, whenLabel, type Status, type Task } from "../lib/model";
 import { pickFiles, startRecording, type Recording } from "../lib/media";
 import { previewReminder } from "../lib/reminders";
+import { readSfx, sfx, writeSfx } from "../lib/sfx";
 import { Blob, IBell, IClip, IClose, IMic, IPin2, IRepeat, IRestore, ITrash, IFolder, IStop } from "./icons";
 import { MediaView } from "./Media";
 import { RecStrip } from "./LiveWave";
 import { WeekPicker } from "./WeekPicker";
+import { RemindBox } from "./RemindBox";
 import { setSheet, sheet, WEEK_LONG } from "./state";
 
 function Panel(p: { title: string; children: JSX.Element; class?: string }) {
+  sfx.open();
+  onCleanup(() => sfx.close());
   return (
     <div class="sheet-backdrop" onClick={() => setSheet(null)}>
       <section class={`sheet ${p.class ?? ""}`} role="dialog" aria-label={p.title} onClick={(e) => e.stopPropagation()}>
@@ -34,53 +38,54 @@ function Panel(p: { title: string; children: JSX.Element; class?: string }) {
   );
 }
 
-const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-
-/** Reminder times for a task: every day at these times while it's still to do, plus quick one-offs. */
-function RemindBox(p: { task: Task }) {
-  const nextHour = () => {
-    const d = new Date();
-    d.setHours(d.getHours() + 1, 0, 0, 0);
-    return hhmm(d);
+/** Every task with a reminder, across all lists: see when, pause/resume, or stop each. */
+function RemindersSheet() {
+  const now = () => new Date(clock());
+  const items = createMemo(() =>
+    data.tasks
+      .filter((t) => t.status !== "done" && (reminderOf(t) || (t.snoozeUntil && t.snoozeUntil > clock())))
+      .map((t) => ({ t, r: reminderOf(t), next: upcoming(t, now(), 1)[0] }))
+      .sort((a, b) => (a.next ?? Infinity) - (b.next ?? Infinity)),
+  );
+  const openTask = (t: Task) => {
+    setSpace(t.space ?? null);
+    setSheet({ kind: "task", id: t.id });
   };
-  const [draft, setDraft] = createSignal(nextHour());
-  const times = () => p.task.remind ?? [];
-  const snoozed = () => (p.task.snoozeUntil && p.task.snoozeUntil > clock() ? hhmm(new Date(p.task.snoozeUntil)) : null);
-  const add = () => draft() && setRemind(p.task.id, [...times(), draft()]);
   return (
-    <div class="box">
-      <div class="box-row">
-        <span class="box-label"><IBell size={14} /> Remind me <small class="muted">every day</small></span>
-        <Show when={snoozed()}>
-          {(s) => <span class="chip repeat">Next at {s()}</span>}
-        </Show>
-      </div>
-      <Show when={times().length}>
-        <div class="times">
-          <For each={times()}>
-            {(hm) => (
-              <span class="time-chip">
-                {hm}
-                <button aria-label={`Remove ${hm}`} onClick={() => setRemind(p.task.id, times().filter((x) => x !== hm))}>
-                  <IClose size={10} />
-                </button>
-              </span>
-            )}
-          </For>
-        </div>
+    <Panel title="Reminders" class="reminders-sheet">
+      <Show
+        when={items().length}
+        fallback={<div class="empty"><Blob size={44} /><p>No reminders yet. Open a task and switch on “Remind me”.</p></div>}
+      >
+        <For each={items()}>
+          {({ t, r, next }) => (
+            <div class="reminder-row" classList={{ off: !!r && !r.on }}>
+              <button class="reminder-main" onClick={() => openTask(t)}>
+                <span class="reminder-title">{t.title}</span>
+                <span class="reminder-sub">
+                  <Show when={t.space}>{(s) => <b>{spaceName(s())} · </b>}</Show>
+                  {r ? describeReminder(r, now()) : "Once"}
+                  <Show when={next}>{(n) => <> · next {whenLabel(n(), now())}</>}</Show>
+                </span>
+              </button>
+              <Show when={r}>
+                {(rem) => (
+                  <label class="switch-row tiny" title={rem().on ? "Pause" : "Resume"}>
+                    <span class="sr">{rem().on ? "Pause" : "Resume"} reminder for {t.title}</span>
+                    <input type="checkbox" role="switch" checked={rem().on} onChange={() => setReminder(t.id, { ...rem(), on: !rem().on })} />
+                  </label>
+                )}
+              </Show>
+              <button class="ib soft" aria-label={`Stop reminders for ${t.title}`} title="Stop reminders" onClick={() => setReminder(t.id, undefined)}>
+                <ITrash size={14} />
+              </button>
+            </div>
+          )}
+        </For>
       </Show>
-      <div class="time-row">
-        <label class="sr" for="remind-at">Reminder time</label>
-        <input id="remind-at" type="time" value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
-        <button class="btn small" onClick={add}>Add</button>
-        <span class="time-or">or once in</span>
-        <button class="btn small ghost-soft" onClick={() => snoozeTask(p.task.id, 30)}>30 min</button>
-        <button class="btn small ghost-soft" onClick={() => snoozeTask(p.task.id, 60)}>1 hour</button>
-      </div>
-    </div>
+    </Panel>
   );
 }
-
 function TaskSheet(p: { id: string }) {
   const task = createMemo(() => data.tasks.find((t) => t.id === p.id));
   const repeat = createMemo(() => data.repeats.find((r) => r.id === task()?.repeatId));
@@ -302,6 +307,11 @@ function SettingsSheet() {
       showToast("Now using the new folder");
     }
   };
+  const [sounds, setSoundsSignal] = createSignal(readSfx());
+  const setSounds = (p: ReturnType<typeof readSfx>) => {
+    writeSfx(p);
+    setSoundsSignal(p);
+  };
   const [startup, setStartup] = createSignal(false);
   const [bubble, setBubble] = createSignal(true);
   isEnabled().then(setStartup).catch(() => {});
@@ -405,9 +415,34 @@ function SettingsSheet() {
         </Show>
       </div>
       <div class="box">
+        <label class="switch-row">
+          <span>Sounds<small>Little sound effects for adding, finishing, the bubble and reminders</small></span>
+          <input type="checkbox" role="switch" checked={sounds().on} onChange={() => setSounds({ ...sounds(), on: !sounds().on })} />
+        </label>
+        <Show when={sounds().on}>
+          <label class="volume-row">
+            <span>Volume</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={sounds().volume}
+              onChange={(e) => {
+                setSounds({ ...sounds(), volume: Number(e.currentTarget.value) });
+                sfx.done();
+              }}
+            />
+          </label>
+        </Show>
+      </div>
+      <div class="box">
         <div class="box-row">
           <span class="box-label"><IBell size={14} /> Reminders</span>
-          <button class="btn small" onClick={previewReminder}>Preview one</button>
+          <span class="row-gap">
+            <button class="btn small" onClick={() => setSheet({ kind: "reminders" })}>See all</button>
+            <button class="btn small" onClick={previewReminder}>Preview one</button>
+          </span>
         </div>
       </div>
       <p class="muted">Tasks and media live in this folder on your PC:</p>
@@ -427,6 +462,7 @@ export function Sheets() {
         s.kind === "task" ? <TaskSheet id={s.id} />
         : s.kind === "done" ? <DoneDrawer />
         : s.kind === "repeats" ? <RepeatsSheet />
+        : s.kind === "reminders" ? <RemindersSheet />
         : <SettingsSheet />
       }
     </Show>

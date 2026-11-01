@@ -4,6 +4,7 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
+import { sfx } from "./lib/sfx";
 
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
@@ -133,8 +134,6 @@ let isMini = false;
 let walled = false;
 let popping = false;
 let splitting = false;
-let pending: { dx: number; dy: number } | null = null;
-let inFlight = false;
 
 function sparkle(count = 7) {
   for (let i = 0; i < count; i++) {
@@ -167,19 +166,33 @@ function squash(px: number, py: number) {
   }
   button.style.setProperty("--anger", String(a));
   button.classList.toggle("furious", a > 0.7);
-  if (a >= 1) pop();
+  if (a > 0.05 && a < 1) sfx.squish(a);
 }
 
-async function sendWall() {
-  if (inFlight || !pending || popping) return;
-  inFlight = true;
-  const { dx, dy } = pending;
-  pending = null;
-  const push = await invoke<{ x: number; y: number }>("mini_drag_to", { dx, dy }).catch(() => ({ x: 0, y: 0 }));
-  inFlight = false;
-  if (walled) squash(push.x, push.y);
-  if (pending) void sendWall();
-}
+// Rust follows the real cursor during a walled drag (it keeps working after the pointer leaves
+// this little window) and reports the push against the wall, and when it's enough to pop.
+listen<{ x: number; y: number }>("wall-push", ({ payload }) => walled && squash(payload.x, payload.y));
+listen("bubble-pop", () => walled && pop());
+
+// Same for tugging a locked bubble: Rust streams the cursor while the button is held.
+listen<{ x: number; y: number }>("pointer-at", ({ payload }) => {
+  if (!press || !locked) return;
+  const dx = payload.x - press.x;
+  const dy = payload.y - press.y;
+  if (!tugging && Math.hypot(dx, dy) <= 4) return;
+  if (!tugging) {
+    tugging = true;
+    button.classList.remove("pressed");
+    button.classList.add("tugging");
+  }
+  pull(dx, dy);
+});
+listen("pointer-up", () => {
+  if (!tugging) return;
+  press = null;
+  if (Math.hypot(jelly.x, jelly.y) > 3) sfx.boing();
+  letGo();
+});
 
 function calm() {
   button.style.setProperty("--anger", "0");
@@ -204,6 +217,7 @@ function pop() {
     )
     .finished.then(async () => {
       sparkle(9);
+      sfx.pop();
       await invoke("mini_pop").catch(() => {});
       squish.getAnimations().forEach((a) => a.cancel());
       squish.style.transform = "";
@@ -215,7 +229,6 @@ function pop() {
 function endWall() {
   if (!walled) return;
   walled = false;
-  pending = null;
   void invoke("mini_drag_end");
   // Spring back off the wall.
   const t = squish.style.transform;
@@ -256,7 +269,10 @@ function split(hx: number, hy: number) {
       { duration: 950, easing: "cubic-bezier(.5,0,.25,1)", fill: "forwards" },
     )
     .finished.then(() => twin.remove());
-  setTimeout(() => sparkle(6), 400);
+  setTimeout(() => {
+    sparkle(6);
+    sfx.split();
+  }, 400);
 }
 
 // Normal bubble vs. an app's mini Quicky (Rust resizes the window around the same centre).
@@ -285,6 +301,7 @@ button.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || popping) return;
   press = { x: e.screenX, y: e.screenY };
   button.classList.add("pressed");
+  if (locked) void invoke("pointer_track_start");
   // Keep getting moves outside the little window (tugging, pushing against walls).
   button.setPointerCapture(e.pointerId);
 });
@@ -303,19 +320,14 @@ button.addEventListener("pointermove", (e) => {
     }
     return;
   }
-  if (walled) {
-    pending = { dx, dy };
-    void sendWall();
-    return;
-  }
+  if (walled) return; // Rust is driving it from the real cursor
   if (Math.hypot(dx, dy) <= 4) return;
   button.classList.remove("pressed");
   if (isMini) {
     // A mini moves inside its app only.
     walled = true;
-    pending = { dx, dy };
     void invoke<boolean>("mini_drag_start").then((ok) => {
-      if (ok) return void sendWall();
+      if (ok) return;
       walled = false;
       press = null;
       void invoke("bubble_drag_start").then(() => win.startDragging());
@@ -330,8 +342,12 @@ button.addEventListener("pointerup", () => {
   button.classList.remove("pressed");
   if (!press) return;
   press = null;
-  if (tugging) return letGo();
+  if (tugging) {
+    if (Math.hypot(jelly.x, jelly.y) > 3) sfx.boing();
+    return letGo();
+  }
   if (walled) return endWall();
+  sfx.tap();
   void invoke("open_from_bubble");
 });
 button.addEventListener("pointercancel", () => {
@@ -341,17 +357,24 @@ button.addEventListener("pointercancel", () => {
 });
 // If the page loses the pointer mid-gesture (or Rust ends a drag on its own), settle down:
 // never leave the face stuck in its angry pose.
+// The page loses the pointer as soon as it leaves this little window, but walled drags and tugs
+// are driven by Rust from the real cursor and end on the real button release (bubble-calm /
+// pointer-up), so only tidy up here when neither is going on.
 button.addEventListener("lostpointercapture", () => {
-  if (tugging) letGo();
-  if (walled) endWall();
+  if (tugging || walled) return;
   press = null;
   calm();
 });
 listen("bubble-calm", () => {
+  if (popping) return;
+  const was = walled;
   walled = false;
   press = null;
+  // Spring back off the wall.
+  const t = squish.style.transform;
   squish.style.transform = "";
   calm();
+  if (was && t) squish.animate([{ transform: t }, { transform: "scale(1.07, 0.94)", offset: 0.5 }, { transform: "none" }], { duration: 320, easing: "ease-out" });
 });
 addEventListener("blur", () => {
   if (!tugging && !walled) calm();

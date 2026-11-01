@@ -48,7 +48,7 @@ export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => v
         <button class="card-title" onClick={(e) => { e.stopPropagation(); setSheet({ kind: "task", id: p.task.id }); }}>
           {p.task.title}
         </button>
-        <Show when={carriedDays() > 0 || p.task.repeatId || p.task.attachments.length || p.task.remind?.length || p.task.snoozeUntil}>
+        <Show when={carriedDays() > 0 || p.task.repeatId || p.task.attachments.length || nextReminder(p.task, new Date(clock()))}>
           <span class="card-meta">
             <Show when={carriedDays() > 0}>
               <span class="carried-label">Carried · {ordinal(carriedDays() + 1)} day</span>
@@ -65,6 +65,24 @@ export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => v
             </Show>
           </span>
         </Show>
+      </div>
+      {/* One-tap status change without opening the task (always shown in small windows). */}
+      <div class="quick-acts">
+        <Show
+          when={p.task.status === "doing"}
+          fallback={
+            <button class="qa doing" aria-label={`Start ${p.task.title}`} title="Doing" onClick={(e) => { e.stopPropagation(); setStatus(p.task.id, "doing"); }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+            </button>
+          }
+        >
+          <button class="qa todo" aria-label={`Back to to-do: ${p.task.title}`} title="Back to To do" onClick={(e) => { e.stopPropagation(); setStatus(p.task.id, "todo"); }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>
+          </button>
+        </Show>
+        <button class="qa done" aria-label={`Finish ${p.task.title}`} title="Done" onClick={(e) => { e.stopPropagation(); setStatus(p.task.id, "done"); }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+        </button>
       </div>
     </article>
   );

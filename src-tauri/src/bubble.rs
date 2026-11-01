@@ -48,6 +48,8 @@ struct State {
     split_until: Option<Instant>,
     /// A mini is being dragged around inside its app (the app's window is its walls).
     wall: Option<WallDrag>,
+    /// Streaming the cursor to the page for a tug on a locked bubble.
+    tracking: bool,
 }
 
 struct WallDrag {
@@ -55,7 +57,18 @@ struct WallDrag {
     rect: Rect,
     start: (i32, i32),
     at: (i32, i32),
+    /// Pointer position when the drag began (physical px): the drag follows the real cursor,
+    /// which keeps working after the pointer leaves the little bubble window.
+    cursor0: (i32, i32),
+    popped: bool,
+    /// Builds up while the mini is pressed against a wall (0..1); it pops at 1. Works even when
+    /// the wall is the screen edge and the pointer can't go any further.
+    strain: f64,
+    last: Instant,
 }
+
+/// How far past a wall (logical px) a mini must be pushed to pop out of its app.
+const POP_AT: f64 = 90.0;
 
 static STATE: Mutex<State> = Mutex::new(State {
     dragging: false,
@@ -68,6 +81,7 @@ static STATE: Mutex<State> = Mutex::new(State {
     general: None,
     split_until: None,
     wall: None,
+    tracking: false,
 });
 
 /// How quickly the bubble glides to a new spot (time constant, ms): small = snappy.
@@ -334,9 +348,27 @@ pub fn housekeeping(app: &AppHandle) {
             let Some(h) = hwnd(&app) else { continue };
 
             // A walled mini drag whose page lost track of the mouse: finish it where it is.
-            if state().wall.is_some() && !win::left_button_down() {
+            // Walled drag of a mini: follow the real cursor until the button comes up.
+            if state().wall.is_some() {
+                if win::left_button_down() {
+                    wall_step(&app);
+                    gliding = true; // keep the loop at ~60 fps
+                    continue;
+                }
                 mini_drag_end(app.clone());
                 let _ = app.emit_to("bubble", "bubble-calm", ());
+            }
+            // Tug on a locked bubble: stream the cursor to the page until the button comes up.
+            if state().tracking {
+                if win::left_button_down() {
+                    let (x, y) = win::cursor();
+                    let s = scale(&app);
+                    let _ = app.emit_to("bubble", "pointer-at", serde_json::json!({ "x": x as f64 / s, "y": y as f64 / s }));
+                    gliding = true;
+                    continue;
+                }
+                state().tracking = false;
+                let _ = app.emit_to("bubble", "pointer-up", ());
             }
 
             let dragging = state().dragging;
@@ -566,27 +598,23 @@ pub fn bubble_drag_start() {
 pub fn mini_drag_start(app: AppHandle) -> bool {
     let Some((entry, _, rect)) = active_stuck(&app) else { return false };
     let Some(p) = window(&app).and_then(|b| b.outer_position().ok()) else { return false };
-    state().wall = Some(WallDrag { exe: entry.exe, rect, start: (p.x, p.y), at: (p.x, p.y) });
+    state().wall = Some(WallDrag { exe: entry.exe, rect, start: (p.x, p.y), at: (p.x, p.y), cursor0: win::cursor(), popped: false, strain: 0.0, last: Instant::now() });
     true
 }
 
-#[derive(Serialize)]
-pub struct Push {
-    x: f64,
-    y: f64,
-}
-
-/// Moves the mini by the pointer's offset (logical px) but keeps it inside the app's window.
-/// Returns how far past the wall the pointer is pushing (logical px), so the page can squash
-/// the blob against it and pop it out when pushed hard enough.
-#[tauri::command]
-pub fn mini_drag_to(app: AppHandle, dx: f64, dy: f64) -> Push {
-    let s = scale(&app);
-    let side = side(&app);
-    let Some(h) = hwnd(&app) else { return Push { x: 0.0, y: 0.0 } };
+/// One step of a walled drag, from the real cursor: move inside the app's window, tell the page
+/// how hard it's pushing against the wall (for the squash), and pop it when pushed hard enough.
+fn wall_step(app: &AppHandle) {
+    let s = scale(app);
+    let side = side(app);
+    let Some(h) = hwnd(app) else { return };
+    let (cx, cy) = win::cursor();
     let mut st = state();
-    let Some(w) = st.wall.as_mut() else { return Push { x: 0.0, y: 0.0 } };
-    let (wx, wy) = (w.start.0 as f64 + dx * s, w.start.1 as f64 + dy * s);
+    let Some(w) = st.wall.as_mut() else { return };
+    if w.popped {
+        return;
+    }
+    let (wx, wy) = ((w.start.0 + cx - w.cursor0.0) as f64, (w.start.1 + cy - w.cursor0.1) as f64);
     let (l, t) = (w.rect.left as f64, w.rect.top as f64);
     let (r, b) = ((w.rect.right - side) as f64, (w.rect.bottom - side) as f64);
     let (x, y) = (wx.clamp(l, r.max(l)), wy.clamp(t, b.max(t)));
@@ -595,9 +623,42 @@ pub fn mini_drag_to(app: AppHandle, dx: f64, dy: f64) -> Push {
         win::move_to(h, at.0, at.1);
         w.at = at;
     }
+    // How hard it's being pushed: how far the pointer is past the mini's middle on each axis it's
+    // pinned against a wall. Held there, strain builds up; let go of the wall and it relaxes.
+    let now = Instant::now();
+    let dt = now.duration_since(w.last).as_secs_f64().min(0.1);
+    w.last = now;
+    let half = side as f64 / 2.0;
+    let pinned_x = wx < l || wx > r;
+    let pinned_y = wy < t || wy > b;
+    let ox = if pinned_x { (cx as f64 - (x + half)) / s } else { 0.0 };
+    let oy = if pinned_y { (cy as f64 - (y + half)) / s } else { 0.0 };
+    let reach = ox.hypot(oy);
+    if reach > 12.0 {
+        w.strain += dt * (0.45 + (reach / 90.0).min(1.5));
+    } else {
+        w.strain = (w.strain - dt * 2.5).max(0.0);
+    }
+    let far = ((wx - x) / s).hypot((wy - y) / s) / POP_AT; // big pushes where the screen allows
+    let strain = w.strain.max(far * 0.8).min(1.0);
+    let (dx, dy) = if reach > 0.5 { (ox / reach, oy / reach) } else { (0.0, 0.0) };
+    let popped = strain >= 1.0;
+    w.popped = popped;
     st.at = Some((x, y));
     st.goal = Some(at);
-    Push { x: (wx - x) / s, y: (wy - y) / s }
+    drop(st);
+    let (px, py) = (dx * strain * POP_AT, dy * strain * POP_AT);
+    let _ = app.emit_to("bubble", "wall-push", serde_json::json!({ "x": px, "y": py }));
+    if popped {
+        let _ = app.emit_to("bubble", "bubble-pop", ());
+    }
+}
+
+/// While the button is held on a locked bubble, stream the real cursor position to the page so
+/// tugging keeps working once the pointer leaves the little window.
+#[tauri::command]
+pub fn pointer_track_start() {
+    state().tracking = true;
 }
 
 /// Drag finished inside the app: that's the mini's new spot.

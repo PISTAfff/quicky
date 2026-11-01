@@ -485,7 +485,7 @@ pub fn run() {
             bubble::unstick_bubble,
             bubble::stuck_apps,
             bubble::mini_drag_start,
-            bubble::mini_drag_to,
+            bubble::pointer_track_start,
             bubble::mini_drag_end,
             bubble::mini_pop,
             bubble::set_pinned,

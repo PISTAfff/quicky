@@ -7,6 +7,7 @@ import { EVERY_DAY, type Attachment } from "../lib/model";
 import { fromClipboard, pickFiles, startRecording, type Recording } from "../lib/media";
 import { Thumb } from "./Media";
 import { RecStrip } from "./LiveWave";
+import { sfx } from "../lib/sfx";
 import { WeekPicker, daysLabel } from "./WeekPicker";
 
 
@@ -45,6 +46,7 @@ export function QuickAdd(p: { compact?: boolean }) {
   const toggleRecord = async () => {
     const current = rec();
     if (current) {
+      sfx.recStop();
       setRec(null);
       const att = await current.stop();
       if (att) stage([att]);
@@ -52,6 +54,7 @@ export function QuickAdd(p: { compact?: boolean }) {
     }
     try {
       setRec(await startRecording());
+      sfx.recStart();
     } catch {
       showToast("Microphone isn't available");
     }

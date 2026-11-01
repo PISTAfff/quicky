@@ -1,15 +1,16 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { data, setStatus, today, spaceRepeats, spaceTasks } from "../lib/store";
-import type { Status, Task } from "../lib/model";
+import { reminderOf, type Status, type Task } from "../lib/model";
 import { DateTitle, Header, Progress } from "./Header";
 import { QuickAdd } from "./QuickAdd";
 import { TaskCard } from "./TaskCard";
-import { Blob, IArrow, IRepeat, IUp } from "./icons";
+import { Blob, IArrow, IRepeat, IUp, IBell } from "./icons";
 import { setSheet } from "./state";
 
 const open = () => spaceTasks().filter((t) => t.status !== "done");
 const byStatus = (a: Task, b: Task) => (a.status === b.status ? 0 : a.status === "doing" ? -1 : 1);
 const doneCount = () => spaceTasks().filter((t) => t.status === "done").length;
+const activeReminders = () => data.tasks.filter((t) => t.status !== "done" && reminderOf(t)?.on).length;
 
 function DrawerButton() {
   return (
@@ -54,7 +55,10 @@ export function ListView() {
             </button>
           )}
         </For>
-        <button class="pill-repeat" aria-label="Repeating tasks" title="Repeating tasks" onClick={() => setSheet({ kind: "repeats" })}>
+        <button class="pill-repeat" aria-label="Reminders" title="Reminders" onClick={() => setSheet({ kind: "reminders" })}>
+          <IBell size={13} /> {activeReminders()}
+        </button>
+        <button class="pill-repeat tight" aria-label="Repeating tasks" title="Repeating tasks" onClick={() => setSheet({ kind: "repeats" })}>
           <IRepeat size={13} /> {spaceRepeats().length}
         </button>
       </div>
@@ -167,6 +171,7 @@ export function BoardView() {
         <Progress />
         <div class="rail-links">
           <button onClick={() => setSheet({ kind: "repeats" })}><IRepeat size={14} /> Repeats · {spaceRepeats().length}</button>
+          <button onClick={() => setSheet({ kind: "reminders" })}><IBell size={14} /> Reminders · {activeReminders()}</button>
           <button onClick={() => setSheet({ kind: "done" })}><Blob size={15} color="var(--mint)" mood="done" /> Done · {doneCount()}</button>
         </div>
       </aside>

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { THEME_KEY, onAccent, resolveAccent } from "./lib/theme-colors";
 import "./reminder.css";
+import { sfx } from "./lib/sfx";
 
 interface Rect { x: number; y: number; w: number; h: number }
 interface Payload { id: string; title: string; note: string; time: string; origin: { x: number; y: number }; focus?: Rect }
@@ -43,6 +44,7 @@ function render(p: Payload) {
 function answer(action: "doing" | "done" | "snooze" | "open", minutes?: number) {
   if (!current || closing) return;
   closing = true;
+  ({ doing: sfx.doing, done: sfx.done, snooze: sfx.snooze, open: sfx.open })[action]();
   const msg = { id: current.id, action, minutes };
   flood.classList.remove("in");
   flood.classList.add("out");
@@ -89,6 +91,7 @@ async function start() {
     requestAnimationFrame(async () => {
       await invoke("reminder_ready");
       flood.classList.add("in");
+      sfx.remind();
       armedAt = performance.now() + 700;
       ($("doing") as HTMLButtonElement).focus({ preventScroll: true });
     }),

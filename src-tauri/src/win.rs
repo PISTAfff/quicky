@@ -223,6 +223,15 @@ pub fn exe_icon_png(exe: &str, size: i32) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Where the mouse pointer is right now (physical px, whole desktop).
+pub fn cursor() -> (i32, i32) {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let mut p = POINT { x: 0, y: 0 };
+    unsafe { GetCursorPos(&mut p) };
+    (p.x, p.y)
+}
+
 pub fn left_button_down() -> bool {
     (unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } as u16 & 0x8000) != 0
 }

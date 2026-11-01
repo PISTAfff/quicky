@@ -463,3 +463,64 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .space-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--solid); color: var(--on-solid); font-size: 11px; display: grid; place-items: center; }
 .space-check { opacity: 0; color: var(--accent-ink); flex-shrink: 0; }
 .space-item.on .space-check { opacity: 1; }
+/* ---- quick status buttons on cards ---- */
+.card { position: relative; }
+.quick-acts { display: flex; gap: 4px; flex-shrink: 0; opacity: 0; transform: translateX(4px); transition: opacity 0.15s, transform 0.15s; }
+.card:hover .quick-acts, .card:focus-within .quick-acts, [data-mode="mini"] .quick-acts { opacity: 1; transform: none; }
+@media (max-width: 420px) { .quick-acts { opacity: 1; transform: none; } }
+.qa { width: 30px; height: 30px; border-radius: 10px; border: 2px solid var(--edge); background: var(--card); color: var(--ink); display: grid; place-items: center; padding: 0; }
+.qa.doing:hover { background: var(--blue); color: var(--doing); }
+.qa.todo:hover { background: var(--soft); }
+.qa.done { background: var(--done); border-color: var(--done); color: #fff; }
+.qa.done:hover { filter: brightness(1.1); transform: scale(1.08); }
+.qa:active { transform: scale(0.9); }
+[data-mode="mini"] .qa { width: 26px; height: 26px; border-radius: 8px; }
+
+/* ---- reminder panel ---- */
+.box.remind { gap: 10px; }
+.box.remind.off .remind-summary { color: var(--muted); }
+.remind-summary { margin: 0; font-size: 13px; font-weight: 700; color: var(--sub); }
+.remind-summary b { color: var(--accent-ink); }
+.switch-row.tiny { gap: 0; }
+.switch-row.tiny input { width: 40px; height: 24px; }
+.switch-row.tiny input::after { width: 16px; height: 16px; }
+.switch-row.tiny input:checked::after { transform: translateX(16px); }
+.quick-remind, .upcoming { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.muted-small { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 2px; }
+.chip-btn {
+  height: 28px; padding: 0 10px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--bg);
+  color: var(--sub); font: 800 12px "Nunito", sans-serif; display: inline-flex; align-items: center; gap: 4px;
+}
+.chip-btn:hover { border-color: var(--accent); color: var(--accent-ink); transform: translateY(-1px); }
+.chip-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chip-btn.add { border-style: dashed; }
+.segment.remind-modes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.segment.remind-modes button { height: 32px; font-size: 12px; }
+.time-edit { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0 4px 0 2px; border-radius: 16px; background: var(--accent-soft); }
+.time-edit input[type="time"] { border: 0; background: transparent; font: 800 13px "Nunito", sans-serif; color: var(--accent-ink); outline: 0; padding: 0 4px; width: 112px; }
+.time-edit button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: var(--accent-ink); display: grid; place-items: center; padding: 0; }
+.time-edit button:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.time-edit button:disabled { opacity: 0.3; }
+.time-row input[type="date"], .every-row select {
+  height: 34px; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 8px; font: 800 13px "Nunito", sans-serif; color: var(--ink); outline: 0;
+}
+.time-row input[type="date"]:focus, .every-row select:focus { border-color: var(--accent); }
+.every-row span { font-size: 13px; font-weight: 800; color: var(--sub); }
+.up-chip { font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 10px; background: var(--soft); color: var(--sub); }
+.remind-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1.5px dashed var(--line); padding-top: 6px; }
+.link.danger-link { color: var(--danger); }
+.link.danger-link:hover { background: var(--danger-soft); }
+.snooze-chip { align-self: flex-start; background: color-mix(in srgb, var(--peach) 70%, var(--card)); color: var(--warm); }
+
+/* ---- reminders list ---- */
+.row-gap { display: inline-flex; gap: 6px; }
+.reminder-row { display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 12px; padding: 6px 6px 6px 12px; }
+.reminder-row.off { opacity: 0.6; }
+.reminder-main { all: unset; flex: 1; min-width: 0; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.reminder-main:hover .reminder-title { color: var(--accent-ink); }
+.reminder-title { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reminder-sub { font-size: 12px; font-weight: 700; color: var(--muted); }
+.pills .pill-repeat.tight { margin-left: 0; }
+/* ---- sounds ---- */
+.volume-row { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 13px; color: var(--sub); }
+.volume-row input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
