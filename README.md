@@ -14,7 +14,7 @@ Or from a terminal, with the [GitHub CLI](https://cli.github.com) signed in:
 gh release download --repo PISTAfff/quicky --pattern "*-setup.exe" --dir . && ./Quicky_*_x64-setup.exe
 ```
 
-On first launch Quicky asks for a folder to keep your data in. Everything stays on your PC.
+On first launch Quicky asks where to keep your data and creates a `Quicky` folder there (picking a folder that's already called `Quicky`, or one that already holds `quicky.json`, uses it as is). Everything stays on your PC.
 
 ## Using it
 
@@ -34,6 +34,7 @@ On first launch Quicky asks for a folder to keep your data in. Everything stays 
 - **Any size:** drag the window to any shape. It becomes a mini "next up" panel when small, a list by default, and a board with To do / Doing / Done columns when wide (drag cards between columns). The pin button keeps it on top.
 - **Bubble:** a little Quicky sits in the bottom-left corner, always on top (even over the taskbar), with a badge showing how many tasks are left. Click it to open the app right above it, click again to tuck it away.
 - **Starts with Windows:** on by default. Quicky starts quietly at sign-in (tray icon and bubble only). Turn it off, or hide the bubble, in Settings (the folder button in the title bar).
+- **Colours:** Settings (gear in the title bar) has five accents (Grape, Bubblegum, Mint, Tangerine, Ocean) and Light / Dark / Match Windows. The bubble follows along.
 - **Tray icon:** left-click opens or hides Quicky. Right-click for *Show* and *Quit*. **Close** only hides Quicky, so Ctrl+Space and the bubble keep working.
 
 ## Your data
@@ -71,7 +72,7 @@ The installer lands in `src-tauri/target/release/bundle/nsis/`.
 **Releasing:** bump `version` in `src-tauri/tauri.conf.json`, then push a tag. GitHub Actions builds the installer and publishes the release.
 
 ```bash
-git tag v0.1.2 && git push origin v0.1.2
+git tag v0.1.3 && git push origin v0.1.3
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + WebView2) and [SolidJS](https://www.solidjs.com).

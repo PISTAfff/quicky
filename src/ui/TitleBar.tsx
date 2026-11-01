@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Blob, IClose, IMin, IPin, IFolder } from "./icons";
+import { Blob, IClose, IGear, IMin, IPin } from "./icons";
 import { pinned, setPinned, setSheet } from "./state";
 import { flush } from "../lib/store";
 
@@ -18,8 +18,8 @@ export function TitleBar() {
         <span data-tauri-drag-region>Quicky</span>
       </div>
       <div class="winbtns">
-        <button class="wb" aria-label="Settings" title="Settings and data folder" onClick={() => setSheet({ kind: "settings" })}>
-          <IFolder size={14} />
+        <button class="wb" aria-label="Settings" title="Settings: colours, startup, data folder" onClick={() => setSheet({ kind: "settings" })}>
+          <IGear size={14} />
         </button>
         <button
           class="wb"

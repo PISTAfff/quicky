@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { ACCENTS, setTheme, theme } from "../lib/theme";
 import {
   addAttachments, chooseDataDir, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
   renameRepeat, setRepeatDays, setStatus, showToast, toggleRepeatPaused, today, updateTask,
@@ -275,6 +276,33 @@ function SettingsSheet() {
   return (
     <Panel title="Settings" class="settings-sheet">
       <div class="box">
+        <span class="box-label">Colour</span>
+        <div class="swatches" role="group" aria-label="Accent colour">
+          <For each={ACCENTS}>
+            {(a) => (
+              <button
+                class="swatch"
+                classList={{ on: theme().accent === a.id }}
+                style={{ background: a.color }}
+                aria-label={a.name}
+                aria-pressed={theme().accent === a.id}
+                title={a.name}
+                onClick={() => setTheme({ accent: a.id })}
+              />
+            )}
+          </For>
+        </div>
+        <div class="segment modes" role="group" aria-label="Light or dark">
+          <For each={[["light", "Light"], ["dark", "Dark"], ["auto", "Match Windows"]] as const}>
+            {([m, label]) => (
+              <button classList={{ on: theme().mode === m }} aria-pressed={theme().mode === m} onClick={() => setTheme({ mode: m })}>
+                {label}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class="box">
         <label class="switch-row">
           <span>Start with Windows<small>Opens quietly in the tray when you sign in</small></span>
           <input type="checkbox" role="switch" checked={startup()} onChange={toggleStartup} />
@@ -290,7 +318,7 @@ function SettingsSheet() {
         <button class="btn ghost" onClick={() => invoke("open_data_dir")}><IFolder size={15} /> Open folder</button>
         <button class="btn ghost" onClick={change}>Change…</button>
       </div>
-      <p class="hint">Changing the folder doesn't move files. Copy quicky.json and media/ yourself to bring them along.</p>
+      <p class="hint">Quicky makes a “Quicky” folder inside the place you pick. Changing it doesn't move files: copy the old Quicky folder over to bring them along.</p>
       <p class="hint">Ctrl+Space opens Quicky from anywhere. Closing hides it to the tray.</p>
     </Panel>
   );

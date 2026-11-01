@@ -134,13 +134,28 @@ fn get_data_dir(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 fn set_data_dir(app: AppHandle, path: String) -> Result<String, String> {
-    let dir = PathBuf::from(&path);
+    let dir = quicky_folder(PathBuf::from(&path));
     fs::create_dir_all(dir.join(MEDIA_DIR)).map_err(|e| e.to_string())?;
+    let path = dir.to_string_lossy().into_owned();
     let mut cfg = read_config(&app);
     cfg.data_dir = Some(path.clone());
     write_config(&app, &cfg)?;
     allow_media(&app, &dir);
     Ok(path)
+}
+
+/// Always keeps data in its own "Quicky" folder inside whatever the user picked,
+/// unless they picked a Quicky folder (or one that already holds Quicky data).
+fn quicky_folder(picked: PathBuf) -> PathBuf {
+    let is_quicky = picked
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.eq_ignore_ascii_case("Quicky"));
+    if is_quicky || picked.join(DATA_FILE).is_file() {
+        picked
+    } else {
+        picked.join("Quicky")
+    }
 }
 
 #[tauri::command]
@@ -459,4 +474,24 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quicky");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picked_folder_gets_a_quicky_subfolder() {
+        let tmp = std::env::temp_dir().join(format!("qk-test-{}", std::process::id()));
+        fs::create_dir_all(&tmp).unwrap();
+        assert_eq!(quicky_folder(tmp.clone()), tmp.join("Quicky"));
+        assert_eq!(quicky_folder(tmp.join("quicky")), tmp.join("quicky"));
+
+        // A folder that already holds Quicky data is reused as is.
+        let existing = tmp.join("Tasks");
+        fs::create_dir_all(&existing).unwrap();
+        fs::write(existing.join(DATA_FILE), "{}").unwrap();
+        assert_eq!(quicky_folder(existing.clone()), existing);
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }

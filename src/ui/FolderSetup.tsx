@@ -24,7 +24,7 @@ export function FolderSetup() {
     <div class="setup">
       <Blob size={56} />
       <h2>Where should Quicky keep your stuff?</h2>
-      <p class="muted">Everything stays on this PC, in one folder you pick. Put it in OneDrive or Dropbox if you want it synced.</p>
+      <p class="muted">Pick any place on this PC and Quicky makes its own “Quicky” folder there. Choose OneDrive or Dropbox if you want it synced.</p>
       <pre class="tree">{`Quicky/\n├ quicky.json\n└ media/\n  └ 2026-11/\n    ├ sketch.png\n    └ voice-0912.webm`}</pre>
       <button class="btn primary" onClick={pick}>Choose folder…</button>
       <button class="btn ghost" onClick={useDefault}>Use Documents\Quicky</button>
