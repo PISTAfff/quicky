@@ -7,26 +7,24 @@ import { EVERY_DAY, type Attachment } from "../lib/model";
 import { fromClipboard, pickFiles, startRecording, type Recording } from "../lib/media";
 import { Thumb } from "./Media";
 import { RecStrip } from "./LiveWave";
+import { WeekPicker, daysLabel } from "./WeekPicker";
 
-const REPEATS = [
-  { label: "", days: undefined },
-  { label: "Every day", days: EVERY_DAY },
-  { label: "Mon–Fri", days: [1, 2, 3, 4, 5] },
-] as const;
 
 export function QuickAdd(p: { compact?: boolean }) {
   const [text, setText] = createSignal("");
-  const [repeat, setRepeat] = createSignal(0);
+  // Days the new task repeats on (empty = doesn't repeat); picked in a small row under the box.
+  const [days, setDays] = createSignal<number[]>([]);
+  const [picking, setPicking] = createSignal(false);
   const [rec, setRec] = createSignal<Recording | null>(null);
 
   const submit = () => {
     if (rec()) return;
-    const r = REPEATS[repeat()];
-    addTask(text(), staged(), r.days ? [...r.days] : undefined);
+    addTask(text(), staged(), days().length ? days() : undefined);
     if (text().trim() || staged().length) {
       setText("");
       setStaged([]);
-      setRepeat(0);
+      setDays([]);
+      setPicking(false);
     }
   };
 
@@ -101,10 +99,14 @@ export function QuickAdd(p: { compact?: boolean }) {
           <Show when={!p.compact && !rec()}>
             <button
               class="ib"
-              classList={{ on: repeat() > 0 }}
-              aria-label={repeat() ? `Repeats ${REPEATS[repeat()].label}` : "Make recurring"}
-              title="Repeat: off / every day / Mon–Fri (pick exact days in the task)"
-              onClick={() => setRepeat((repeat() + 1) % REPEATS.length)}
+              classList={{ on: days().length > 0 || picking() }}
+              aria-label="Repeat on days"
+              aria-expanded={picking()}
+              title="Repeat on days you pick"
+              onClick={() => {
+                if (!picking() && !days().length) setDays([...EVERY_DAY]);
+                setPicking(!picking());
+              }}
             >
               <IRepeat size={16} />
             </button>
@@ -128,10 +130,20 @@ export function QuickAdd(p: { compact?: boolean }) {
           <IPlus size={18} />
         </button>
       </div>
-      <Show when={staged().length || repeat()}>
+      <Show when={picking()}>
+        <div class="repeat-pick">
+          <WeekPicker days={days()} onChange={setDays} allowEmpty />
+          <button class="link" onClick={() => setDays(days().length === 7 ? [] : [...EVERY_DAY])}>
+            {days().length === 7 ? "Clear" : "Every day"}
+          </button>
+        </div>
+      </Show>
+      <Show when={staged().length || (days().length && !picking())}>
         <div class="staged">
-          <Show when={repeat()}>
-            <span class="chip repeat"><IRepeat size={11} />{REPEATS[repeat()].label}</span>
+          <Show when={days().length && !picking()}>
+            <button class="chip repeat" onClick={() => setPicking(true)} title="Change days">
+              <IRepeat size={11} />{daysLabel(days())}
+            </button>
           </Show>
           <For each={staged()}>
             {(a) => (

@@ -33,7 +33,9 @@ export const IRepeat = (p: P) => (
 export const IImage = (p: P) => <Svg {...p}><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-9 9" /></Svg>;
 export const IPlay = (p: P) => <Svg {...p} fill><path d="M8 5v14l11-7z" /></Svg>;
 export const IPause = (p: P) => <Svg {...p} fill><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></Svg>;
-export const IStop = (p: P) => <Svg {...p} fill><rect x="6" y="6" width="12" height="12" rx="3" /></Svg>;
+export const IBell = (p: P) => <Svg {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10 20a2 2 0 0 0 4 0" /></Svg>;
+export const IPin2 = (p: P) => <Svg {...p}><path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" /></Svg>;
+export const IStop =(p: P) => <Svg {...p} fill><rect x="6" y="6" width="12" height="12" rx="3" /></Svg>;
 export const IFile =(p: P) => <Svg {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></Svg>;
 export const IUp = (p: P) => <Svg {...p}><path d="M6 15l6-6 6 6" /></Svg>;
 export const IDown = (p: P) => <Svg {...p}><path d="M6 9l6 6 6-6" /></Svg>;

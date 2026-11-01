@@ -43,7 +43,11 @@ function mutate(fn: (d: Data) => void) {
 }
 
 /** Re-checks the date; rolls unfinished tasks and repeats onto the new day. */
+/** Minute-ish clock for "next reminder" labels. */
+export const [clock, setClock] = createSignal(Date.now());
+
 export function tick() {
+  setClock(Date.now());
   if (!loaded) return;
   const t = dayKey();
   if (t !== today()) setToday(t);
@@ -224,5 +228,40 @@ export function deleteRepeat(id: string) {
   mutate((d) => {
     d.repeats = d.repeats.filter((r) => r.id !== id);
     for (const t of d.tasks) if (t.repeatId === id) delete t.repeatId;
+  });
+}
+
+// ---- reminders -----------------------------------------------------------------
+
+/** Sets a task's reminder times (and its repeat's, so future copies remind too). */
+export function setRemind(id: string, times: string[]) {
+  const sorted = [...new Set(times)].sort();
+  mutate((d) => {
+    const t = find(d, id);
+    if (!t) return;
+    if (sorted.length) t.remind = sorted;
+    else delete t.remind;
+    delete t.snoozeUntil;
+    const r = t.repeatId ? d.repeats.find((r) => r.id === t.repeatId) : undefined;
+    if (r) {
+      if (sorted.length) r.remind = [...sorted];
+      else delete r.remind;
+    }
+  });
+}
+
+export function markReminderShown(id: string, key: string) {
+  mutate((d) => {
+    const t = find(d, id);
+    if (!t) return;
+    t.lastFired = key;
+    if (key.startsWith("snooze")) delete t.snoozeUntil;
+  });
+}
+
+export function snoozeTask(id: string, minutes: number) {
+  mutate((d) => {
+    const t = find(d, id);
+    if (t) t.snoozeUntil = Date.now() + minutes * 60_000;
   });
 }

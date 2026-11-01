@@ -6,15 +6,17 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { ACCENTS, setTheme, theme } from "../lib/theme";
 import { onAccent } from "../lib/theme-colors";
 import {
-  addAttachments, chooseDataDir, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
-  renameRepeat, setRepeatDays, setStatus, showToast, toggleRepeatPaused, today, updateTask,
+  addAttachments, chooseDataDir, clock, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
+  renameRepeat, setRemind, setRepeatDays, setStatus, showToast, snoozeTask, toggleRepeatPaused, today, updateTask,
 } from "../lib/store";
-import { EVERY_DAY, parseDay, type Status } from "../lib/model";
+import { EVERY_DAY, parseDay, type Status, type Task } from "../lib/model";
 import { pickFiles, startRecording, type Recording } from "../lib/media";
-import { Blob, IClip, IClose, IMic, IRepeat, IRestore, ITrash, IFolder, IStop } from "./icons";
+import { previewReminder } from "../lib/reminders";
+import { Blob, IBell, IClip, IClose, IMic, IPin2, IRepeat, IRestore, ITrash, IFolder, IStop } from "./icons";
 import { MediaView } from "./Media";
 import { RecStrip } from "./LiveWave";
-import { setSheet, sheet, WEEK, WEEK_LONG } from "./state";
+import { WeekPicker } from "./WeekPicker";
+import { setSheet, sheet, WEEK_LONG } from "./state";
 
 function Panel(p: { title: string; children: JSX.Element; class?: string }) {
   return (
@@ -32,26 +34,49 @@ function Panel(p: { title: string; children: JSX.Element; class?: string }) {
   );
 }
 
-function WeekPicker(p: { days: number[]; onChange: (days: number[]) => void }) {
-  const toggle = (d: number) => {
-    const next = p.days.includes(d) ? p.days.filter((x) => x !== d) : [...p.days, d].sort();
-    if (next.length) p.onChange(next);
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+/** Reminder times for a task: every day at these times while it's still to do, plus quick one-offs. */
+function RemindBox(p: { task: Task }) {
+  const nextHour = () => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1, 0, 0, 0);
+    return hhmm(d);
   };
+  const [draft, setDraft] = createSignal(nextHour());
+  const times = () => p.task.remind ?? [];
+  const snoozed = () => (p.task.snoozeUntil && p.task.snoozeUntil > clock() ? hhmm(new Date(p.task.snoozeUntil)) : null);
+  const add = () => draft() && setRemind(p.task.id, [...times(), draft()]);
   return (
-    <div class="week" role="group" aria-label="Repeat on">
-      <For each={WEEK}>
-        {(l, i) => (
-          <button
-            class="wd"
-            classList={{ on: p.days.includes(i()) }}
-            aria-pressed={p.days.includes(i())}
-            aria-label={WEEK_LONG[i()]}
-            onClick={() => toggle(i())}
-          >
-            {l}
-          </button>
-        )}
-      </For>
+    <div class="box">
+      <div class="box-row">
+        <span class="box-label"><IBell size={14} /> Remind me <small class="muted">every day</small></span>
+        <Show when={snoozed()}>
+          {(s) => <span class="chip repeat">Next at {s()}</span>}
+        </Show>
+      </div>
+      <Show when={times().length}>
+        <div class="times">
+          <For each={times()}>
+            {(hm) => (
+              <span class="time-chip">
+                {hm}
+                <button aria-label={`Remove ${hm}`} onClick={() => setRemind(p.task.id, times().filter((x) => x !== hm))}>
+                  <IClose size={10} />
+                </button>
+              </span>
+            )}
+          </For>
+        </div>
+      </Show>
+      <div class="time-row">
+        <label class="sr" for="remind-at">Reminder time</label>
+        <input id="remind-at" type="time" value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        <button class="btn small" onClick={add}>Add</button>
+        <span class="time-or">or once in</span>
+        <button class="btn small ghost-soft" onClick={() => snoozeTask(p.task.id, 30)}>30 min</button>
+        <button class="btn small ghost-soft" onClick={() => snoozeTask(p.task.id, 60)}>1 hour</button>
+      </div>
     </div>
   );
 }
@@ -119,6 +144,8 @@ function TaskSheet(p: { id: string }) {
               {(r) => <WeekPicker days={r().days} onChange={(d) => setRepeatDays(r().id, d)} />}
             </Show>
           </div>
+
+          <RemindBox task={t()} />
 
           <label class="sr" for="task-note">Note</label>
           <textarea
@@ -282,6 +309,11 @@ function SettingsSheet() {
   // The bubble can also be hidden from its own right-click menu or brought back from the tray.
   const stop = listen<boolean>("bubble-pref", (e) => setBubble(e.payload));
   onCleanup(() => void stop.then((u) => u()));
+  const [stuck, setStuck] = createSignal<{ exe: string; name: string }[]>([]);
+  const loadStuck = () => invoke<{ exe: string; name: string }[]>("stuck_apps").then(setStuck).catch(() => {});
+  void loadStuck();
+  const stopStuck = listen("stuck-apps", loadStuck);
+  onCleanup(() => void stopStuck.then((u) => u()));
   const toggleStartup = async () => {
     const next = !startup();
     await (next ? enable() : disable());
@@ -353,6 +385,30 @@ function SettingsSheet() {
           <span>Bubble on screen<small>Little Quicky that waits while the app is closed. Drag it anywhere; right-click for options</small></span>
           <input type="checkbox" role="switch" checked={bubble()} onChange={toggleBubble} />
         </label>
+        <Show
+          when={stuck().length}
+          fallback={<small class="muted">Drag the bubble onto any app and right-click it → “Stick here” to give that app its own bubble.</small>}
+        >
+          <div class="stuck-list">
+            <span class="box-label"><IPin2 size={14} /> Stuck to</span>
+            <For each={stuck()}>
+              {(s) => (
+                <span class="time-chip" title={s.exe}>
+                  {s.name}
+                  <button aria-label={`Unstick from ${s.name}`} onClick={() => invoke("unstick_bubble", { exe: s.exe })}>
+                    <IClose size={10} />
+                  </button>
+                </span>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+      <div class="box">
+        <div class="box-row">
+          <span class="box-label"><IBell size={14} /> Reminders</span>
+          <button class="btn small" onClick={previewReminder}>Preview one</button>
+        </div>
       </div>
       <p class="muted">Tasks and media live in this folder on your PC:</p>
       <code class="path">{dataDir()}</code>

@@ -3,6 +3,7 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { addAttachments, data, dataDir, flush, init, loadError, ready, setToast, showToast, tick, toast } from "./lib/store";
 import { importPaths } from "./lib/media";
+import { startReminders } from "./lib/reminders";
 import { TitleBar } from "./ui/TitleBar";
 import { FolderSetup } from "./ui/FolderSetup";
 import { BoardView, ListView, MiniView } from "./ui/Views";
@@ -84,6 +85,7 @@ export default function App() {
     );
 
     await init();
+    await startReminders();
   });
   onCleanup(() => unlisten.forEach((u) => u()));
 

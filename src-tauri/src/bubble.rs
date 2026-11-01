@@ -1,0 +1,362 @@
+//! The little always-on-top Quicky bubble: where it sits, when it shows, and sticking it to apps.
+//!
+//! There is one bubble window. It lives in one of two places:
+//! - stuck: when the focused app is one the user stuck the bubble to, it sits on that app's window
+//!   (at the spot they chose, following the window around);
+//! - normal: everywhere else, at the spot the user dragged it to (or the bottom-left corner).
+//! It only shows while the main window is off screen and no reminder is up.
+
+use crate::win::{self, AppWindow, Rect};
+use crate::{main_on_screen, read_config, show_main, update_config, StuckApp};
+use serde::Serialize;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
+
+/// Logical px; matches the bubble window in tauri.conf.json (room around the blob to bounce).
+pub const SIZE: f64 = 88.0;
+const MARGIN: f64 = 2.0;
+
+pub static SHOW: AtomicBool = AtomicBool::new(true);
+/// A full-screen reminder is up: keep the bubble out of its way.
+pub static OVERLAY_UP: AtomicBool = AtomicBool::new(false);
+
+struct State {
+    /// The user is dragging the bubble; don't move it, save where it lands.
+    dragging: bool,
+    /// The last app (not Quicky) that had focus.
+    focus: Option<AppWindow>,
+    /// Where we last put the bubble, to skip pointless moves.
+    placed: Option<(i32, i32)>,
+}
+
+static STATE: Mutex<State> = Mutex::new(State { dragging: false, focus: None, placed: None });
+
+fn state() -> std::sync::MutexGuard<'static, State> {
+    STATE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.get_webview_window("bubble")
+}
+
+fn hwnd(app: &AppHandle) -> Option<win::Hwnd> {
+    window(app)?.hwnd().ok().map(|h| h.0 as win::Hwnd)
+}
+
+/// Work area (screen minus taskbar) of the primary monitor, in physical px, plus its scale.
+pub fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {
+    let m = app.primary_monitor().ok()??;
+    let wa = m.work_area();
+    Some((wa.position, wa.size, m.scale_factor()))
+}
+
+fn side(app: &AppHandle) -> i32 {
+    let scale = work_area(app).map_or(1.0, |w| w.2);
+    (SIZE * scale) as i32
+}
+
+/// Spot the user dragged it to, if still on screen, else the bottom-left corner above the taskbar.
+fn normal_spot(app: &AppHandle) -> Option<(i32, i32)> {
+    let (pos, size, scale) = work_area(app)?;
+    let s = (SIZE * scale) as i32;
+    let inside = |(x, y): (i32, i32)| {
+        x >= pos.x && y >= pos.y && x + s <= pos.x + size.width as i32 && y + s <= pos.y + size.height as i32
+    };
+    let corner = (pos.x + (MARGIN * scale) as i32, pos.y + size.height as i32 - ((SIZE + MARGIN) * scale) as i32);
+    Some(read_config(app).bubble_pos.filter(|p| inside(*p)).unwrap_or(corner))
+}
+
+/// Offset from the window corner nearest to the bubble, so it stays put when the window resizes.
+fn anchor(rect: Rect, (x, y): (i32, i32), side: i32) -> (bool, bool, i32, i32) {
+    let (cx, cy) = (x + side / 2, y + side / 2);
+    let right = cx - rect.left > rect.right - cx;
+    let bottom = cy - rect.top > rect.bottom - cy;
+    let dx = x - if right { rect.right } else { rect.left };
+    let dy = y - if bottom { rect.bottom } else { rect.top };
+    (right, bottom, dx, dy)
+}
+
+fn stuck_spot(entry: &StuckApp, rect: Rect) -> (i32, i32) {
+    let x = if entry.right { rect.right } else { rect.left } + entry.dx;
+    let y = if entry.bottom { rect.bottom } else { rect.top } + entry.dy;
+    (x, y)
+}
+
+/// The stuck app currently in focus, with its window frame.
+fn active_stuck(app: &AppHandle) -> Option<(StuckApp, AppWindow, Rect)> {
+    let focus = state().focus.clone()?;
+    let entry = read_config(app).stuck_apps.into_iter().find(|s| s.exe.eq_ignore_ascii_case(&focus.exe))?;
+    if !win::usable(focus.hwnd) {
+        return None;
+    }
+    let rect = win::frame(focus.hwnd)?;
+    Some((entry, focus, rect))
+}
+
+fn target(app: &AppHandle) -> Option<(i32, i32)> {
+    match active_stuck(app) {
+        Some((entry, _, rect)) => Some(stuck_spot(&entry, rect)),
+        None => normal_spot(app),
+    }
+}
+
+fn apply(app: &AppHandle, force: bool) {
+    let (Some(h), Some(spot)) = (hwnd(app), target(app)) else { return };
+    let mut st = state();
+    if force || st.placed != Some(spot) {
+        win::move_to(h, spot.0, spot.1);
+        st.placed = Some(spot);
+    }
+}
+
+/// Sizes the bubble exactly and puts it where it belongs (startup, reset, display changes).
+pub fn place(app: &AppHandle) {
+    if let Some(b) = window(app) {
+        // Windows pads small captioned windows to a minimum width; drop that floor.
+        let _ = b.set_min_size(Some(LogicalSize::new(1.0, 1.0)));
+        let _ = b.set_size(LogicalSize::new(SIZE, SIZE));
+    }
+    apply(app, true);
+}
+
+/// Shown only while the app is off screen, no reminder is up, and the user wants it.
+pub fn sync(app: &AppHandle) {
+    let (Some(b), Some(h)) = (window(app), hwnd(app)) else { return };
+    let want = SHOW.load(Ordering::Relaxed) && !OVERLAY_UP.load(Ordering::Relaxed) && !main_on_screen(app);
+    // Win32 both ways: showing must not steal focus, and Tauri's own show/hide bookkeeping
+    // would get out of step if the two were mixed.
+    if want != b.is_visible().unwrap_or(false) {
+        win::show(h, want);
+    }
+}
+
+/// Saves where a drag ended: on the stuck app if one is in focus, otherwise as the normal spot.
+fn save_drop(app: &AppHandle) {
+    let Some(pos) = window(app).and_then(|b| b.outer_position().ok()) else { return };
+    let spot = (pos.x, pos.y);
+    let side = side(app);
+    match active_stuck(app) {
+        Some((entry, _, rect)) => {
+            let (right, bottom, dx, dy) = anchor(rect, spot, side);
+            let _ = update_config(app, |c| {
+                if let Some(s) = c.stuck_apps.iter_mut().find(|s| s.exe == entry.exe) {
+                    (s.right, s.bottom, s.dx, s.dy) = (right, bottom, dx, dy);
+                }
+            });
+        }
+        None => {
+            let _ = update_config(app, |c| c.bubble_pos = Some(spot));
+        }
+    }
+    state().placed = Some(spot);
+}
+
+/// Background loop: drag tracking, focus tracking, staying on top of the taskbar, following a
+/// stuck app's window, and nudging the main page to check reminders.
+pub fn housekeeping(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut last_tick = Instant::now();
+        loop {
+            // Follow windows smoothly only when something is stuck; idle slowly otherwise.
+            let fast = !read_config(&app).stuck_apps.is_empty();
+            std::thread::sleep(Duration::from_millis(if fast { 100 } else { 400 }));
+
+            if last_tick.elapsed() >= Duration::from_secs(15) {
+                last_tick = Instant::now();
+                let _ = app.emit_to("main", "reminder-tick", ());
+            }
+
+            sync(&app);
+            let Some(h) = hwnd(&app) else { continue };
+
+            let dragging = state().dragging;
+            if dragging {
+                if win::left_button_down() {
+                    continue;
+                }
+                state().dragging = false;
+                save_drop(&app);
+                continue;
+            }
+
+            // Clicking the bubble or the app itself keeps the previous context; anything else
+            // (another app, the desktop) replaces it.
+            if !win::foreground_is_ours() {
+                state().focus = win::foreground_app();
+            }
+
+            if !OVERLAY_UP.load(Ordering::Relaxed) && window(&app).is_some_and(|b| b.is_visible().unwrap_or(false)) {
+                win::keep_topmost(h);
+            }
+            apply(&app, false);
+        }
+    });
+}
+
+/// Opens the main window next to the bubble: above it when there's room, otherwise below,
+/// lined up with the bubble's side of the screen and kept inside the work area.
+fn place_main_near(app: &AppHandle) {
+    let (Some(main), Some(b), Some((wa, size, scale))) = (app.get_webview_window("main"), window(app), work_area(app))
+    else {
+        return;
+    };
+    let (Ok(m), Ok(bp)) = (main.outer_size(), b.outer_position()) else { return };
+    let s = (SIZE * scale) as i32;
+    let gap = (8.0 * scale) as i32;
+    let (mw, mh) = (m.width as i32, m.height as i32);
+    let (left, top) = (wa.x, wa.y);
+    let (right, bottom) = (wa.x + size.width as i32, wa.y + size.height as i32);
+
+    let on_right = bp.x + s / 2 > (left + right) / 2;
+    let x = if on_right { bp.x + s - mw } else { bp.x };
+    let y = if bp.y - gap - mh >= top { bp.y - gap - mh } else { bp.y + s + gap };
+    let _ = main.set_position(PhysicalPosition::new(
+        x.clamp(left, (right - mw).max(left)),
+        y.clamp(top, (bottom - mh).max(top)),
+    ));
+}
+
+fn center(app: &AppHandle) -> Option<(i32, i32)> {
+    let p = window(app)?.outer_position().ok()?;
+    let s = side(app);
+    Some((p.x + s / 2, p.y + s / 2))
+}
+
+fn pretty_name(exe: &str) -> String {
+    let stem = Path::new(exe).file_stem().and_then(|s| s.to_str()).unwrap_or("app");
+    let mut c = stem.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + &c.as_str().to_lowercase()).unwrap_or_default()
+}
+
+// ---- commands -----------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_show_bubble(app: AppHandle) -> bool {
+    read_config(&app).show_bubble
+}
+
+#[tauri::command]
+pub fn set_show_bubble(app: AppHandle, show: bool) -> Result<(), String> {
+    update_config(&app, |c| c.show_bubble = show)?;
+    SHOW.store(show, Ordering::Relaxed);
+    let _ = app.emit("bubble-pref", show);
+    sync(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_bubble_locked(app: AppHandle) -> bool {
+    read_config(&app).bubble_locked
+}
+
+#[tauri::command]
+pub fn set_bubble_locked(app: AppHandle, locked: bool) -> Result<(), String> {
+    update_config(&app, |c| c.bubble_locked = locked)
+}
+
+/// Puts the bubble back in the bottom-left corner.
+#[tauri::command]
+pub fn reset_bubble(app: AppHandle) -> Result<(), String> {
+    update_config(&app, |c| c.bubble_pos = None)?;
+    place(&app);
+    Ok(())
+}
+
+/// Bubble click: open the app right next to wherever the bubble is.
+#[tauri::command]
+pub fn open_from_bubble(app: AppHandle) {
+    place_main_near(&app);
+    show_main(&app);
+}
+
+/// Called by the bubble right before it starts a native drag.
+#[tauri::command]
+pub fn bubble_drag_start() {
+    state().dragging = true;
+}
+
+#[derive(Serialize)]
+pub struct BubbleContext {
+    exe: String,
+    name: String,
+    stuck: bool,
+}
+
+/// Which app the bubble's menu should offer to stick to (or unstick from).
+#[tauri::command]
+pub fn bubble_context(app: AppHandle) -> Option<BubbleContext> {
+    if let Some((entry, _, _)) = active_stuck(&app) {
+        return Some(BubbleContext { exe: entry.exe, name: entry.name, stuck: true });
+    }
+    let (x, y) = center(&app)?;
+    let under = win::app_under(x, y)?;
+    let stuck = read_config(&app).stuck_apps.iter().any(|s| s.exe.eq_ignore_ascii_case(&under.exe));
+    Some(BubbleContext { name: pretty_name(&under.exe), exe: under.exe, stuck })
+}
+
+/// Sticks the bubble, right where it is, to the app window underneath it.
+#[tauri::command]
+pub fn stick_bubble(app: AppHandle) -> Result<String, String> {
+    let (x, y) = center(&app).ok_or("Bubble not found")?;
+    let under = win::app_under(x, y).ok_or("Drag the bubble onto an app window first")?;
+    let rect = win::frame(under.hwnd).ok_or("Couldn't read that window")?;
+    let pos = window(&app).and_then(|b| b.outer_position().ok()).ok_or("Bubble not found")?;
+    let (right, bottom, dx, dy) = anchor(rect, (pos.x, pos.y), side(&app));
+    let name = pretty_name(&under.exe);
+    let entry = StuckApp { exe: under.exe.clone(), name: name.clone(), right, bottom, dx, dy };
+    update_config(&app, |c| {
+        c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&entry.exe));
+        c.stuck_apps.push(entry);
+    })?;
+    state().focus = Some(under);
+    let _ = app.emit("stuck-apps", ());
+    Ok(name)
+}
+
+#[tauri::command]
+pub fn unstick_bubble(app: AppHandle, exe: String) -> Result<(), String> {
+    update_config(&app, |c| c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&exe)))?;
+    let _ = app.emit("stuck-apps", ());
+    apply(&app, true);
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct StuckInfo {
+    exe: String,
+    name: String,
+}
+
+#[tauri::command]
+pub fn stuck_apps(app: AppHandle) -> Vec<StuckInfo> {
+    read_config(&app).stuck_apps.into_iter().map(|s| StuckInfo { exe: s.exe, name: s.name }).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anchors_to_the_nearest_corner_and_back() {
+        let rect = Rect { left: 100, top: 100, right: 900, bottom: 700 };
+        for spot in [(120, 130), (800, 120), (110, 600), (790, 610)] {
+            let (right, bottom, dx, dy) = anchor(rect, spot, 88);
+            let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy };
+            assert_eq!(stuck_spot(&entry, rect), spot);
+        }
+        // Near the bottom-right: follows that corner when the window grows.
+        let (right, bottom, dx, dy) = anchor(rect, (790, 610), 88);
+        let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy };
+        assert_eq!(stuck_spot(&entry, Rect { right: 1000, bottom: 800, ..rect }), (890, 710));
+    }
+
+    #[test]
+    fn app_names_read_nicely() {
+        assert_eq!(pretty_name(r"C:\Program Files\Google\Chrome\chrome.exe"), "Chrome");
+        assert_eq!(pretty_name(r"C:\x\WINWORD.EXE"), "Winword");
+    }
+}

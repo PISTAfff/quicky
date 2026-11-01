@@ -26,7 +26,8 @@ button.addEventListener("pointermove", (e) => {
   if (Math.hypot(e.screenX - press.x, e.screenY - press.y) > 4) {
     press = null;
     button.classList.remove("pressed");
-    void win.startDragging();
+    // Tell Rust first: it pauses repositioning and saves the spot when the button comes up.
+    void invoke("bubble_drag_start").then(() => win.startDragging());
   }
 });
 button.addEventListener("pointerup", () => {
@@ -44,10 +45,22 @@ button.addEventListener("keydown", (e) => {
 button.addEventListener("contextmenu", async (e) => {
   e.preventDefault();
   press = null;
+  // Offer to stick the bubble to the app window it's sitting on (or unstick it).
+  const ctx = await invoke<{ exe: string; name: string; stuck: boolean } | null>("bubble_context").catch(() => null);
+  const stickItems = ctx
+    ? [
+        await MenuItem.new({
+          text: ctx.stuck ? `Unstick from ${ctx.name}` : `Stick here on ${ctx.name}`,
+          action: () =>
+            void (ctx.stuck ? invoke("unstick_bubble", { exe: ctx.exe }) : invoke("stick_bubble")).catch(() => {}),
+        }),
+      ]
+    : [await MenuItem.new({ text: "Drag me onto an app to stick here", enabled: false })];
   const menu = await Menu.new({
     items: [
       await MenuItem.new({ text: "Open Quicky", action: () => void invoke("open_from_bubble") }),
       await PredefinedMenuItem.new({ item: "Separator" }),
+      ...stickItems,
       await CheckMenuItem.new({
         text: "Lock in place",
         checked: locked,

@@ -1,0 +1,75 @@
+@font-face {
+  font-family: "Fredoka";
+  font-weight: 300 700;
+  font-display: block;
+  src: url("../node_modules/@fontsource-variable/fredoka/files/fredoka-latin-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Nunito";
+  font-weight: 200 1000;
+  font-display: block;
+  src: url("../node_modules/@fontsource-variable/nunito/files/nunito-latin-wght-normal.woff2") format("woff2");
+}
+
+:root { --accent: #6d4cff; --on-accent: #fff; --ink: #2b2540; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+body { font: 700 16px/1.35 "Nunito", "Segoe UI", sans-serif; color: var(--on-accent); }
+
+/* The flood is Quicky's colour pouring out of the bubble until it covers everything. */
+.flood {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  background:
+    radial-gradient(circle at var(--ox, 50px) var(--oy, 90%), color-mix(in srgb, var(--accent) 80%, white) 0, transparent 40%),
+    var(--accent);
+  clip-path: circle(0 at var(--ox, 50px) var(--oy, 90%));
+}
+.flood.in { animation: grow 0.6s cubic-bezier(0.3, 0.9, 0.3, 1) forwards; }
+.flood.out { clip-path: circle(150vmax at var(--ox) var(--oy)); animation: shrink 0.32s ease-in forwards; }
+@keyframes grow { to { clip-path: circle(150vmax at var(--ox, 50px) var(--oy, 90%)); } }
+@keyframes shrink { to { clip-path: circle(0 at var(--ox, 50px) var(--oy, 90%)); } }
+
+.stage { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 24px; max-width: 760px; }
+.flood.in .stage > * { animation: rise 0.5s 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+.flood.in .stage > *:nth-child(2) { animation-delay: 0.32s; }
+.flood.in .stage > *:nth-child(3) { animation-delay: 0.38s; }
+.flood.in .stage > *:nth-child(n + 4) { animation-delay: 0.45s; }
+@keyframes rise { from { opacity: 0; transform: translateY(24px) scale(0.96); } }
+
+.blob-wrap { width: 180px; height: 162px; animation: bounce 1.6s ease-in-out infinite; }
+.blob { width: 100%; height: 100%; overflow: visible; }
+.blob .body { fill: color-mix(in srgb, var(--accent) 70%, white); }
+.blob .eyes { transform-box: fill-box; transform-origin: center; animation: look 4s ease-in-out infinite; }
+@keyframes bounce { 0%, 100% { transform: translateY(0) scale(1, 1); } 45% { transform: translateY(-14px) scale(0.97, 1.03); } 60% { transform: translateY(0) scale(1.05, 0.95); } }
+@keyframes look { 0%, 40%, 100% { transform: translateX(0) scaleY(1); } 45% { transform: translateX(0) scaleY(0.1); } 50% { transform: translateX(0) scaleY(1); } 70% { transform: translateX(1.5px); } 85% { transform: translateX(-1.5px); } }
+
+.kicker { margin: 0; font-size: 18px; font-weight: 800; opacity: 0.85; letter-spacing: 0.3px; }
+h1 { margin: 0; font: 700 clamp(36px, 6vw, 72px)/1.05 "Fredoka", sans-serif; letter-spacing: -0.5px; overflow-wrap: anywhere; }
+.note { margin: 0; max-width: 560px; font-size: 18px; font-weight: 600; opacity: 0.9; white-space: pre-line; }
+.note[hidden] { display: none; }
+
+.actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+.act {
+  height: 60px; padding: 0 22px; border-radius: 18px; border: 3px solid var(--ink); background: #fff; color: var(--ink);
+  font: 800 19px "Nunito", sans-serif; display: inline-flex; align-items: center; gap: 12px; cursor: pointer;
+  box-shadow: 4px 4px 0 var(--ink); transition: transform 0.08s, box-shadow 0.08s;
+}
+.act:hover { transform: translateY(-2px); }
+.act:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
+.act.primary { background: var(--ink); color: #fff; }
+.act.ghost { background: transparent; color: var(--on-accent); border-color: color-mix(in srgb, var(--on-accent) 60%, transparent); box-shadow: none; }
+.act:focus-visible, .snooze button:focus-visible { outline: 3px solid var(--on-accent); outline-offset: 3px; }
+
+kbd {
+  font: 800 12px "Nunito", sans-serif; padding: 2px 7px; border-radius: 7px; border: 2px solid currentColor; opacity: 0.6;
+}
+.snooze { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; font-weight: 800; }
+.snooze span { opacity: 0.85; }
+.snooze button {
+  height: 40px; padding: 0 12px; border-radius: 12px; border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  background: color-mix(in srgb, var(--on-accent) 16%, transparent); color: var(--on-accent); font: 800 15px "Nunito", sans-serif;
+}
+.snooze button:hover, .snooze button.default { background: color-mix(in srgb, var(--on-accent) 26%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}

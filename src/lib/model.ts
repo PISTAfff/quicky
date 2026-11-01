@@ -21,6 +21,12 @@ export interface Task {
   note?: string;
   attachments: Attachment[];
   created: number;
+  /** "HH:MM" times to be reminded at, every day, until the task is done. */
+  remind?: string[];
+  /** Snoozed: remind again at this time (ms) instead. */
+  snoozeUntil?: number;
+  /** The last reminder already shown, so each one shows once. */
+  lastFired?: string;
 }
 
 export interface Repeat {
@@ -29,6 +35,8 @@ export interface Repeat {
   days: number[]; // 0 = Sunday … 6 = Saturday
   lastSpawned?: string;
   paused?: boolean;
+  /** Reminder times copied onto each new copy of the task. */
+  remind?: string[];
 }
 
 export interface Data {
@@ -92,10 +100,52 @@ export function rollover(data: Data, today: string): Data {
         repeatId: r.id,
         attachments: [],
         created: Date.now(),
+        ...(r.remind?.length ? { remind: [...r.remind] } : {}),
       });
     }
     return { ...r, lastSpawned: today };
   });
 
   return changed ? { ...data, tasks, repeats } : data;
+}
+
+/** A missed reminder still shows if the app was closed, but not if it's more than this late. */
+export const CATCH_UP_MS = 6 * 60 * 60 * 1000;
+
+const atTime = (now: Date, hm: string) => {
+  const [h, m] = hm.split(":").map(Number);
+  const d = new Date(now);
+  d.setHours(h, m, 0, 0);
+  return d.getTime();
+};
+
+/**
+ * The reminder a task is due to show right now, as a key to record in `lastFired`, or null.
+ * Only tasks still "to do" remind (picking Doing or Done answers it). A snooze replaces the
+ * day's times until it goes off; otherwise the latest time already passed today shows once.
+ */
+export function dueReminder(t: Task, now: Date): string | null {
+  if (t.status !== "todo") return null;
+  if (t.snoozeUntil) return now.getTime() >= t.snoozeUntil ? `snooze ${t.snoozeUntil}` : null;
+  let best = -1;
+  let key: string | null = null;
+  for (const hm of t.remind ?? []) {
+    const at = atTime(now, hm);
+    if (at <= now.getTime() && now.getTime() - at < CATCH_UP_MS && at > best) {
+      best = at;
+      key = `${dayKey(now)} ${hm}`;
+    }
+  }
+  return key && key !== t.lastFired ? key : null;
+}
+
+/** The next reminder time still to come today (for the little bell on cards). */
+export function nextReminder(t: Task, now: Date): string | null {
+  if (t.status !== "todo") return null;
+  if (t.snoozeUntil && t.snoozeUntil > now.getTime()) {
+    const d = new Date(t.snoozeUntil);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+  const upcoming = (t.remind ?? []).filter((hm) => atTime(now, hm) > now.getTime()).sort();
+  return upcoming[0] ?? null;
 }
