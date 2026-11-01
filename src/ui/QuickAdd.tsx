@@ -10,8 +10,8 @@ import { RecStrip } from "./LiveWave";
 
 const REPEATS = [
   { label: "", days: undefined },
-  { label: "Daily", days: EVERY_DAY },
-  { label: "Weekdays", days: [1, 2, 3, 4, 5] },
+  { label: "Every day", days: EVERY_DAY },
+  { label: "Mon–Fri", days: [1, 2, 3, 4, 5] },
 ] as const;
 
 export function QuickAdd(p: { compact?: boolean }) {
@@ -103,7 +103,7 @@ export function QuickAdd(p: { compact?: boolean }) {
               class="ib"
               classList={{ on: repeat() > 0 }}
               aria-label={repeat() ? `Repeats ${REPEATS[repeat()].label}` : "Make recurring"}
-              title="Repeat: off / daily / weekdays"
+              title="Repeat: off / every day / Mon–Fri (pick exact days in the task)"
               onClick={() => setRepeat((repeat() + 1) % REPEATS.length)}
             >
               <IRepeat size={16} />

@@ -387,8 +387,8 @@ fn set_bubble_visible(w: &tauri::WebviewWindow, visible: bool) {
     let _ = if visible { w.show() } else { w.hide() };
 }
 
-const BUBBLE: f64 = 72.0; // logical px, matches the bubble window size in tauri.conf.json
-const MARGIN: f64 = 12.0;
+const BUBBLE: f64 = 88.0; // logical px, matches the bubble window size in tauri.conf.json (room to bounce)
+const MARGIN: f64 = 2.0; // the blob already sits ~15 px inside its window
 
 /// Work area (screen minus taskbar) of the primary monitor, in physical px, plus its scale.
 fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {

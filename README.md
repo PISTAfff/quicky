@@ -28,7 +28,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 | **Esc** | Close a panel |
 
 - **Carry-over:** anything not done moves to today, tinted peach with a "Carried · 2nd day" label.
-- **Repeats:** the repeat button in the add box cycles *off / daily / weekdays*. Pick exact weekdays, pause, or stop a repeat from the task or the Repeats list. Each repeat appears once per matching day and never duplicates.
+- **Repeats:** the repeat button in the add box cycles *off / every day / Mon–Fri*. Pick exact weekdays, pause, or stop a repeat from the task or the Repeats list. Each repeat appears once per matching day and never duplicates.
 - **Done drawer:** finished tasks hide in the drawer, grouped by day. Restore any of them to today. Ticking a task off shows a quick Undo.
 - **Media:** attach files with the paperclip, record a voice note with the mic (a live wave shows your voice while it records; ✕ discards, ■ saves), paste images into the add box, or drop files anywhere on the window. If a task is open, dropped files attach to it.
 - **Any size:** drag the window to any shape. It becomes a mini "next up" panel when small, a list by default, and a board with To do / Doing / Done columns when wide (drag cards between columns). The pin button keeps it on top.
@@ -72,7 +72,7 @@ The installer lands in `src-tauri/target/release/bundle/nsis/`.
 **Releasing:** bump `version` in `src-tauri/tauri.conf.json`, then push a tag. GitHub Actions builds the installer and publishes the release.
 
 ```bash
-git tag v0.1.6 && git push origin v0.1.6
+git tag v0.1.7 && git push origin v0.1.7
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + WebView2) and [SolidJS](https://www.solidjs.com).
