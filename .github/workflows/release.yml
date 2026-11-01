@@ -37,8 +37,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.run_number) }}
-          releaseName: Quicky ${{ github.ref_type == 'tag' && github.ref_name || format('build {0}', github.run_number) }}
+          tagName: v__VERSION__
+          releaseName: Quicky v__VERSION__
           releaseBody: |
             Download **Quicky_*_x64-setup.exe** below and run it. No admin rights needed.
             Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**.
