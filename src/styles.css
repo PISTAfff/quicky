@@ -178,8 +178,10 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .chip.repeat { color: var(--accent-ink); background: var(--accent-soft); }
 .more { font-size: 12px; font-weight: 800; }
 .drag-source .card { opacity: 0.3; transform: none; }
-.drag-ghost {
-  position: fixed; z-index: 60; pointer-events: none; margin: 0; transform-origin: 30px 24px;
+/* .card.drag-ghost: must out-rank plain .card rules (position: relative for the quick buttons,
+   and the cardin entry animation, which would restart on the clone at opacity 0). */
+.card.drag-ghost {
+  position: fixed; z-index: 60; pointer-events: none; margin: 0; transform-origin: 30px 24px; animation: none;
   box-shadow: 8px 10px 0 rgba(0, 0, 0, 0.18); transition: rotate 0.12s ease; rotate: 3deg; scale: 1.03;
 }
 
@@ -464,7 +466,7 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .space-check { opacity: 0; color: var(--accent-ink); flex-shrink: 0; }
 .space-item.on .space-check { opacity: 1; }
 /* ---- quick status buttons on cards ---- */
-.card { position: relative; }
+.card:not(.drag-ghost) { position: relative; }
 .quick-acts { display: flex; gap: 4px; flex-shrink: 0; opacity: 0; transform: translateX(4px); transition: opacity 0.15s, transform 0.15s; }
 .card:hover .quick-acts, .card:focus-within .quick-acts, [data-mode="mini"] .quick-acts { opacity: 1; transform: none; }
 @media (max-width: 420px) { .quick-acts { opacity: 1; transform: none; } }
