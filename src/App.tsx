@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { addAttachments, data, dataDir, flush, init, loadError, ready, showToast, tick, toast } from "./lib/store";
+import { addAttachments, data, dataDir, flush, init, loadError, ready, setToast, showToast, tick, toast } from "./lib/store";
 import { importPaths } from "./lib/media";
 import { TitleBar } from "./ui/TitleBar";
 import { FolderSetup } from "./ui/FolderSetup";
@@ -109,7 +109,16 @@ export default function App() {
           <div class="toast" role="status">
             <span>{t().text}</span>
             <Show when={t().action}>
-              {(a) => <button onClick={() => a().run()}>{a().label}</button>}
+              {(a) => (
+                <button
+                  onClick={() => {
+                    setToast(null);
+                    a().run();
+                  }}
+                >
+                  {a().label}
+                </button>
+              )}
             </Show>
           </div>
         )}

@@ -369,22 +369,22 @@ fn sync_bubble(app: &AppHandle) {
     let Some(b) = app.get_webview_window("bubble") else { return };
     let want = SHOW_BUBBLE.load(Ordering::Relaxed) && !main_on_screen(app);
     let shown = b.is_visible().unwrap_or(false);
-    if want && !shown {
-        show_without_focus(&b);
-    } else if !want && shown {
-        let _ = b.hide();
+    if want != shown {
+        set_bubble_visible(&b, want);
     }
 }
 
-/// Showing the bubble must never steal focus from whatever the user is typing in.
-fn show_without_focus(w: &tauri::WebviewWindow) {
+/// Shows the bubble without stealing focus from whatever the user is typing in. Both directions go
+/// through Win32 directly: Tauri tracks visibility itself, so mixing the two would leave its
+/// `hide()` thinking the window is already hidden.
+fn set_bubble_visible(w: &tauri::WebviewWindow, visible: bool) {
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
-        unsafe { ShowWindow(hwnd.0 as _, SW_SHOWNOACTIVATE) };
+        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE};
+        unsafe { ShowWindow(hwnd.0 as _, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE }) };
         return;
     }
-    let _ = w.show();
+    let _ = if visible { w.show() } else { w.hide() };
 }
 
 const BUBBLE: f64 = 72.0; // logical px, matches the bubble window size in tauri.conf.json
