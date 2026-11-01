@@ -16,14 +16,63 @@ let locked = false;
 invoke<boolean>("get_bubble_locked").then((v) => (locked = v)).catch(() => {});
 
 let press: { x: number; y: number } | null = null;
+
+// Locked in place: tugging doesn't move it, it squishes towards your pointer, gets angrier the
+// further you pull, and springs back with a recoil when you let go.
+const squish = document.querySelector(".squish") as HTMLElement;
+let tug: { x: number; y: number; transform: string } | null = null;
+
+function stretch(dx: number, dy: number) {
+  const dist = Math.hypot(dx, dy);
+  const k = Math.min(dist, 160) / 160; // how hard it's being pulled, 0..1
+  const ang = Math.atan2(dy, dx);
+  const tx = Math.cos(ang) * k * 7;
+  const ty = Math.sin(ang) * k * 7;
+  const transform = `translate(${tx}px, ${ty}px) rotate(${ang}rad) scale(${1 + k * 0.2}, ${1 - k * 0.18}) rotate(${-ang}rad)`;
+  squish.style.transform = transform;
+  button.style.setProperty("--anger", String(Math.min(1, dist / 140)));
+  button.classList.toggle("furious", dist > 110);
+  tug = { x: tx, y: ty, transform };
+}
+
+function recoil() {
+  if (!tug) return;
+  const { x, y, transform } = tug;
+  tug = null;
+  squish.style.transform = "";
+  button.classList.remove("furious");
+  button.style.setProperty("--anger", "0");
+  // Snap back past the middle, wobble, settle.
+  squish.animate(
+    [
+      { transform },
+      { transform: `translate(${-x * 0.7}px, ${-y * 0.7}px) scale(0.84, 1.16)`, offset: 0.3 },
+      { transform: `translate(${x * 0.3}px, ${y * 0.3}px) scale(1.08, 0.93)`, offset: 0.55 },
+      { transform: `translate(${-x * 0.1}px, ${-y * 0.1}px) scale(0.97, 1.03)`, offset: 0.8 },
+      { transform: "none" },
+    ],
+    { duration: 650, easing: "ease-out" },
+  );
+}
+
 button.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   press = { x: e.screenX, y: e.screenY };
   button.classList.add("pressed");
+  if (locked) button.setPointerCapture(e.pointerId); // keep tugging even outside the little window
 });
 button.addEventListener("pointermove", (e) => {
-  if (!press || locked) return;
-  if (Math.hypot(e.screenX - press.x, e.screenY - press.y) > 4) {
+  if (!press) return;
+  const dx = e.screenX - press.x;
+  const dy = e.screenY - press.y;
+  if (locked) {
+    if (tug || Math.hypot(dx, dy) > 4) {
+      button.classList.remove("pressed");
+      stretch(dx, dy);
+    }
+    return;
+  }
+  if (Math.hypot(dx, dy) > 4) {
     press = null;
     button.classList.remove("pressed");
     // Tell Rust first: it pauses repositioning and saves the spot when the button comes up.
@@ -34,9 +83,14 @@ button.addEventListener("pointerup", () => {
   button.classList.remove("pressed");
   if (!press) return;
   press = null;
+  if (tug) return recoil();
   void invoke("open_from_bubble");
 });
-button.addEventListener("pointerleave", () => button.classList.remove("pressed"));
+button.addEventListener("pointercancel", () => {
+  press = null;
+  recoil();
+});
+button.addEventListener("pointerleave", () => !tug && button.classList.remove("pressed"));
 button.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") void invoke("open_from_bubble");
 });

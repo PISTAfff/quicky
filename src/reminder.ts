@@ -4,7 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { THEME_KEY, onAccent, resolveAccent } from "./lib/theme-colors";
 import "./reminder.css";
 
-interface Payload { id: string; title: string; note: string; time: string; origin: { x: number; y: number } }
+interface Rect { x: number; y: number; w: number; h: number }
+interface Payload { id: string; title: string; note: string; time: string; origin: { x: number; y: number }; focus?: Rect }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const flood = $("flood");
@@ -32,6 +33,11 @@ function render(p: Payload) {
   $("time").textContent = p.time === "Snoozed reminder" ? "Back again!" : `It's ${p.time} — remember this?`;
   flood.style.setProperty("--ox", `${p.origin.x}px`);
   flood.style.setProperty("--oy", `${p.origin.y}px`);
+  if (p.focus) {
+    Object.assign($("area").style, {
+      inset: "auto", left: `${p.focus.x}px`, top: `${p.focus.y}px`, width: `${p.focus.w}px`, height: `${p.focus.h}px`,
+    });
+  }
 }
 
 function answer(action: "doing" | "done" | "snooze" | "open", minutes?: number) {

@@ -53,20 +53,37 @@ pub fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize
     Some((wa.position, wa.size, m.scale_factor()))
 }
 
+/// Work area of whichever monitor contains a point (any monitor, not just the main one).
+fn work_area_at(app: &AppHandle, x: i32, y: i32) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {
+    app.available_monitors().ok()?.into_iter().find_map(|m| {
+        let wa = m.work_area();
+        let (p, s) = (wa.position, wa.size);
+        let inside = x >= p.x && y >= p.y && x < p.x + s.width as i32 && y < p.y + s.height as i32;
+        inside.then(|| (p, s, m.scale_factor()))
+    })
+}
+
 fn side(app: &AppHandle) -> i32 {
-    let scale = work_area(app).map_or(1.0, |w| w.2);
+    let scale = window(app)
+        .and_then(|b| b.scale_factor().ok())
+        .or_else(|| work_area(app).map(|w| w.2))
+        .unwrap_or(1.0);
     (SIZE * scale) as i32
 }
 
-/// Spot the user dragged it to, if still on screen, else the bottom-left corner above the taskbar.
+/// Spot the user dragged it to, nudged fully onto whichever screen it's mostly on. Falls back to
+/// the main screen's bottom-left corner only if that screen is gone.
 fn normal_spot(app: &AppHandle) -> Option<(i32, i32)> {
+    if let Some((x, y)) = read_config(app).bubble_pos {
+        let half = (SIZE / 2.0) as i32;
+        if let Some((pos, size, scale)) = work_area_at(app, x + half, y + half) {
+            let s = (SIZE * scale) as i32;
+            let (right, bottom) = (pos.x + size.width as i32 - s, pos.y + size.height as i32 - s);
+            return Some((x.clamp(pos.x, right.max(pos.x)), y.clamp(pos.y, bottom.max(pos.y))));
+        }
+    }
     let (pos, size, scale) = work_area(app)?;
-    let s = (SIZE * scale) as i32;
-    let inside = |(x, y): (i32, i32)| {
-        x >= pos.x && y >= pos.y && x + s <= pos.x + size.width as i32 && y + s <= pos.y + size.height as i32
-    };
-    let corner = (pos.x + (MARGIN * scale) as i32, pos.y + size.height as i32 - ((SIZE + MARGIN) * scale) as i32);
-    Some(read_config(app).bubble_pos.filter(|p| inside(*p)).unwrap_or(corner))
+    Some((pos.x + (MARGIN * scale) as i32, pos.y + size.height as i32 - ((SIZE + MARGIN) * scale) as i32))
 }
 
 /// Offset from the window corner nearest to the bubble, so it stays put when the window resizes.
@@ -104,6 +121,10 @@ fn target(app: &AppHandle) -> Option<(i32, i32)> {
 }
 
 fn apply(app: &AppHandle, force: bool) {
+    // Never yank it out from under the user's pointer (e.g. while a drag crosses screens).
+    if state().dragging {
+        return;
+    }
     let (Some(h), Some(spot)) = (hwnd(app), target(app)) else { return };
     let mut st = state();
     if force || st.placed != Some(spot) {
@@ -200,11 +221,13 @@ pub fn housekeeping(app: &AppHandle) {
 /// Opens the main window next to the bubble: above it when there's room, otherwise below,
 /// lined up with the bubble's side of the screen and kept inside the work area.
 fn place_main_near(app: &AppHandle) {
-    let (Some(main), Some(b), Some((wa, size, scale))) = (app.get_webview_window("main"), window(app), work_area(app))
+    let (Some(main), Some(b)) = (app.get_webview_window("main"), window(app)) else { return };
+    let (Ok(m), Ok(bp)) = (main.outer_size(), b.outer_position()) else { return };
+    // The screen the bubble is on, so the app opens next to it even on a second monitor.
+    let Some((wa, size, scale)) = work_area_at(app, bp.x + side(app) / 2, bp.y + side(app) / 2).or_else(|| work_area(app))
     else {
         return;
     };
-    let (Ok(m), Ok(bp)) = (main.outer_size(), b.outer_position()) else { return };
     let s = (SIZE * scale) as i32;
     let gap = (8.0 * scale) as i32;
     let (mw, mh) = (m.width as i32, m.height as i32);
