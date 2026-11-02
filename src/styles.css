@@ -24,8 +24,12 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .content { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 
 .titlebar { height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding-left: 12px; }
-.brand { display: flex; align-items: center; gap: 8px; font: 600 14px "Fredoka", sans-serif; }
-.winbtns { display: flex; height: 100%; }
+/* The window buttons always keep their room; the list's name shrinks (then the word "Quicky" goes,
+   in the narrow layout) when the window is narrow. */
+.brand { min-width: 0; display: flex; align-items: center; gap: 8px; font: 600 14px "Fredoka", sans-serif; }
+.brand > svg { flex-shrink: 0; }
+[data-mode="mini"] .brand.has-picker > span { display: none; }
+.winbtns { flex-shrink: 0; display: flex; height: 100%; }
 .wb { width: 40px; height: 100%; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; }
 .wb:hover { background: var(--soft); color: var(--ink); }
 .wb.on { color: var(--accent); }
@@ -149,7 +153,9 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .empty p { margin: 0; max-width: 260px; }
 
 /* ---- mini ---- */
-.view.mini .scroll { padding: 10px; gap: 8px; }
+/* Fills the window with as many cards as fit; the ones past the edge are unseen and counted in the footer. */
+.view.mini .scroll { position: relative; overflow: hidden; padding: 10px; gap: 8px; }
+.view.mini .card.unseen { visibility: hidden; }
 .view.mini .card { padding: 7px 10px; transform: none; }
 .view.mini .card-title { font-size: 14px; }
 .view.mini .card-meta { display: none; }
@@ -367,9 +373,9 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .card-title:hover { color: var(--accent-ink); }
 .card:hover { box-shadow: 3px 3px 0 color-mix(in srgb, var(--edge) 35%, transparent); }
 /* ---- task space picker (title bar) ---- */
-.space-picker { position: relative; margin-left: 4px; }
+.space-picker { position: relative; min-width: 0; margin-left: 4px; }
 .space-pill {
-  height: 26px; max-width: 170px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px 0 12px;
+  height: 26px; max-width: min(170px, 100%); display: inline-flex; align-items: center; gap: 6px; padding: 0 10px 0 12px;
   border-radius: 13px; border: 2px solid transparent; background: var(--accent-soft); color: var(--accent-ink);
   font: 800 12px "Nunito", sans-serif;
 }
@@ -397,7 +403,7 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .space-item:first-child .space-icon { background: var(--soft); }
 .space-icon.img { background: transparent; }
 .space-icon img { width: 20px; height: 20px; object-fit: contain; display: block; }
-.space-pill .space-icon { width: 18px; height: 18px; border-radius: 5px; font-size: 10px; margin-left: -6px; }
+.space-pill .space-icon { flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px; font-size: 10px; margin-left: -6px; }
 .space-pill .space-icon img { width: 16px; height: 16px; }
 .space-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .space-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--solid); color: var(--on-solid); font-size: 11px; display: grid; place-items: center; }
@@ -529,7 +535,7 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 /* ---- first-run tour ---- */
 .tour-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--ink) 35%, transparent); animation: fade 0.2s ease; }
 .tour {
-  width: min(340px, 100%); background: var(--bg); border: 2px solid var(--edge); border-radius: 20px; box-shadow: 5px 5px 0 var(--edge);
+  width: min(340px, 100%); max-height: 100%; overflow-y: auto; background: var(--bg); border: 2px solid var(--edge); border-radius: 20px; box-shadow: 5px 5px 0 var(--edge);
   padding: 18px 20px 14px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px;
   animation: tourin 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.4);
 }

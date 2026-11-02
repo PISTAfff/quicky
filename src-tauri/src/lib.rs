@@ -29,6 +29,11 @@ use tauri_plugin_opener::OpenerExt;
 const DATA_FILE: &str = "quicky.json";
 const MEDIA_DIR: &str = "media";
 const STARTUP_ARG: &str = "--startup";
+/// The main window's smallest size (logical px), the same as `minWidth` / `minHeight` in
+/// `tauri.conf.json`: Tauri holds the user's own resizing to it (on Windows counting the invisible
+/// resize borders), and Quicky's own placing (inside an app, or squeezed by an app's edges) keeps
+/// to it too.
+pub const MAIN_MIN: (f64, f64) = (300.0, 260.0);
 
 /// An app the bubble is stuck to: shown on that app's window (offset from its nearest corner)
 /// whenever the app has focus.
@@ -499,8 +504,14 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
                     if shortcut == &quick_key && event.state() == ShortcutState::Pressed {
-                        // In an app with a mini Quicky: that app's tasks; anywhere else: the general list.
-                        bubble::open_for_context(app, false);
+                        // In Quicky itself: add to the list it shows. In an app with a mini Quicky:
+                        // that app's tasks (the app in front right now, not a moment ago); anywhere
+                        // else: the general list.
+                        let in_quicky = app.get_webview_window("main").is_some_and(|m| m.is_focused().unwrap_or(false));
+                        if !in_quicky {
+                            bubble::note_focus();
+                            bubble::open_for_context(app, false);
+                        }
                         let _ = app.emit("quick-add", ());
                     }
                 })
@@ -575,7 +586,11 @@ pub fn run() {
                 WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "reminder" | "fx" | "balloon" | "menu") => {
                     api.prevent_close();
                     if window.label() == "bubble" {
-                        let _ = bubble::set_show_bubble(app.clone(), false);
+                        // Only when the user closed it (Alt+F4 on it, so it's in front): closing the
+                        // whole app from outside (taskkill, an installer) asks every window.
+                        if window.is_focused().unwrap_or(false) {
+                            let _ = bubble::set_show_bubble(app.clone(), false);
+                        }
                     } else {
                         let _ = window.emit("flush", ());
                         bubble::remember_app_window(app);
@@ -667,6 +682,13 @@ mod tests {
             assert_eq!(at(x, y), vec![0xd6, 0x33, 0x6c, 255], "body pixel takes the accent");
             assert_eq!(at(0, 0)[3], 0, "corners stay transparent");
         }
+    }
+
+    #[test]
+    fn main_min_size_matches_the_config() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main = conf["app"]["windows"].as_array().unwrap().iter().find(|w| w["label"] == "main").unwrap();
+        assert_eq!((main["minWidth"].as_f64(), main["minHeight"].as_f64()), (Some(MAIN_MIN.0), Some(MAIN_MIN.1)));
     }
 
     #[test]

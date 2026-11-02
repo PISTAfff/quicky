@@ -11,7 +11,7 @@ use crate::balloon;
 use crate::fx::{self, Kind};
 use crate::menu;
 use crate::win::{self, AppWindow, Rect};
-use crate::{main_on_screen, read_config, show_main, update_config, StuckApp};
+use crate::{main_on_screen, read_config, show_main, update_config, StuckApp, MAIN_MIN};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -400,11 +400,7 @@ pub fn housekeeping(app: &AppHandle) {
                 continue;
             }
 
-            // Clicking the bubble or the app itself keeps the previous context; anything else
-            // (another app, the desktop) replaces it.
-            if !win::foreground_is_ours() {
-                state().focus = win::foreground_app();
-            }
+            note_focus();
 
             // While its menu is open, the menu stays on top instead.
             if !OVERLAY_UP.load(Ordering::Relaxed) && !menu::is_open() && b.is_visible().unwrap_or(false) {
@@ -548,14 +544,15 @@ pub fn open_from_bubble(app: AppHandle) {
 }
 
 /// Opens Quicky for whatever the user is in: the focused app's own space if that app has a
-/// mini, otherwise the general list.
+/// mini (inside the app when its window can hold Quicky, over it when not), otherwise the
+/// general list.
 pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
     let Some(main) = app.get_webview_window("main") else { return };
     remember_app_window(app);
-    // Only open inside an app whose window can hold Quicky (with its margin).
-    let margin = (14.0 * scale(app)) as i32;
-    let fits = |r: &Rect| r.right - r.left >= 260 + 2 * margin && r.bottom - r.top >= 160 + 2 * margin;
-    match active_stuck(app).filter(|(_, _, rect)| fits(rect)) {
+    let s = scale(app);
+    let margin = (14.0 * s) as i32;
+    let (min_w, min_h) = ((MAIN_MIN.0 * s) as i32, (MAIN_MIN.1 * s) as i32);
+    match active_stuck(app) {
         Some((entry, focus, rect)) => {
             // Leaving the general window: remember its size and spot to restore later.
             if state().space.is_none() {
@@ -563,14 +560,27 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
                     state().general = Some((f.left, f.top, (f.right - f.left) as u32, (f.bottom - f.top) as u32));
                 }
             }
-            // Inside the app, covering it with a small margin unless the user resized it there.
-            // From here on it can't be moved or resized past the app's edges.
-            win::HOST.store(focus.hwnd, Ordering::Relaxed);
-            let [l, t, r, b] = entry.area.unwrap_or([margin; 4]).map(|v| v.max(0));
-            let (x, y) = (rect.left + l, rect.top + t);
-            let w = (rect.right - r - x).max(260);
-            let h = (rect.bottom - b - y).max(160);
-            set_visible_frame(&main, x, y, w, h);
+            if rect.right - rect.left >= min_w + 2 * margin && rect.bottom - rect.top >= min_h + 2 * margin {
+                // Inside the app, covering it with a small margin unless the user resized it there.
+                // From here on it can't be moved or resized past the app's edges.
+                win::HOST.store(focus.hwnd, Ordering::Relaxed);
+                let [l, t, r, b] = entry.area.unwrap_or([margin; 4]).map(|v| v.max(0));
+                let (x, y) = (rect.left + l, rect.top + t);
+                let w = (rect.right - r - x).max(min_w);
+                let h = (rect.bottom - b - y).max(min_h);
+                set_visible_frame(&main, x, y, w, h);
+            } else {
+                // The app's window is too small to hold Quicky: still that app's list, centred
+                // over the app (kept on its screen) and free to move.
+                win::HOST.store(0, Ordering::Relaxed);
+                let (cx, cy) = ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+                let (mut x, mut y) = (cx - min_w / 2, cy - min_h / 2);
+                if let Some((wa, size, _)) = work_area_at(app, cx, cy) {
+                    x = x.clamp(wa.x, (wa.x + size.width as i32 - min_w).max(wa.x));
+                    y = y.clamp(wa.y, (wa.y + size.height as i32 - min_h).max(wa.y));
+                }
+                set_visible_frame(&main, x, y, min_w, min_h);
+            }
             let mut st = state();
             st.space = Some((entry.exe.clone(), focus.hwnd));
             st.placed_frame = win::own_frame(&main);
@@ -586,6 +596,14 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
         }
     }
     show_main(app);
+}
+
+/// Notes the app in front as the one Quicky is "for" (its mini, its list). Clicking the bubble or
+/// Quicky itself keeps the previous one; anything else (another app, the desktop) replaces it.
+pub fn note_focus() {
+    if !win::foreground_is_ours() {
+        state().focus = win::foreground_app();
+    }
 }
 
 /// Back to the general list: no walls, and the general window's own size and spot.
@@ -641,15 +659,20 @@ pub fn open_from_tray(app: &AppHandle, (x, y): (i32, i32)) {
 }
 
 /// Places a window so its *visible* frame is exactly (x, y, w, h): Windows adds invisible resize
-/// borders around it, so measure them and compensate.
+/// borders around it, so measure them and compensate. Never smaller than the main window's minimum.
 fn set_visible_frame(w: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
-    let (Ok(outer), Ok(inner)) = (w.outer_position(), w.inner_size()) else { return };
+    let (Ok(outer), Ok(inner), Ok(size), Ok(s)) = (w.outer_position(), w.inner_size(), w.outer_size(), w.scale_factor()) else { return };
     let (bl, bt, extra_w, extra_h) = match win::own_frame(w) {
         Some(f) => (f.left - outer.x, f.top - outer.y, (f.right - f.left) - inner.width as i32, (f.bottom - f.top) - inner.height as i32),
         None => (0, 0, 0, 0),
     };
+    // The minimum counts the whole window, invisible borders too (as Tauri's own does).
+    let min = (
+        (MAIN_MIN.0 * s).round() as i32 - (size.width - inner.width) as i32,
+        (MAIN_MIN.1 * s).round() as i32 - (size.height - inner.height) as i32,
+    );
     win::PLACING.store(true, Ordering::Relaxed);
-    let _ = w.set_size(PhysicalSize::new((width - extra_w).max(1) as u32, (height - extra_h).max(1) as u32));
+    let _ = w.set_size(PhysicalSize::new((width - extra_w).max(min.0) as u32, (height - extra_h).max(min.1) as u32));
     let _ = w.set_position(PhysicalPosition::new(x - bl, y - bt));
     win::PLACING.store(false, Ordering::Relaxed);
 }
@@ -662,8 +685,9 @@ pub fn remember_app_window(app: &AppHandle) {
         return;
     }
     let (Some(q), Some(rect)) = (win::own_frame(&main), win::frame(app_hwnd)) else { return };
-    // Untouched since we placed it: nothing to remember (keeps the cover-with-a-margin default).
-    if state().placed_frame == Some(q) {
+    // Untouched since we placed it (keeps the cover-with-a-margin default), or opened over an app
+    // too small to hold it: nothing to remember.
+    if state().placed_frame == Some(q) || win::HOST.load(Ordering::Relaxed) == 0 {
         return;
     }
     let insets = [

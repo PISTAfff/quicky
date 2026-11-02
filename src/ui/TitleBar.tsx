@@ -20,7 +20,7 @@ export function TitleBar() {
   const spaces = () => Object.entries(data.spaces ?? {}).sort((a, b) => a[1].localeCompare(b[1]));
   return (
     <header class="titlebar" data-tauri-drag-region>
-      <div class="brand" data-tauri-drag-region>
+      <div class="brand" classList={{ "has-picker": !!(spaces().length || space()) }} data-tauri-drag-region>
         <Blob size={20} />
         <span data-tauri-drag-region>Quicky</span>
         {/* Which list this is: the general one, or an app's own (switchable). */}

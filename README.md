@@ -98,7 +98,7 @@ The installer lands in `src-tauri/target/release/bundle/` (`nsis/` on Windows, `
 **Releasing:** bump `version` in `src-tauri/tauri.conf.json`, then push a tag. GitHub Actions builds Windows, macOS and Linux into one release, signs the update files with the `TAURI_SIGNING_PRIVATE_KEY` repository secret (its password secret is empty), and publishes the release with `latest.json`, which installed copies read to update themselves. Keep the private key safe: without it, existing installs can't trust new versions.
 
 ```bash
-git tag v0.1.19 && git push origin v0.1.19
+git tag v0.1.21 && git push origin v0.1.21
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + the system web view: WebView2, WebKit or WebKitGTK) and [SolidJS](https://www.solidjs.com).

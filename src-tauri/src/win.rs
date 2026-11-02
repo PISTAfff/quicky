@@ -15,9 +15,9 @@ use windows_sys::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_LBUTTON, VK_MENU};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SetForegroundWindow, SetWindowPos, ShowWindow,
-    GA_ROOT, GA_ROOTOWNER, HWND_TOPMOST, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
-    SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_MOVING, WM_SIZING, WM_WINDOWPOSCHANGING,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SendMessageW, SetForegroundWindow, SetWindowPos,
+    ShowWindow, GA_ROOT, GA_ROOTOWNER, HWND_TOPMOST, MINMAXINFO, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+    SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_GETMINMAXINFO, WM_MOVING, WM_SIZING, WM_WINDOWPOSCHANGING,
 };
 
 /// Window handles cross threads as plain integers.
@@ -345,6 +345,14 @@ fn host_bounds(hwnd: HWND) -> Option<RECT> {
     })
 }
 
+/// The smallest outer size the window allows (Tauri's `minWidth` / `minHeight` plus its frame).
+/// Asked of the window itself, so it suits the window's current scale.
+fn min_track(hwnd: HWND) -> (i32, i32) {
+    let mut mmi: MINMAXINFO = unsafe { std::mem::zeroed() };
+    unsafe { SendMessageW(hwnd, WM_GETMINMAXINFO, 0, &mut mmi as *mut MINMAXINFO as LPARAM) };
+    (mmi.ptMinTrackSize.x, mmi.ptMinTrackSize.y)
+}
+
 /// Slides a rectangle (same size) back inside the bounds; if it's bigger, it lines up top-left.
 fn slide_inside(r: &mut RECT, b: &RECT) {
     let (w, ht) = (r.right - r.left, r.bottom - r.top);
@@ -364,12 +372,20 @@ unsafe extern "system" fn host_walls(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
             }
             res
         }
-        // Resizing: the edge being dragged stops at the app's edge.
+        // Resizing: the edge being dragged stops at the app's edge, unless that would make Quicky
+        // smaller than its minimum (an app window can be smaller than that).
         WM_SIZING => {
             let res = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
             if let Some(b) = host_bounds(hwnd) {
                 let r = unsafe { &mut *(lparam as *mut RECT) };
-                *r = RECT { left: r.left.max(b.left), top: r.top.max(b.top), right: r.right.min(b.right), bottom: r.bottom.min(b.bottom) };
+                let (min_w, min_h) = min_track(hwnd);
+                let c = RECT { left: r.left.max(b.left), top: r.top.max(b.top), right: r.right.min(b.right), bottom: r.bottom.min(b.bottom) };
+                if c.right - c.left >= min_w {
+                    (r.left, r.right) = (c.left, c.right);
+                }
+                if c.bottom - c.top >= min_h {
+                    (r.top, r.bottom) = (c.top, c.bottom);
+                }
                 return 1;
             }
             res
@@ -384,7 +400,8 @@ unsafe extern "system" fn host_walls(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
                     unsafe { GetWindowRect(hwnd, &mut now) };
                     let (x, y) = if wp.flags & SWP_NOMOVE != 0 { (now.left, now.top) } else { (wp.x, wp.y) };
                     let (cw, ch) = if wp.flags & SWP_NOSIZE != 0 { (now.right - now.left, now.bottom - now.top) } else { (wp.cx, wp.cy) };
-                    let (cw, ch) = (cw.min(b.right - b.left), ch.min(b.bottom - b.top));
+                    let (min_w, min_h) = min_track(hwnd);
+                    let (cw, ch) = (cw.min(b.right - b.left).max(min_w), ch.min(b.bottom - b.top).max(min_h));
                     let mut r = RECT { left: x, top: y, right: x + cw, bottom: y + ch };
                     slide_inside(&mut r, &b);
                     (wp.x, wp.y, wp.cx, wp.cy) = (r.left, r.top, r.right - r.left, r.bottom - r.top);

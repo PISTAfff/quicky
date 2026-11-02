@@ -40,6 +40,7 @@ A tiny task manager for Windows, macOS and Linux: quick-add mini tasks (To do / 
 
 ## Testing on a real install (Claude desktop app)
 - Commands run from the Claude desktop app are sandboxed: anything they launch writes `%APPDATA%`/`%LOCALAPPDATA%` into the Claude package's private storage. To install or launch Quicky for real, hand a `.cmd` to `explorer.exe` (e.g. one that runs the installer with `/S`), never `Start-Process` the installer directly.
+- Stop the installed Quicky with `taskkill /f`: a plain `taskkill` closes every window, and builds up to 0.1.20 take the bubble's close as switching the bubble off.
 - Only one Quicky runs at a time (single-instance); `quicky.exe --preview-reminder` asks the running one to show a sample reminder.
 - Synthetic mouse tests need absolute moves (`MOUSEEVENTF_MOVE|ABSOLUTE|VIRTUALDESK`); `SetCursorPos` alone doesn't reach WebView2 during a held drag. Check whether the bubble is locked first.
 

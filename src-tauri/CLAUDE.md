@@ -36,6 +36,7 @@ Tauri 2 (`protocol-asset`, `tray-icon`, `macos-private-api`), plugins: dialog, o
 - WebView2 loses the pointer when it leaves a small window, so drags/tugs that go past the bubble are driven here from `win::cursor()` and end on the real button release (`win::left_button_down`).
 - All windows share one WebView2 environment: `additionalBrowserArgs` in `tauri.conf.json` and `BROWSER_ARGS` in `reminder.rs` must stay identical.
 - Positions are physical pixels across all monitors; use `work_area_at` for the monitor under a point, not just the primary one.
+- The main window's minimum is `MAIN_MIN` in `lib.rs` (a test keeps it equal to `minWidth`/`minHeight` in `tauri.conf.json`). Windows only applies that to the user's own resizing, so Quicky's placing (`set_visible_frame`) and the in-app clamps (`win::keep_inside_host`, `own.rs`) keep to it themselves.
 - Store apps all report `ApplicationFrameHost.exe`, so they share one mini/space.
 - Explorer draws the taskbar, tray popup, Alt+Tab and desktop too: `win::usable` only counts its folder windows (`CabinetWClass`), or shell surfaces get treated as apps.
 - Opened inside an app, the main window is kept within it by a window subclass (`win::keep_inside_host`, `HOST`). The procedure runs on the main thread: use only atomics there, never `STATE` or the config lock. Set `HOST` before placing the window and clear it before restoring the general one.

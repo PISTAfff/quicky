@@ -32,7 +32,7 @@ export function StatusDot(p: { task: Task }) {
   );
 }
 
-export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => void }) {
+export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => void; unseen?: boolean }) {
   const carriedDays = () => (p.task.status !== "done" ? daysBetween(p.task.since, today()) : 0);
   const due = () => (p.task.due && p.task.status !== "done" ? dueLabel(p.task.due, today()) : null);
   const steps = () => stepsDone(p.task);
@@ -41,7 +41,7 @@ export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => v
   return (
     <article
       class={`card ${p.task.status}`}
-      classList={{ carried: carriedDays() > 0, overdue: due()?.tone === "late", focused: pinned() }}
+      classList={{ carried: carriedDays() > 0, overdue: due()?.tone === "late", focused: pinned(), unseen: !!p.unseen }}
       data-id={p.task.id}
       onPointerDown={p.onPointerDown}
     >

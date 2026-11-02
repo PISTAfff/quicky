@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { data, setStatus, today, spaceRepeats, spaceTasks } from "../lib/store";
 import { byUrgency, isLater, reminderOf, type Status } from "../lib/model";
 import { DateTitle, Header, Progress } from "./Header";
@@ -88,13 +88,30 @@ export function ListView() {
 }
 
 export function MiniView() {
-  const next = createMemo(() => [...open()].sort(byUrgency).slice(0, 2));
-  const rest = () => Math.max(0, open().length - next().length);
+  const sorted = createMemo(() => [...open()].sort(byUrgency));
+  // As many as fit the window (always the most urgent one); the rest are counted below. Cards that
+  // don't fit stay laid out past the edge, just unseen, so measuring never moves anything.
+  const [fit, setFit] = createSignal(2);
+  let list!: HTMLDivElement;
+  const measure = () => {
+    const edge = list.clientHeight - parseFloat(getComputedStyle(list).paddingBottom);
+    const cards = [...list.querySelectorAll<HTMLElement>(":scope > .card")];
+    const n = cards.findIndex((c) => c.offsetTop + c.offsetHeight > edge + 0.5);
+    setFit(n === -1 ? cards.length : Math.max(1, n));
+  };
+  createEffect(on(sorted, measure));
+  onMount(() => {
+    const watch = new ResizeObserver(measure);
+    watch.observe(list);
+    void document.fonts.ready.then(measure);
+    onCleanup(() => watch.disconnect());
+  });
+  const rest = () => Math.max(0, sorted().length - fit());
   return (
     <div class="view mini">
       <QuickAdd compact />
-      <div class="scroll">
-        <For each={next()} fallback={<p class="muted center">All clear!</p>}>{(t) => <TaskCard task={t} />}</For>
+      <div class="scroll" ref={list}>
+        <For each={sorted()} fallback={<p class="muted center">All clear!</p>}>{(t, i) => <TaskCard task={t} unseen={i() >= fit()} />}</For>
       </div>
       <div class="mini-foot">
         <Progress compact />

@@ -45,8 +45,10 @@ fn push_inside(w: &WebviewWindow) {
     let host = HOST.load(Ordering::Relaxed);
     // No walls while the app is gone, minimized or on another desktop.
     let (true, Some(b)) = (host != 0, win::frame(host)) else { return };
-    let (Ok(p), Ok(s)) = (w.outer_position(), w.outer_size()) else { return };
-    let (width, height) = ((s.width as i32).min(b.right - b.left), (s.height as i32).min(b.bottom - b.top));
+    let (Ok(p), Ok(s), Ok(scale)) = (w.outer_position(), w.outer_size(), w.scale_factor()) else { return };
+    // Never below the main window's minimum, even in an app window smaller than that.
+    let min = ((crate::MAIN_MIN.0 * scale).round() as i32, (crate::MAIN_MIN.1 * scale).round() as i32);
+    let (width, height) = ((s.width as i32).min(b.right - b.left).max(min.0), (s.height as i32).min(b.bottom - b.top).max(min.1));
     if (width, height) != (s.width as i32, s.height as i32) {
         let _ = w.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
     }
