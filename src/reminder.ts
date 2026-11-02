@@ -109,3 +109,4 @@ async function start() {
   );
 }
 void start();
+addEventListener("contextmenu", (e) => e.preventDefault()); // no browser menu (Back, Refresh, Print)

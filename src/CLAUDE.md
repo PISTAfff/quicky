@@ -13,6 +13,7 @@ SolidJS 1.9 (stores + signals), TypeScript, Vite; `@tauri-apps/api` v2 plus the 
 - Theme: colours are CSS variables on `:root` (`--accent`, `--on-accent`, `--edge`, `--solid`, …) in `tokens.css` (with the fonts), set by `lib/theme.ts`; dark mode overrides them under `:root[data-mode="dark"]`. A small page that should look like the app links `tokens.css` and calls `followTheme()` from `lib/theme-colors.ts`. Don't hard-code colours in components; text on the accent uses `var(--on-accent)`.
 - Settings that every window needs (theme, sounds) go in `localStorage` (shared origin; other windows react to the `storage` event). Per-machine app settings go through Rust config commands.
 - Icons are inline stroke SVGs in `ui/icons.tsx`; app icons come from `invoke("app_icon")`.
+- Right-click menus in the main window go through `openMenu()` in `ui/ContextMenu.tsx` (styled like the bubble's `menu.html`). The web view's own menu is turned off on every page, except in text fields (copy and paste).
 - Anything that differs by system (shortcut labels, "Start with Windows" vs "Open at login", Ctrl vs ⌘) goes through `lib/platform.ts`; never hard-code "Windows" or "Ctrl" in UI text.
 - The main page owns the data: other pages send it events (`bubble-drop`, `balloon-ready`, `bubble-ready`) and it answers (`counts`, `balloon-data`).
 - The bubble's menu is Quicky's own window, not a system menu (those can't take the theme): the bubble page builds the items and runs the one picked (`bubble_menu_open` → `bubble-menu-pick`); `menu.ts` only draws them.

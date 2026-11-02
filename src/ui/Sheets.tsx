@@ -94,7 +94,7 @@ function RemindersSheet() {
     </Panel>
   );
 }
-function TaskSheet(p: { id: string }) {
+function TaskSheet(p: { id: string; edit?: boolean }) {
   const task = createMemo(() => data.tasks.find((t) => t.id === p.id));
   const repeat = createMemo(() => data.repeats.find((r) => r.id === task()?.repeatId));
   const [rec, setRec] = createSignal<Recording | null>(null);
@@ -123,6 +123,8 @@ function TaskSheet(p: { id: string }) {
           <textarea
             id="task-title"
             class="title-input"
+            title="Edit the title"
+            ref={(el) => p.edit && queueMicrotask(() => (el.focus(), el.select()))}
             rows="1"
             value={t().title}
             onChange={(e) => updateTask(p.id, { title: e.currentTarget.value.trim() || t().title })}
@@ -772,7 +774,7 @@ export function Sheets() {
   return (
     <Show when={sheet()} keyed>
       {(s) =>
-        s.kind === "task" ? <TaskSheet id={s.id} />
+        s.kind === "task" ? <TaskSheet id={s.id} edit={s.edit} />
         : s.kind === "done" ? <DoneDrawer />
         : s.kind === "later" ? <LaterSheet />
         : s.kind === "search" ? <SearchSheet />

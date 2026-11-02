@@ -1,7 +1,8 @@
 import { For, Show } from "solid-js";
 import type { Task } from "../lib/model";
-import { daysBetween, dueLabel, nextReminder, stepsDone } from "../lib/model";
-import { clock, data, nextStatus, prevStatus, setStatus, today } from "../lib/store";
+import { dayKey, daysBetween, dueLabel, nextReminder, stepsDone } from "../lib/model";
+import { clock, data, nextStatus, prevStatus, putOff, removeTask, setFocus, setStatus, today } from "../lib/store";
+import { openMenu, type MenuItem } from "./ContextMenu";
 import { IBell, IChecks, ICalendar, IRepeat, ITarget } from "./icons";
 import { Thumb } from "./Media";
 import { ordinal, setSheet } from "./state";
@@ -32,6 +33,21 @@ export function StatusDot(p: { task: Task }) {
   );
 }
 
+/** What right-clicking a task offers. */
+function taskMenu(t: Task): MenuItem[] {
+  const pinned = data.focus?.id === t.id;
+  const items: MenuItem[] = [{ label: "Edit", run: () => setSheet({ kind: "task", id: t.id, edit: true }) }, "sep"];
+  if (t.status === "todo") items.push({ label: "Start", run: () => setStatus(t.id, "doing") });
+  if (t.status !== "done") {
+    items.push({ label: "Finish", run: () => setStatus(t.id, "done") });
+    if (t.status === "doing") items.push({ label: "Back to To do", run: () => setStatus(t.id, "todo") });
+    items.push({ label: pinned ? "Unpin from the bubble" : "Pin to the bubble", run: () => setFocus(pinned ? null : t.id) });
+    items.push({ label: "Not today", run: () => putOff(t.id, dayKey(new Date(Date.now() + 86_400_000))) });
+  } else items.push({ label: "Not done yet", run: () => setStatus(t.id, "todo") });
+  items.push("sep", { label: "Delete", danger: true, run: () => removeTask(t.id) });
+  return items;
+}
+
 export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => void; unseen?: boolean }) {
   const carriedDays = () => (p.task.status !== "done" ? daysBetween(p.task.since, today()) : 0);
   const due = () => (p.task.due && p.task.status !== "done" ? dueLabel(p.task.due, today()) : null);
@@ -44,6 +60,7 @@ export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => v
       classList={{ carried: carriedDays() > 0, overdue: due()?.tone === "late", focused: pinned(), unseen: !!p.unseen }}
       data-id={p.task.id}
       onPointerDown={p.onPointerDown}
+      onContextMenu={(e) => openMenu(e, taskMenu(p.task))}
     >
       <StatusDot task={p.task} />
       {/* The whole body opens the task; the title is the keyboard-focusable control. */}

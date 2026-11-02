@@ -41,12 +41,11 @@ const MINI = NORMAL * 0.66;
 const NORMAL_DY = 1;
 const MINI_DY = 1.34;
 const INK = "#2b2540";
-const MINT = "#7fe0b9";
 const RED = "#ff3b3b";
 
 const FACES: Record<Face, string> = {
   happy: `<g fill="#fff"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g><path d="M17.2 25.2q2.8 2.4 5.6 0" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>`,
-  clear: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`,
+  clear: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`,
   angry:
     `<g fill="#fff" transform="translate(0 16.5) scale(1 0.55) translate(0 -16.5)"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g>` +
     `<path d="M17.2 26.8q2.8-2.2 5.6 0" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>` +
@@ -299,7 +298,6 @@ function split(p: Payload, stayClear: boolean): Step {
       stay.sx = 1 + 0.14 * w;
       stay.sy = 1 - 0.1 * w;
       stay.gooey = tau < 110;
-      if (stayClear) stay.color = mix(ACCENT, MINT, (tau - 200) / 200);
       if (tau > 160) stay.face = stayClear ? "clear" : "happy";
       if (tau > 520) {
         Object.assign(stay, { sx: 1, sy: 1, k: MINI });
@@ -374,7 +372,7 @@ function burst(p: Payload, homeClear: boolean, hard: boolean): Step {
   const back = new Body();
   back.at(home);
   back.k = 0;
-  back.color = homeClear ? MINT : ACCENT;
+  back.color = ACCENT;
   back.face = homeClear ? "clear" : "happy";
 
   const drops: Drop[] = [];

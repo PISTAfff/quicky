@@ -92,3 +92,4 @@ addEventListener("blur", close);
 void listen<Request>("menu-items", ({ payload }) => void open(payload));
 // A right-click that came before this page was listening.
 void invoke<Request | null>("menu_pending").then((r) => r && open(r));
+addEventListener("contextmenu", (e) => e.preventDefault()); // no browser menu (Back, Refresh, Print)

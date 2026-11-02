@@ -1,4 +1,4 @@
-**New:** on Windows, overlays like NVIDIA's (invisible windows over the desktop) no longer count as apps, so dropping the bubble on the desktop doesn't give them a mini.
+**New:** right-click a task for Quicky's own menu (Edit, Start, Finish, Pin to the bubble, Not today, Delete); a task's title is clearly editable and no longer gets squeezed away; all-clear bubbles and minis keep your accent colour.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

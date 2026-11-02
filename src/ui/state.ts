@@ -2,7 +2,7 @@ import { createSignal } from "solid-js";
 import type { Attachment } from "../lib/model";
 
 export type Sheet =
-  | { kind: "task"; id: string }
+  | { kind: "task"; id: string; edit?: boolean }
   | { kind: "done" }
   | { kind: "later" }
   | { kind: "search" }

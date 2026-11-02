@@ -13,6 +13,7 @@ import { FolderSetup } from "./ui/FolderSetup";
 import { BoardView, ListView, MiniView } from "./ui/Views";
 import { Sheets } from "./ui/Sheets";
 import { Tour } from "./ui/Tour";
+import { ContextMenu } from "./ui/ContextMenu";
 import { dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
 import { Blob } from "./ui/icons";
 import { invoke } from "@tauri-apps/api/core";
@@ -98,6 +99,13 @@ export default function App() {
       }
     };
     addEventListener("keydown", onKey);
+    // The web view's own menu (Back, Refresh, Print) has no place in an app: tasks have Quicky's
+    // menu instead. Text fields keep it, for copy and paste.
+    const onMenu = (e: MouseEvent) => {
+      const field = (e.target as HTMLElement).closest('textarea, [contenteditable="true"], input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color])');
+      if (!field) e.preventDefault();
+    };
+    addEventListener("contextmenu", onMenu);
     // Little pop each time the window comes back from the tray or the bubble.
     const onVisible = () => {
       if (document.visibilityState !== "visible" || !appEl) return;
@@ -111,6 +119,7 @@ export default function App() {
       () => removeEventListener("resize", onResize),
       () => removeEventListener("focus", tick),
       () => removeEventListener("keydown", onKey),
+      () => removeEventListener("contextmenu", onMenu),
       () => clearInterval(minute),
     );
 
@@ -213,6 +222,7 @@ export default function App() {
           </div>
         )}
       </Show>
+      <ContextMenu />
       <Show when={dropping()}>
         <div class="drop-overlay">
           <Blob size={56} />

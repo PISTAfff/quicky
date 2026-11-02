@@ -198,7 +198,14 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px 20px; }
 .sheet-head h2 { margin: 0; font: 600 22px "Fredoka", sans-serif; }
 .sheet-body { overflow-y: auto; padding: 8px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
-.title-input { width: 100%; resize: none; border: 0; background: transparent; font: 600 24px/1.2 "Fredoka", sans-serif; outline: 0; padding: 0; field-sizing: content; }
+/* Looks like a heading, but shows it can be edited: tinted on hover, outlined in the accent while typing.
+   Never squeezed: a long panel would otherwise shrink a text box to nothing. */
+.title-input {
+  flex-shrink: 0; width: calc(100% + 16px); margin: -4px -8px; padding: 4px 8px; resize: none; border: 0; border-radius: 10px; background: transparent;
+  font: 600 24px/1.2 "Fredoka", sans-serif; outline: 0; field-sizing: content; cursor: text; transition: background 0.15s, box-shadow 0.15s;
+}
+.title-input:hover { background: var(--soft); }
+.title-input:focus { background: var(--card); box-shadow: 0 0 0 2px var(--accent); }
 .note { width: 100%; min-height: 64px; max-height: 220px; overflow-y: auto; resize: none; border: 2px solid var(--line); border-radius: 12px; background: var(--card); padding: 10px 12px; outline: 0; field-sizing: content; }
 .note:focus { border-color: var(--accent); }
 .segment { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; background: var(--soft); padding: 4px; border-radius: var(--r); }
@@ -279,6 +286,22 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
   .date { font-size: 32px; }
   .header { padding: 4px 16px 12px; }
 }
+/* ---- right-click menu (ui/ContextMenu.tsx; the bubble's menu.html looks the same) ---- */
+.ctx-menu {
+  position: fixed; z-index: 90; min-width: 172px; max-width: 280px; padding: 5px; display: flex; flex-direction: column;
+  background: var(--card); color: var(--ink); border: 2px solid var(--edge); border-radius: var(--r); box-shadow: var(--shadow);
+  font: 800 13px/1.2 "Nunito", sans-serif; outline: 0; animation: ctx-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+@keyframes ctx-in { from { opacity: 0; transform: scale(0.88); } }
+.ctx-menu button {
+  height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: inherit; font: inherit;
+  text-align: left; white-space: nowrap; cursor: pointer; outline: 0;
+}
+/* Hover moves the focus too, so one highlight serves mouse and keys. */
+.ctx-menu button:focus { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
+.ctx-menu button.danger { color: var(--danger); }
+.ctx-sep { margin: 4px 8px; border-top: 1.5px dashed var(--line); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

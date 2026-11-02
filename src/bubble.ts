@@ -533,3 +533,4 @@ addEventListener("storage", (e) => e.key === THEME_KEY && applyAccent());
 
 // Ask the main window for the current count (it may have loaded first).
 void emitTo("main", "bubble-ready");
+addEventListener("contextmenu", (e) => e.preventDefault()); // no browser menu (Back, Refresh, Print)
