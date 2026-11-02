@@ -275,7 +275,17 @@ pub fn sync(app: &AppHandle) {
     // would get out of step if the two were mixed.
     if want != b.is_visible().unwrap_or(false) {
         win::show(&b, want);
+        // The page can't tell for itself: a hidden window's page still counts as visible.
+        if want {
+            let _ = app.emit_to("bubble", "bubble-shown", ());
+        }
     }
+}
+
+/// Whether the bubble is on screen right now (for a moment the page wants the user to see).
+#[tauri::command]
+pub fn bubble_on_screen(app: AppHandle) -> bool {
+    window(&app).is_some_and(|b| b.is_visible().unwrap_or(false))
 }
 
 /// Where a drag ended decides what happens:

@@ -2,7 +2,8 @@ import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, 
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
-  addAttachments, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, tick, toast, today,
+  addAttachments, addTaskTo, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, spaceName, tick,
+  toast, today,
 } from "./lib/store";
 import { importPaths } from "./lib/media";
 import { startReminders } from "./lib/reminders";
@@ -14,8 +15,9 @@ import { Sheets } from "./ui/Sheets";
 import { Tour } from "./ui/Tour";
 import { dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
 import { Blob } from "./ui/icons";
+import { invoke } from "@tauri-apps/api/core";
 import { modDown } from "./lib/platform";
-import { isLater } from "./lib/model";
+import { byUrgency, dueLabel, isLater, type Attachment, type Task } from "./lib/model";
 
 type Mode = "mini" | "list" | "board";
 const modeFor = (w: number, h: number): Mode => (w < 330 || h < 340 ? "mini" : w >= 680 ? "board" : "list");
@@ -43,6 +45,38 @@ export default function App() {
     void emitTo("fx", "counts", counts());
   };
   createEffect(on(counts, sendCounts));
+
+  // The balloon over the bubble: the pinned task, and the top of every list for peeking.
+  // Due dates are short there ("Overdue", "Today", "Fri") so titles keep the room.
+  const shortDue = (due: string) => {
+    const d = dueLabel(due, today());
+    if (d.tone === "late") return "Overdue";
+    const s = d.text.replace(/^Due /, "");
+    return s[0].toUpperCase() + s.slice(1);
+  };
+  const balloon = createMemo(() => {
+    const f = data.focus;
+    const pinned = f && data.tasks.find((t) => t.id === f.id && t.status !== "done");
+    const lists = new Map<string, Task[]>();
+    for (const t of data.tasks) {
+      if (t.status === "done" || isLater(t, today())) continue;
+      const k = t.space ?? "";
+      lists.set(k, [...(lists.get(k) ?? []), t]);
+    }
+    const peek: Record<string, { name: string; items: { title: string; status: string; due?: string }[]; more: number }> = {};
+    for (const k of new Set(["", ...Object.keys(data.spaces ?? {}), ...lists.keys()])) {
+      const list = [...(lists.get(k) ?? [])].sort(byUrgency);
+      peek[k] = {
+        name: spaceName(k || null),
+        items: list.slice(0, 3).map((t) => ({ title: t.title, status: t.status, due: t.due ? shortDue(t.due) : undefined })),
+        more: Math.max(0, list.length - 3),
+      };
+    }
+    return { focus: pinned ? { title: pinned.title, since: f.since } : null, peek };
+  });
+  const sendBalloon = () => void emitTo("balloon", "balloon-data", balloon());
+  createEffect(on(balloon, sendBalloon));
+  createEffect(on(() => !!balloon().focus, (on) => void invoke("balloon_focus", { on }).catch(() => {})));
 
   onMount(async () => {
     let frame = 0;
@@ -82,6 +116,13 @@ export default function App() {
 
     unlisten.push(await listen("quick-add", focusQuickAdd));
     unlisten.push(await listen("bubble-ready", sendCounts));
+    unlisten.push(await listen("balloon-ready", sendBalloon));
+    // Text, a link or files dropped on the bubble or a mini: a new task in that list.
+    unlisten.push(
+      await listen<{ space: string | null; title: string; note?: string; attachments: Attachment[] }>("bubble-drop", ({ payload: p }) => {
+        if (dataDir()) addTaskTo(p.space, p.title, p.attachments, p.note);
+      }),
+    );
     // Opened from an app's mini Quicky: show that app's own tasks (null = the general list).
     unlisten.push(
       await listen<{ key: string | null; name?: string }>("open-space", ({ payload }) => {

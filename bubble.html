@@ -57,6 +57,30 @@
       @keyframes blink { 50% { transform: scaleY(0.1); } }
       @keyframes appear { from { transform: translateY(14px) scale(0.4); opacity: 0; } 70% { transform: translateY(-3px) scale(1.06); } }
       @keyframes pop { 40% { transform: scale(1.35); } }
+      /* Something dragged over it: it opens wide; dropped, it gulps it down. */
+      .gulp-mouth { display: none; }
+      button.hungry .squish { transform: scale(1.14); transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.5); }
+      button.hungry .smile, button.hungry .frown { display: none; }
+      button.hungry .gulp-mouth { display: inline; }
+      button.gulp .squish { animation: gulp 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+      @keyframes gulp { 30% { transform: scale(1.22, 0.8); } 60% { transform: scale(0.9, 1.12); } }
+      /* The pinned task is done: a happy hop and a ring of sparkles. */
+      button.cheer .bob { animation: cheer 0.9s cubic-bezier(0.3, 0.8, 0.3, 1.2); }
+      button.cheer .eyes-open, button.cheer .frown { display: none; }
+      button.cheer .eyes-done { display: inline; }
+      @keyframes cheer {
+        15% { transform: translateY(2px) scale(1.15, 0.85); }
+        45% { transform: translateY(-16px) scale(0.92, 1.1) rotate(-6deg); }
+        70% { transform: translateY(0) scale(1.12, 0.9) rotate(3deg); }
+        85% { transform: translateY(-3px) scale(0.98, 1.02); }
+      }
+      .spark { position: absolute; left: 50%; top: 45%; width: 7px; height: 7px; margin: -3.5px; border-radius: 2px; background: var(--c, #ffd166); opacity: 0; pointer-events: none; }
+      button.cheer .spark { animation: spark 0.62s 0.25s ease-out both; }
+      @keyframes spark {
+        0% { opacity: 1; transform: rotate(var(--a)) translateX(10px) scale(0.6); }
+        70% { opacity: 1; }
+        100% { opacity: 0; transform: rotate(var(--a)) translateX(36px) scale(1) rotate(90deg); }
+      }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     </style>
   </head>
@@ -72,10 +96,15 @@
           <path class="frown" d="M17.2 26.8q2.8-2.2 5.6 0" fill="none" stroke="#2b2540" stroke-width="1.8" stroke-linecap="round" />
           <g class="brows" fill="none" stroke="#2b2540" stroke-width="2.2" stroke-linecap="round"><path d="M10.5 10.5l6 2.4M29.5 10.5l-6 2.4" /></g>
           <g class="eyes-done" fill="none" stroke="#2b2540" stroke-width="2.6" stroke-linecap="round"><path d="M11 18q3-3 6 0M23 18q3-3 6 0" /></g>
+          <ellipse class="gulp-mouth" cx="20" cy="26.5" rx="3.4" ry="3" fill="#2b2540" />
           </g>
         </svg>
       </span></span>
       <span class="badge" id="n" hidden></span>
+      <i class="spark" style="--a: 0deg"></i><i class="spark" style="--a: 45deg; --c: #7fe0b9"></i>
+      <i class="spark" style="--a: 90deg; --c: #ff8fab"></i><i class="spark" style="--a: 135deg; --c: #8ea4ff"></i>
+      <i class="spark" style="--a: 180deg"></i><i class="spark" style="--a: 225deg; --c: #7fe0b9"></i>
+      <i class="spark" style="--a: 270deg; --c: #ff8fab"></i><i class="spark" style="--a: 315deg; --c: #8ea4ff"></i>
     </button>
     <script type="module" src="/src/bubble.ts"></script>
   </body>

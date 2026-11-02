@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
+import { saveBlob } from "./lib/media";
+import type { Attachment } from "./lib/model";
 
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
@@ -396,6 +398,103 @@ function showCount() {
   button.title = label;
   button.setAttribute("aria-label", label);
 }
+
+// ---- peek ------------------------------------------------------------------------
+// Rest the pointer on the bubble (or a mini) for a moment: a balloon shows the top of its list.
+let peekTimer = 0;
+let peeking = false;
+function peek(on: boolean) {
+  clearTimeout(peekTimer);
+  if (on === peeking) return;
+  peeking = on;
+  void invoke("balloon_peek", { on }).catch(() => {});
+}
+button.addEventListener("pointerenter", () => {
+  clearTimeout(peekTimer);
+  peekTimer = window.setTimeout(() => !press && !tugging && !walled && !veiled && peek(true), 450);
+});
+button.addEventListener("pointerleave", () => peek(false));
+button.addEventListener("pointerdown", () => peek(false));
+button.addEventListener("contextmenu", () => peek(false));
+
+// ---- drop things on it -------------------------------------------------------------
+// Text, a link or files dropped on the bubble (or a mini) become a task in its list. Tauri's own
+// file-drop handling is off for this window, so the page gets the browser's drop events.
+let dragDepth = 0;
+const hungry = (on: boolean) => button.classList.toggle("hungry", on);
+addEventListener("dragenter", (e) => {
+  e.preventDefault();
+  dragDepth++;
+  hungry(true);
+  peek(false);
+});
+addEventListener("dragover", (e) => {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+});
+addEventListener("dragleave", () => {
+  if (--dragDepth > 0) return;
+  dragDepth = 0;
+  hungry(false);
+});
+addEventListener("drop", async (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  hungry(false);
+  if (!e.dataTransfer) return;
+  const task = await fromDrop(e.dataTransfer).catch(() => null);
+  if (!task) return;
+  replay(button, "gulp");
+  sfx.gulp();
+  void emitTo("main", "bubble-drop", { ...task, space: mySpace });
+});
+
+const prettyUrl = (u: string) => {
+  try {
+    const x = new URL(u);
+    return (x.hostname.replace(/^www\./, "") + x.pathname).replace(/\/$/, "");
+  } catch {
+    return u;
+  }
+};
+
+/** What was dropped, as a new task: files are copied into the data folder as its attachments. */
+async function fromDrop(dt: DataTransfer): Promise<{ title: string; note?: string; attachments: Attachment[] } | null> {
+  const files = [...dt.files];
+  if (files.length) {
+    const attachments = await Promise.all(files.map((f) => saveBlob(f, f.name || "file")));
+    return { title: files.length === 1 ? files[0].name : `${files.length} files`, attachments };
+  }
+  const text = dt.getData("text/plain").trim();
+  const url = dt.getData("text/uri-list").split(/\r?\n/).find((l) => l.trim() && !l.startsWith("#"))?.trim();
+  if (url) {
+    const html = dt.getData("text/html");
+    const link = html ? new DOMParser().parseFromString(html, "text/html").querySelector("a")?.textContent?.trim() : "";
+    const name = link || (text && text !== url ? text.split(/\r?\n/)[0] : "") || prettyUrl(url);
+    return { title: name.slice(0, 140), note: url, attachments: [] };
+  }
+  if (!text) return null;
+  const first = text.split(/\r?\n/)[0].trim();
+  const title = first.length > 120 ? `${first.slice(0, 117)}…` : first;
+  return { title, note: text !== title ? text : undefined, attachments: [] };
+}
+
+// ---- cheering ------------------------------------------------------------------------
+// The task pinned to the bubble got done. If Quicky's window is open (so the bubble is away), the
+// bubble cheers as soon as it's back. Rust says when that is: a hidden window's page still counts
+// as visible, so `visibilitychange` can't be trusted for this.
+let cheerPending = false;
+const cheer = () => {
+  if (!cheerPending) return;
+  cheerPending = false;
+  replay(button, "cheer");
+  sfx.cheer();
+};
+listen("bubble-cheer", async () => {
+  cheerPending = true;
+  if (await invoke<boolean>("bubble_on_screen").catch(() => false)) cheer();
+});
+listen("bubble-shown", () => cheerPending && setTimeout(cheer, 450));
 
 // ---- animations ------------------------------------------------------------------
 const replay = (el: Element, cls: string) => {

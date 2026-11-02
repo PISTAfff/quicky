@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quicky balloon</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+      body { font: 700 13px/1.3 "Nunito", "Segoe UI", system-ui, sans-serif; color: #2b2540; display: flex; flex-direction: column; justify-content: flex-end; }
+      body.below { justify-content: flex-start; }
+      /* A white sticker with Quicky's ink outline and hard shadow, pointing at the bubble. */
+      .card {
+        position: relative; margin: 4px 8px 12px; padding: 8px 12px 9px; background: #fff; border: 2px solid #2b2540; border-radius: 14px;
+        box-shadow: 3px 3px 0 #2b2540; transform-origin: var(--tail, 50%) 110%;
+      }
+      .below .card { margin: 12px 8px 4px; transform-origin: var(--tail, 50%) -10%; }
+      .card::after {
+        content: ""; position: absolute; left: calc(var(--tail, 50%) - 7px); bottom: -9px; width: 12px; height: 12px; background: #fff;
+        border-right: 2px solid #2b2540; border-bottom: 2px solid #2b2540; transform: rotate(45deg); border-bottom-right-radius: 3px;
+      }
+      .below .card::after { bottom: auto; top: -9px; transform: rotate(225deg); }
+      .card.in { animation: in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.5); }
+      @keyframes in { from { opacity: 0; transform: scale(0.6); } }
+      .kicker { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; color: color-mix(in srgb, var(--accent, #6d4cff) 58%, #2b2540); text-transform: uppercase; letter-spacing: 0.4px; }
+      .kicker time { margin-left: auto; color: #5e5878; text-transform: none; letter-spacing: 0; }
+      .title { margin-top: 2px; font-size: 14px; font-weight: 800; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+      ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+      li { display: flex; align-items: center; gap: 7px; min-width: 0; }
+      li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      li i { width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; border: 2px solid #2b2540; box-sizing: border-box; }
+      li i.doing { background: linear-gradient(90deg, transparent 50%, #3d5bd9 50%); }
+      li small { margin-left: auto; flex-shrink: 0; font-size: 11px; color: #7a3410; }
+      .more, .empty { margin-top: 3px; font-size: 12px; color: #5e5878; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="card" id="card" hidden></div>
+    <script type="module" src="/src/balloon.ts"></script>
+  </body>
+</html>

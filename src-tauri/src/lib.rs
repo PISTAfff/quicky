@@ -603,6 +603,7 @@ pub fn run() {
             set_icon_color,
             system_busy,
             bubble::get_show_bubble,
+            bubble::bubble_on_screen,
             bubble::set_show_bubble,
             bubble::get_bubble_locked,
             bubble::set_bubble_locked,

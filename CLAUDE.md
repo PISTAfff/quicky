@@ -1,15 +1,16 @@
 # Quicky
 
 ## What this is
-A tiny Windows task manager: quick-add mini tasks (To do / Doing / Done), daily carry-over, repeats, reminders, media attachments, and an always-on-top "Quicky" bubble that can live inside other apps as per-app minis with their own task lists. Tauri 2 (Rust, WebView2) hosts three SolidJS/TS pages: the main window, the bubble, and a full-screen reminder.
+A tiny task manager for Windows, macOS and Linux: quick-add mini tasks (To do / Doing / Done), daily carry-over, repeats, due dates, steps, reminders with quiet hours, media attachments, and an always-on-top "Quicky" bubble that can live inside other apps as per-app minis with their own task lists. Tauri 2 (Rust and the system web view) hosts five pages: the main window (SolidJS), the bubble, the full-screen reminder, the overlay for the bubble's big moments, and the speech balloon over the bubble.
 
 ## Map
 - `src/`: front end (main window in SolidJS, bubble page and reminder page in plain TS). Has its own CLAUDE.md.
 - `src-tauri/`: Rust backend (windows, bubble placement/physics driving, Win32 calls, config, file I/O). Has its own CLAUDE.md.
-- `index.html`, `bubble.html`, `reminder.html`, `fx.html`: the four page entry points (all listed in `vite.config.ts` inputs).
+- `index.html`, `bubble.html`, `reminder.html`, `fx.html`, `balloon.html`: the five page entry points (all listed in `vite.config.ts` inputs).
 - `tests/`: Node test runner tests for the pure data model (`src/lib/model.ts`).
 - `brand/`: logo, mascot, screenshots and portfolio images (see `brand/README.md`); not bundled into the app.
-- `.github/workflows/release.yml`: builds the NSIS installer and publishes a GitHub Release on `v*` tags.
+- `.github/workflows/release.yml`: on `v*` tags, builds Windows (NSIS), macOS (universal .dmg) and Linux (.AppImage, .deb) into one draft release, then `.github/scripts/latest_json.py` writes `latest.json` and publishes it.
+- `.github/workflows/build.yml`: every branch push checks, tests and builds all three (installers kept a week as run artifacts).
 
 ## Commands
 - Install: `pnpm install`
@@ -17,7 +18,7 @@ A tiny Windows task manager: quick-add mini tasks (To do / Doing / Done), daily 
 - Front-end tests: `pnpm test`
 - Type-check: `pnpm check`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml --lib`
-- Installer: `pnpm tauri build` → `src-tauri/target/release/bundle/nsis/Quicky_<version>_x64-setup.exe`. Needs `TAURI_SIGNING_PRIVATE_KEY` (the updater key, `%USERPROFILE%\.tauri\quicky.key`, never in the repo) and an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+- Installer: `pnpm tauri build` → `src-tauri/target/release/bundle/nsis/Quicky_<version>_x64-setup.exe` on Windows (macOS and Linux builds come from CI; this PC can't link them). Needs `TAURI_SIGNING_PRIVATE_KEY` (the updater key, `%USERPROFILE%\.tauri\quicky.key`, never in the repo) and an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
 ## Releasing
 - Bump the version in all three: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (and the example tag in `README.md`).
@@ -25,7 +26,7 @@ A tiny Windows task manager: quick-add mini tasks (To do / Doing / Done), daily 
 - Never move or force-push an existing tag; bump to a new version instead.
 
 ## Standards (everywhere)
-- Windows-only app (Win32 code is `#[cfg(windows)]` but nothing else is supported).
+- Runs on Windows, macOS and Linux. Native calls live behind `win::` in `src-tauri` (one file per system, see its CLAUDE.md); every function there exists on all three. Words and shortcuts that differ come from `src/lib/platform.ts`.
 - Keep it light: no new UI or animation libraries; sounds are synthesized (`src/lib/sfx.ts`), fonts are bundled Latin subsets.
 - User data lives in the user's chosen folder as `quicky.json` + `media/<YYYY-MM>/`; it must stay readable by older and newer versions (add fields, never repurpose them; migrate on read).
 - Times are stored 24-hour ("HH:MM") and always shown 12-hour AM/PM via `time12` in `src/lib/model.ts`.
