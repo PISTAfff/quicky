@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 36" width="400" height="360" role="img" aria-label="Quicky">
-<title>Quicky</title>
-<defs><mask id="face" maskUnits="userSpaceOnUse" x="0" y="0" width="40" height="36"><path d="M20 1C31 1 39 9 39 20c0 9-6 15-19 15S1 29 1 20C1 9 9 1 20 1z" fill="#fff"/><g fill="#000"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g><path d="M17.2 25.2q2.8 2.4 5.6 0" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></mask></defs><path d="M20 1C31 1 39 9 39 20c0 9-6 15-19 15S1 29 1 20C1 9 9 1 20 1z" fill="#2b2540" mask="url(#face)"/>
-</svg>

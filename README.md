@@ -2,7 +2,7 @@
 
 A tiny, cute task manager for Windows, macOS and Linux. Add mini tasks fast, mark them **To do → Doing → Done**, and let unfinished ones roll over to the next day on their own. A little bubble waits on screen, and any app can get its own mini Quicky with a list of its own.
 
-![Quicky](brand/portfolio/quicky-01-cover.png)
+![Quicky](.github/cover.png)
 
 ## Install
 
