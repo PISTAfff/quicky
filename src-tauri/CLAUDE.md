@@ -1,6 +1,6 @@
 # Backend (`src-tauri/`)
 
-Rust side of the Tauri 2 app: creates and places the windows (main, bubble, reminder, fx, balloon), runs the bubble housekeeping loop, does all file I/O for the user's data folder, keeps the app config, and wraps the native calls the bubble needs on Windows, macOS and Linux.
+Rust side of the Tauri 2 app: creates and places the windows (main, bubble, reminder, fx, balloon, menu), runs the bubble housekeeping loop, does all file I/O for the user's data folder, keeps the app config, and wraps the native calls the bubble needs on Windows, macOS and Linux.
 
 ## Stack
 Tauri 2 (`protocol-asset`, `tray-icon`, `macos-private-api`), plugins: dialog, opener, autostart, global-shortcut, single-instance, updater, process. Native: `windows-sys` 0.59 (Windows), `objc2` / `objc2-app-kit` 0.3 plus raw CoreGraphics calls (macOS), `x11rb` 0.13 (Linux). `png` + `base64` for icons. Release profile is size-optimized. `tauri.macos.conf.json` and `tauri.linux.conf.json` hold each system's bundle targets.
@@ -18,6 +18,7 @@ Tauri 2 (`protocol-asset`, `tray-icon`, `macos-private-api`), plugins: dialog, o
 - `src/mac.rs`, `src/linux.rs`: the same functions for macOS (CoreGraphics window list, NSWorkspace) and Linux (X11). `lib.rs` compiles one of the three as `mod win`, so call sites never change.
 - `src/own.rs`: macOS and Linux versions of the calls on Quicky's own windows (through Tauri, which hops to the main thread for AppKit/GTK).
 - `src/balloon.rs`: the click-through speech balloon over the bubble (pinned task, peek), made on demand and kept next to the bubble by the housekeeping loop.
+- `src/menu.rs`: the bubble's themed right-click menu window: made hidden when the pointer first reaches the bubble, sized to what the page measured, placed at the pointer (flipped at screen edges), and closed on Esc, a pick, lost focus, or a click elsewhere (the housekeeping loop watches).
 
 ## How we do things here
 - Config: read with `read_config` (in-memory cache) and change with `update_config(|c| …)`; never read `config.json` from disk in a loop. New fields get `#[serde(default)]`; rename a field instead of reusing it when old saved values would be wrong.

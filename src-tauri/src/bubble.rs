@@ -9,6 +9,7 @@
 
 use crate::balloon;
 use crate::fx::{self, Kind};
+use crate::menu;
 use crate::win::{self, AppWindow, Rect};
 use crate::{main_on_screen, read_config, show_main, update_config, StuckApp};
 use serde::Serialize;
@@ -350,8 +351,9 @@ pub fn housekeeping(app: &AppHandle) {
         let mut gliding = false;
         loop {
             // ~60 fps while gliding; otherwise follow windows quickly only when some app has a
-            // mini, and idle slowly when none does.
-            let fast = !read_config(&app).stuck_apps.is_empty();
+            // mini or the right-click menu is open (it watches for clicks elsewhere), and idle
+            // slowly when neither is.
+            let fast = !read_config(&app).stuck_apps.is_empty() || menu::is_open();
             std::thread::sleep(Duration::from_millis(if gliding { 16 } else if fast { 50 } else { 400 }));
 
             if last_tick.elapsed() >= Duration::from_secs(15) {
@@ -361,6 +363,7 @@ pub fn housekeeping(app: &AppHandle) {
 
             sync(&app);
             balloon::sync(&app);
+            menu::watch(&app);
             let Some(b) = window(&app) else { continue };
 
             // A walled mini drag whose page lost track of the mouse: finish it where it is.
@@ -403,7 +406,8 @@ pub fn housekeeping(app: &AppHandle) {
                 state().focus = win::foreground_app();
             }
 
-            if !OVERLAY_UP.load(Ordering::Relaxed) && b.is_visible().unwrap_or(false) {
+            // While its menu is open, the menu stays on top instead.
+            if !OVERLAY_UP.load(Ordering::Relaxed) && !menu::is_open() && b.is_visible().unwrap_or(false) {
                 win::keep_topmost(&b);
             }
             apply(&app, false);

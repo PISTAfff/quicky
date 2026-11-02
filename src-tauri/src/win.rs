@@ -278,10 +278,17 @@ pub fn show(w: &tauri::WebviewWindow, visible: bool) {
 
 /// Brings a window to the front even when Windows' focus-stealing guard would normally only flash
 /// its taskbar button: a synthetic Alt tap plus borrowing the current foreground thread's input.
+/// When Quicky is already in front (the user just clicked the bubble) it simply moves there: the
+/// Alt tap would leave the window in menu-bar mode and eat the next key press.
 pub fn force_foreground(w: &tauri::WebviewWindow) {
     let Some(hwnd) = own(w) else { return };
     unsafe {
         let fg = GetForegroundWindow();
+        if is_ours(fg as Hwnd) {
+            BringWindowToTop(h(hwnd));
+            SetForegroundWindow(h(hwnd));
+            return;
+        }
         let fg_thread = GetWindowThreadProcessId(fg, std::ptr::null_mut());
         let me = GetCurrentThreadId();
         keybd_event(VK_MENU as u8, 0, 0, 0);

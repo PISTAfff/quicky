@@ -2,7 +2,7 @@
 // bubble window shares (same origin) and hears about through the `storage` event.
 import { invoke } from "@tauri-apps/api/core";
 import { createSignal } from "solid-js";
-import { ACCENTS, DEFAULT_CUSTOM, THEME_KEY, isHex, onAccent, resolveAccent } from "./theme-colors";
+import { ACCENTS, DEFAULT_CUSTOM, THEME_KEY, isHex, paintTheme } from "./theme-colors";
 
 export { ACCENTS, THEME_KEY };
 
@@ -37,12 +37,7 @@ function tintIcons(color: string) {
 }
 
 function apply(t: Theme) {
-  const root = document.documentElement;
-  const accent = resolveAccent(t);
-  root.style.setProperty("--accent", accent);
-  root.style.setProperty("--on-accent", onAccent(accent));
-  root.dataset.mode = t.mode === "auto" ? (darkQuery.matches ? "dark" : "light") : t.mode;
-  tintIcons(accent);
+  tintIcons(paintTheme(t));
 }
 
 const [theme, setThemeSignal] = createSignal<Theme>(readTheme());

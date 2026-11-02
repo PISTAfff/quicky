@@ -12,6 +12,8 @@ paths:
   - "src/fx.ts"
   - "balloon.html"
   - "src/balloon.ts"
+  - "menu.html"
+  - "src/menu.ts"
 ---
 
 # Motion, physics and sound rules

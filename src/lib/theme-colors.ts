@@ -29,3 +29,33 @@ export function onAccent(hex: string): string {
 }
 
 export const isHex = (s: unknown): s is string => typeof s === "string" && HEX.test(s);
+
+/** The theme as the main window stored it (every page can read it: same origin). */
+export function storedTheme(): { accent?: string; custom?: string; mode?: string } {
+  try {
+    return JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}") ?? {};
+  } catch {
+    return {};
+  }
+}
+
+const darkQuery = () => matchMedia("(prefers-color-scheme: dark)");
+
+/** Paints a page in a theme: the accent, readable text on it, and light or dark ("auto" follows
+ *  the system). Returns the accent. */
+export function paintTheme(t: { accent?: string; custom?: string; mode?: string }): string {
+  const root = document.documentElement;
+  const accent = resolveAccent(t);
+  root.style.setProperty("--accent", accent);
+  root.style.setProperty("--on-accent", onAccent(accent));
+  root.dataset.mode = t.mode === "dark" || (t.mode === "auto" && darkQuery().matches) ? "dark" : "light";
+  return accent;
+}
+
+/** For the small plain-TS pages: paint the stored theme now, and again whenever it changes. */
+export function followTheme() {
+  const paint = () => paintTheme(storedTheme());
+  paint();
+  addEventListener("storage", (e) => e.key === THEME_KEY && paint());
+  darkQuery().addEventListener("change", paint);
+}

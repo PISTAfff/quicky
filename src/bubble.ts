@@ -2,11 +2,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
 import { saveBlob } from "./lib/media";
 import type { Attachment } from "./lib/model";
+import type { MenuEntry } from "./menu";
 
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
@@ -338,47 +338,51 @@ button.addEventListener("keydown", (e) => {
 });
 
 // ---- right-click menu ------------------------------------------------------------
+// Quicky's own menu (menu.html), in the app's colours. This page decides the items and runs the
+// one picked, so its own state (like `locked`) stays right.
+let menuActions = new Map<string, () => unknown>();
+let menuOpen = false;
 button.addEventListener("contextmenu", async (e) => {
   e.preventDefault();
   press = null;
+  peek(false);
   const ctx = await invoke<{ exe: string; name: string; stuck: boolean } | null>("bubble_context").catch(() => null);
-  const open = await MenuItem.new({ text: "Open Quicky", action: () => void invoke("open_from_bubble") });
   const forSpace = isMini && ctx?.stuck ? mySpace : null;
-  const lock = await CheckMenuItem.new({
-    text: forSpace ? "Lock this mini in place" : "Lock in place",
-    checked: locked,
-    action: async () => {
-      locked = !locked;
-      await invoke("set_bubble_locked", { locked, space: forSpace });
-    },
-  });
-  const sep = () => PredefinedMenuItem.new({ item: "Separator" });
-  // A mini's own menu: hiding it removes just this app's mini (drop Quicky on the app to get it back).
-  const items =
-    isMini && ctx?.stuck
-      ? [
-          open,
-          await sep(),
-          lock,
-          await sep(),
-          await MenuItem.new({
-            text: `Hide this mini Quicky (${ctx.name})`,
-            action: () => void invoke("unstick_bubble", { exe: ctx.exe }),
-          }),
-        ]
-      : [
-          open,
-          await sep(),
-          ctx && !ctx.stuck
-            ? await MenuItem.new({ text: `Make a mini Quicky here on ${ctx.name}`, action: () => void invoke("stick_bubble").catch(() => {}) })
-            : await MenuItem.new({ text: "Drop me on an app to give it a mini Quicky", enabled: false }),
-          lock,
-          await MenuItem.new({ text: "Move back to corner", action: () => void invoke("reset_bubble") }),
-          await sep(),
-          await MenuItem.new({ text: "Hide bubble", action: () => void invoke("set_show_bubble", { show: false }) }),
-        ];
-  await (await Menu.new({ items })).popup();
+  const items: MenuEntry[] = [];
+  const actions = new Map<string, () => unknown>();
+  // No action: shown greyed out.
+  const add = (text: string, run?: () => unknown, checked?: boolean) => {
+    const id = String(items.length);
+    if (run) actions.set(id, run);
+    items.push({ id, text, checked, disabled: !run });
+  };
+  const lock = async () => {
+    locked = !locked;
+    await invoke("set_bubble_locked", { locked, space: forSpace });
+  };
+  add("Open Quicky", () => invoke("open_from_bubble"));
+  items.push("sep");
+  if (isMini && ctx?.stuck) {
+    // A mini's own menu: hiding it removes just this app's mini (drop Quicky on the app to get it back).
+    add("Lock this mini in place", lock, locked);
+    items.push("sep");
+    add(`Hide this mini Quicky (${ctx.name})`, () => invoke("unstick_bubble", { exe: ctx.exe }));
+  } else {
+    if (ctx && !ctx.stuck) add(`Make a mini Quicky here on ${ctx.name}`, () => invoke("stick_bubble").catch(() => {}));
+    else add("Drop me on an app to give it a mini Quicky");
+    add("Lock in place", lock, locked);
+    add("Move back to corner", () => invoke("reset_bubble"));
+    items.push("sep");
+    add("Hide bubble", () => invoke("set_show_bubble", { show: false }));
+  }
+  menuActions = actions;
+  menuOpen = true;
+  void invoke("bubble_menu_open", { items });
 });
+listen<string>("bubble-menu-pick", ({ payload }) => void menuActions.get(payload)?.());
+listen("bubble-menu-closed", () => (menuOpen = false));
+// Get the menu window ready the first time the pointer comes by, so the first right-click opens at once.
+button.addEventListener("pointerenter", () => void invoke("menu_prewarm").catch(() => {}), { once: true });
 // ---- badge -----------------------------------------------------------------------
 // The normal bubble counts the general list; an app's mini counts that app's list.
 let lastOpen = -1;
@@ -411,7 +415,7 @@ function peek(on: boolean) {
 }
 button.addEventListener("pointerenter", () => {
   clearTimeout(peekTimer);
-  peekTimer = window.setTimeout(() => !press && !tugging && !walled && !veiled && peek(true), 450);
+  peekTimer = window.setTimeout(() => !press && !tugging && !walled && !veiled && !menuOpen && peek(true), 450);
 });
 button.addEventListener("pointerleave", () => peek(false));
 button.addEventListener("pointerdown", () => peek(false));

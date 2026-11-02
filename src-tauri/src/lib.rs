@@ -1,6 +1,7 @@
 mod balloon;
 mod bubble;
 mod fx;
+mod menu;
 mod reminder;
 // Native window calls behind one set of functions: Win32 on Windows, AppKit and CoreGraphics on
 // macOS, X11 on Linux.
@@ -571,7 +572,7 @@ pub fn run() {
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
                 // closing the bubble (Alt+F4) just switches the bubble off. The reminder can only
                 // be closed through its own buttons (Esc snoozes).
-                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "reminder" | "fx" | "balloon") => {
+                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "reminder" | "fx" | "balloon" | "menu") => {
                     api.prevent_close();
                     if window.label() == "bubble" {
                         let _ = bubble::set_show_bubble(app.clone(), false);
@@ -623,6 +624,11 @@ pub fn run() {
             balloon::balloon_focus,
             balloon::balloon_peek,
             balloon::balloon_state,
+            menu::menu_prewarm,
+            menu::bubble_menu_open,
+            menu::menu_pending,
+            menu::menu_show,
+            menu::menu_hide,
             fx::fx_payload,
             fx::fx_ready,
             fx::fx_handoff,
