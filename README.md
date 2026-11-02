@@ -102,3 +102,7 @@ git tag v0.1.24 && git push origin v0.1.24
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + the system web view: WebView2, WebKit or WebKitGTK) and [SolidJS](https://www.solidjs.com).
+
+## License
+
+[MIT](LICENSE): use it, change it and share it freely; keep the copyright notice.
