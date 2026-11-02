@@ -1,4 +1,4 @@
-**New:** Quicky can't be squeezed too small, the narrow layout fills with as many tasks as fit, Ctrl+Space opens the list of the app you're in, and the bubble stays on when Quicky is closed from outside.
+**New:** on Windows, overlays like NVIDIA's (invisible windows over the desktop) no longer count as apps, so dropping the bubble on the desktop doesn't give them a mini.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

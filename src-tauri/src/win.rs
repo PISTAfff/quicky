@@ -15,9 +15,10 @@ use windows_sys::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_LBUTTON, VK_MENU};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SendMessageW, SetForegroundWindow, SetWindowPos,
-    ShowWindow, GA_ROOT, GA_ROOTOWNER, HWND_TOPMOST, MINMAXINFO, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-    SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_GETMINMAXINFO, WM_MOVING, WM_SIZING, WM_WINDOWPOSCHANGING,
+    GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SendMessageW, SetForegroundWindow,
+    SetWindowPos, ShowWindow, GA_ROOT, GA_ROOTOWNER, GWL_EXSTYLE, HWND_TOPMOST, MINMAXINFO, SWP_HIDEWINDOW, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_GETMINMAXINFO, WM_MOVING,
+    WM_SIZING, WM_WINDOWPOSCHANGING, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
 };
 
 /// Window handles cross threads as plain integers.
@@ -108,6 +109,12 @@ pub fn own_frame(w: &tauri::WebviewWindow) -> Option<Rect> {
 pub fn usable(hwnd: Hwnd) -> bool {
     let alive = unsafe { IsWindow(h(hwnd)) != 0 && IsWindowVisible(h(hwnd)) != 0 && IsIconic(h(hwnd)) == 0 };
     if !alive || cloaked(hwnd) {
+        return false;
+    }
+    // Overlays and helpers that only look like apps: click-through or never-focused windows (a
+    // game overlay can cover the whole desktop) and tool windows that Alt+Tab leaves out.
+    let ex = unsafe { GetWindowLongPtrW(h(hwnd), GWL_EXSTYLE) } as u32;
+    if ex & (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE) != 0 || (ex & WS_EX_TOOLWINDOW != 0 && ex & WS_EX_APPWINDOW == 0) {
         return false;
     }
     let class = class_of(hwnd);
