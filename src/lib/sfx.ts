@@ -113,6 +113,19 @@ export const sfx = {
     ]),
   /** Snoozed: a sleepy slide down. */
   snooze: () => play([{ f: 620, to: 260, d: 0.35, g: 0.4 }]),
+  /** A checklist step ticked: a tiny tick. */
+  step: () => play([{ f: 1200, to: 1500, d: 0.05, type: "triangle", g: 0.35 }]),
+  /** Something dropped on the bubble: a gulp. */
+  gulp: () => play([{ f: 300, to: 180, d: 0.09, type: "triangle", g: 0.45 }, { f: 700, to: 980, d: 0.1, t: 0.08, g: 0.3 }]),
+  /** The pinned task is done: a little fanfare. */
+  cheer: () =>
+    play([
+      { f: 523, d: 0.12, type: "triangle", g: 0.5 },
+      { f: 659, d: 0.12, t: 0.09, type: "triangle", g: 0.5 },
+      { f: 784, d: 0.12, t: 0.18, type: "triangle", g: 0.5 },
+      { f: 1047, d: 0.38, t: 0.27, g: 0.5 },
+      { f: 1568, d: 0.3, t: 0.35, g: 0.2 },
+    ]),
   /** Voice note start / stop. */
   recStart: () => play([{ f: 660, d: 0.07, g: 0.4 }, { f: 990, d: 0.09, t: 0.07, g: 0.4 }]),
   recStop: () => play([{ f: 990, d: 0.07, g: 0.4 }, { f: 660, d: 0.09, t: 0.07, g: 0.4 }]),

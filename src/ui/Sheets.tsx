@@ -8,14 +8,20 @@ import { autoCheck, checkForUpdate, installUpdate, setAutoCheck, updateState } f
 import { ACCENTS, setTheme, theme } from "../lib/theme";
 import { onAccent } from "../lib/theme-colors";
 import {
-  addAttachments, chooseDataDir, clock, data, dataDir, deleteRepeat, makeRepeat, removeAttachment, removeTask,
-  renameRepeat, setReminder, setSpace, spaceName, spaceRepeats, spaceTasks, setRepeatDays, setStatus, showToast, toggleRepeatPaused, today, updateTask,
+  addAttachments, addStep, bringBack, chooseDataDir, clock, data, dataDir, deleteRepeat, makeRepeat, putOff, removeAttachment, removeStep,
+  removeTask, renameRepeat, renameStep, setDue, setFocus, setReminder, setSpace, spaceName, spaceRepeats, spaceTasks, setRepeatDays,
+  setStatus, showToast, toggleRepeatPaused, toggleStep, today, updateTask,
 } from "../lib/store";
-import { EVERY_DAY, describeReminder, parseDay, reminderOf, upcoming, whenLabel, type Status, type Task } from "../lib/model";
+import {
+  EVERY_DAY, dayKey, describeReminder, dueLabel, isLater, parseDay, reminderOf, searchTasks, upcoming, whenLabel, type Status, type Task,
+} from "../lib/model";
+import { OS, SYSTEM_NAME } from "../lib/platform";
+import { readQuiet, writeQuiet } from "../lib/reminders";
+import { showTour } from "./Tour";
 import { pickFiles, startRecording, type Recording } from "../lib/media";
 import { previewReminder } from "../lib/reminders";
 import { readSfx, sfx, writeSfx } from "../lib/sfx";
-import { Blob, IBell, IClip, IClose, IMic, IPin2, IRepeat, IRestore, ITrash, IFolder, IStop } from "./icons";
+import { Blob, IBell, ICalendar, IChecks, IClip, IClose, IMic, IMoon, IPin2, IRepeat, IRestore, ISearch, ITarget, ITrash, IFolder, IStop } from "./icons";
 import { MediaView } from "./Media";
 import { RecStrip } from "./LiveWave";
 import { WeekPicker } from "./WeekPicker";
@@ -137,6 +143,24 @@ function TaskSheet(p: { id: string }) {
             </For>
           </div>
 
+          <Show when={t().status !== "done"}>
+            <button
+              class="focus-btn"
+              classList={{ on: data.focus?.id === p.id }}
+              aria-pressed={data.focus?.id === p.id}
+              onClick={() => setFocus(data.focus?.id === p.id ? null : p.id)}
+            >
+              <ITarget size={15} />
+              <Show when={data.focus?.id === p.id} fallback={<span>Pin to the bubble<small>Keeps it in front of you while you work on it</small></span>}>
+                <span>Pinned to the bubble<small>Finish it to make Quicky cheer. Click to unpin</small></span>
+              </Show>
+            </button>
+          </Show>
+
+          <DueBox task={t()} />
+
+          <StepsBox task={t()} />
+
           <div class="box">
             <div class="box-row">
               <span class="box-label"><IRepeat size={14} /> Repeat</span>
@@ -216,6 +240,208 @@ function TaskSheet(p: { id: string }) {
         </Panel>
       )}
     </Show>
+  );
+}
+
+const plusDays = (n: number) => dayKey(new Date(Date.now() + n * 86_400_000));
+
+const laterDay = (k: string) => {
+  if (k === plusDays(1)) return "tomorrow";
+  const d = parseDay(k);
+  return `${WEEK_LONG[d.getDay()]} ${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+};
+
+/** When it's due, and "not today": hide it until tomorrow or a picked day. */
+function DueBox(p: { task: Task }) {
+  const label = () => (p.task.due ? dueLabel(p.task.due, today()) : null);
+  return (
+    <div class="box">
+      <div class="box-row">
+        <span class="box-label"><ICalendar size={14} /> Due</span>
+        <Show
+          when={label()}
+          fallback={
+            <span class="row-gap">
+              <button class="link" onClick={() => setDue(p.task.id, today())}>Today</button>
+              <button class="link" onClick={() => setDue(p.task.id, plusDays(1))}>Tomorrow</button>
+            </span>
+          }
+        >
+          {(l) => <span class={`chip due ${l().tone}`}>{l().text}</span>}
+        </Show>
+        <input
+          type="date"
+          class="date-input"
+          aria-label="Due date"
+          value={p.task.due ?? ""}
+          onChange={(e) => setDue(p.task.id, e.currentTarget.value || undefined)}
+        />
+        <Show when={p.task.due}>
+          <button class="ib soft" aria-label="No due date" title="No due date" onClick={() => setDue(p.task.id, undefined)}>
+            <IClose size={12} />
+          </button>
+        </Show>
+      </div>
+      <Show when={p.task.status !== "done"}>
+        <div class="box-row later-row">
+          <Show
+            when={isLater(p.task, today())}
+            fallback={
+              <>
+                <button
+                  class="btn small"
+                  onClick={() => {
+                    setSheet(null);
+                    putOff(p.task.id, plusDays(1));
+                  }}
+                >
+                  <IMoon size={13} /> Not today
+                </button>
+                <label class="link later-pick">
+                  Later…
+                  <input
+                    type="date"
+                    aria-label="Hide it until"
+                    min={plusDays(1)}
+                    onChange={(e) => {
+                      const day = e.currentTarget.value;
+                      if (!day) return;
+                      setSheet(null);
+                      putOff(p.task.id, day);
+                    }}
+                  />
+                </label>
+              </>
+            }
+          >
+            <span class="muted">Hidden until {laterDay(p.task.later!)}</span>
+            <button class="link" onClick={() => bringBack(p.task.id)}>Back to today</button>
+          </Show>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+/** A small checklist inside the task. */
+function StepsBox(p: { task: Task }) {
+  const [draft, setDraft] = createSignal("");
+  const add = () => {
+    addStep(p.task.id, draft());
+    setDraft("");
+  };
+  const steps = () => p.task.steps ?? [];
+  return (
+    <div class="box steps-box">
+      <div class="box-row">
+        <span class="box-label"><IChecks size={14} /> Steps</span>
+        <Show when={steps().length}>
+          <span class="muted">{steps().filter((x) => x.done).length} of {steps().length}</span>
+        </Show>
+      </div>
+      <For each={steps()}>
+        {(st) => (
+          <div class="step" classList={{ done: st.done }}>
+            <input type="checkbox" aria-label={`Done: ${st.title}`} checked={st.done} onChange={() => toggleStep(p.task.id, st.id)} />
+            <input
+              class="step-title"
+              aria-label="Step"
+              value={st.title}
+              onChange={(e) => renameStep(p.task.id, st.id, e.currentTarget.value)}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            />
+            <button class="ib soft" aria-label={`Remove step ${st.title}`} onClick={() => removeStep(p.task.id, st.id)}>
+              <IClose size={11} />
+            </button>
+          </div>
+        )}
+      </For>
+      <input
+        class="step-add"
+        placeholder={steps().length ? "Add another step…" : "Break it into steps…"}
+        aria-label="Add a step"
+        value={draft()}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
+        onBlur={add}
+      />
+    </div>
+  );
+}
+
+/** Every task in every list (done ones too): titles, notes, steps and file names. */
+function SearchSheet() {
+  const [q, setQ] = createSignal("");
+  const hits = createMemo(() => searchTasks([...data.tasks], q()).slice(0, 60));
+  let input: HTMLInputElement | undefined;
+  queueMicrotask(() => input?.focus());
+  const openTask = (t: Task) => {
+    setSpace(t.space ?? null);
+    setSheet({ kind: "task", id: t.id });
+  };
+  const status = (t: Task) => (isLater(t, today()) ? "Later" : ({ todo: "To do", doing: "Doing", done: "Done" } as const)[t.status]);
+  return (
+    <Panel title="Search" class="search-sheet">
+      <label class="search-field">
+        <ISearch size={15} />
+        <input
+          ref={input}
+          type="search"
+          placeholder="Search every list…"
+          aria-label="Search tasks"
+          value={q()}
+          onInput={(e) => setQ(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && hits()[0]) openTask(hits()[0]);
+          }}
+        />
+      </label>
+      <Show when={q().trim()} fallback={<p class="muted center">Titles, notes, steps and file names, in every list. Done tasks too.</p>}>
+        <Show when={hits().length} fallback={<div class="empty"><Blob size={40} /><p>Nothing matches “{q().trim()}”.</p></div>}>
+          <For each={hits()}>
+            {(t) => (
+              <button class="search-hit" classList={{ done: t.status === "done" }} onClick={() => openTask(t)}>
+                <span class={`dot ${t.status} small`} aria-hidden="true" />
+                <span class="search-main">
+                  <span class="search-title">{t.title}</span>
+                  <span class="search-sub">
+                    {status(t)} · {spaceName(t.space ?? null)}
+                    <Show when={t.note}> · {t.note!.slice(0, 80)}</Show>
+                  </span>
+                </span>
+              </button>
+            )}
+          </For>
+        </Show>
+      </Show>
+    </Panel>
+  );
+}
+
+/** Tasks put off with "not today", until their day comes. */
+function LaterSheet() {
+  const items = createMemo(() =>
+    spaceTasks()
+      .filter((t) => t.status !== "done" && isLater(t, today()))
+      .sort((a, b) => (a.later! < b.later! ? -1 : 1)),
+  );
+  return (
+    <Panel title="Later" class="later-sheet">
+      <Show when={items().length} fallback={<div class="empty"><Blob size={44} /><p>Nothing put off. “Not today” on a task hides it here until its day.</p></div>}>
+        <For each={items()}>
+          {(t) => (
+            <div class="done-row">
+              <IMoon size={14} />
+              <button class="done-title" onClick={() => setSheet({ kind: "task", id: t.id })}>{t.title}</button>
+              <span class="muted">{laterDay(t.later!)}</span>
+              <button class="ib soft" aria-label={`Bring ${t.title} back to today`} title="Back to today" onClick={() => bringBack(t.id)}>
+                <IRestore size={15} />
+              </button>
+            </div>
+          )}
+        </For>
+      </Show>
+    </Panel>
   );
 }
 
@@ -391,7 +617,7 @@ function SettingsSheet() {
           </label>
         </div>
         <div class="segment modes" role="group" aria-label="Light or dark">
-          <For each={[["light", "Light"], ["dark", "Dark"], ["auto", "Match Windows"]] as const}>
+          <For each={[["light", "Light"], ["dark", "Dark"], ["auto", `Match ${SYSTEM_NAME}`]] as const}>
             {([m, label]) => (
               <button classList={{ on: theme().mode === m }} aria-pressed={theme().mode === m} onClick={() => setTheme({ mode: m })}>
                 {label}
@@ -402,7 +628,7 @@ function SettingsSheet() {
       </div>
       <div class="box">
         <label class="switch-row">
-          <span>Start with Windows<small>Opens quietly in the tray when you sign in</small></span>
+          <span>{OS === "windows" ? "Start with Windows" : "Open at login"}<small>Opens quietly in the {OS === "mac" ? "menu bar" : "tray"} when you sign in</small></span>
           <input type="checkbox" role="switch" checked={startup()} onChange={toggleStartup} />
         </label>
         <label class="switch-row">
@@ -488,8 +714,23 @@ function SettingsSheet() {
             <button class="btn small" onClick={previewReminder}>Preview one</button>
           </span>
         </div>
+        <QuietHours />
       </div>
-      <p class="muted">Tasks and media live in this folder on your PC:</p>
+      <div class="box">
+        <div class="box-row">
+          <span class="box-label">Tips</span>
+          <button
+            class="btn small"
+            onClick={() => {
+              setSheet(null);
+              showTour();
+            }}
+          >
+            Show the tour again
+          </button>
+        </div>
+      </div>
+      <p class="muted">Tasks and media live in this folder on this computer:</p>
       <code class="path">{dataDir()}</code>
       <div class="sheet-actions">
         <button class="btn ghost" onClick={() => invoke("open_data_dir")}><IFolder size={15} /> Open folder</button>
@@ -499,12 +740,42 @@ function SettingsSheet() {
   );
 }
 
+/** Reminders wait during quiet hours (and while a full-screen app is up), then show together. */
+function QuietHours() {
+  const [q, setQ] = createSignal(readQuiet());
+  const set = (patch: Partial<ReturnType<typeof readQuiet>>) => {
+    const next = { ...q(), ...patch };
+    writeQuiet(next);
+    setQ(next);
+  };
+  return (
+    <>
+      <label class="switch-row">
+        <span>Quiet hours<small>Reminders wait, then show together when quiet hours end</small></span>
+        <input type="checkbox" role="switch" checked={q().on} onChange={() => set({ on: !q().on })} />
+      </label>
+      <Show when={q().on}>
+        <div class="quiet-times">
+          <label>From <input type="time" value={q().from} onChange={(e) => e.currentTarget.value && set({ from: e.currentTarget.value })} /></label>
+          <label>to <input type="time" value={q().to} onChange={(e) => e.currentTarget.value && set({ to: e.currentTarget.value })} /></label>
+        </div>
+      </Show>
+      <label class="switch-row">
+        <span>Wait during full-screen apps<small>Games, videos and presentations aren't interrupted</small></span>
+        <input type="checkbox" role="switch" checked={q().busy} onChange={() => set({ busy: !q().busy })} />
+      </label>
+    </>
+  );
+}
+
 export function Sheets() {
   return (
     <Show when={sheet()} keyed>
       {(s) =>
         s.kind === "task" ? <TaskSheet id={s.id} />
         : s.kind === "done" ? <DoneDrawer />
+        : s.kind === "later" ? <LaterSheet />
+        : s.kind === "search" ? <SearchSheet />
         : s.kind === "repeats" ? <RepeatsSheet />
         : s.kind === "reminders" ? <RemindersSheet />
         : <SettingsSheet />

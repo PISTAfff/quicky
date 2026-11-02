@@ -1,8 +1,8 @@
 import { For, Show } from "solid-js";
 import type { Task } from "../lib/model";
-import { daysBetween, nextReminder } from "../lib/model";
-import { clock, nextStatus, prevStatus, setStatus, today } from "../lib/store";
-import { IBell, IRepeat } from "./icons";
+import { daysBetween, dueLabel, nextReminder, stepsDone } from "../lib/model";
+import { clock, data, nextStatus, prevStatus, setStatus, today } from "../lib/store";
+import { IBell, IChecks, ICalendar, IRepeat, ITarget } from "./icons";
 import { Thumb } from "./Media";
 import { ordinal, setSheet } from "./state";
 
@@ -34,11 +34,14 @@ export function StatusDot(p: { task: Task }) {
 
 export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => void }) {
   const carriedDays = () => (p.task.status !== "done" ? daysBetween(p.task.since, today()) : 0);
+  const due = () => (p.task.due && p.task.status !== "done" ? dueLabel(p.task.due, today()) : null);
+  const steps = () => stepsDone(p.task);
+  const pinned = () => data.focus?.id === p.task.id;
   const MAX_THUMBS = 3;
   return (
     <article
       class={`card ${p.task.status}`}
-      classList={{ carried: carriedDays() > 0 }}
+      classList={{ carried: carriedDays() > 0, overdue: due()?.tone === "late", focused: pinned() }}
       data-id={p.task.id}
       onPointerDown={p.onPointerDown}
     >
@@ -48,8 +51,21 @@ export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => v
         <button class="card-title" onClick={(e) => { e.stopPropagation(); setSheet({ kind: "task", id: p.task.id }); }}>
           {p.task.title}
         </button>
-        <Show when={carriedDays() > 0 || p.task.repeatId || p.task.attachments.length || nextReminder(p.task, new Date(clock()))}>
+        <Show when={carriedDays() > 0 || p.task.repeatId || p.task.attachments.length || nextReminder(p.task, new Date(clock())) || due() || steps() || pinned()}>
           <span class="card-meta">
+            <Show when={pinned()}>
+              <span class="chip focus" title="Pinned to the bubble"><ITarget size={11} />On the bubble</span>
+            </Show>
+            <Show when={due()}>
+              {(d) => <span class={`chip due ${d().tone}`}><ICalendar size={11} />{d().text}</span>}
+            </Show>
+            <Show when={steps()}>
+              {(st) => (
+                <span class="chip steps" classList={{ all: st().done === st().total }} title="Steps done">
+                  <IChecks size={11} />{st().done}/{st().total}
+                </span>
+              )}
+            </Show>
             <Show when={carriedDays() > 0}>
               <span class="carried-label">Carried · {ordinal(carriedDays() + 1)} day</span>
             </Show>

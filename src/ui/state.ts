@@ -1,7 +1,15 @@
 import { createSignal } from "solid-js";
 import type { Attachment } from "../lib/model";
 
-export type Sheet = { kind: "task"; id: string } | { kind: "done" } | { kind: "repeats" } | { kind: "reminders" } | { kind: "settings" } | null;
+export type Sheet =
+  | { kind: "task"; id: string }
+  | { kind: "done" }
+  | { kind: "later" }
+  | { kind: "search" }
+  | { kind: "repeats" }
+  | { kind: "reminders" }
+  | { kind: "settings" }
+  | null;
 
 export const [sheet, setSheet] = createSignal<Sheet>(null);
 export const [staged, setStaged] = createSignal<Attachment[]>([]);

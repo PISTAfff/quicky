@@ -26,12 +26,19 @@ function theme() {
   root.setProperty("--on-accent", onAccent(accent));
 }
 
+/** After quiet hours: the reminders that waited, as one list (no snoozing a list). */
+const isSummary = () => current?.id === "__held";
+
 function render(p: Payload) {
   current = p;
+  const summary = isSummary();
+  document.body.classList.toggle("summary", summary);
   $("title").textContent = p.title;
   $("note").textContent = p.note;
   $("note").hidden = !p.note;
-  $("time").textContent = p.time === "Snoozed reminder" ? "Back again!" : `It's ${p.time}. Remember this?`;
+  $("time").textContent = summary ? "While it was quiet" : p.time === "Snoozed reminder" ? "Back again!" : `It's ${p.time}. Remember this?`;
+  $("done").querySelector("span")!.textContent = summary ? "Got it" : "Done";
+  $("open").querySelector("span")!.textContent = summary ? "See reminders" : "Open task";
   flood.style.setProperty("--ox", `${p.origin.x}px`);
   flood.style.setProperty("--oy", `${p.origin.y}px`);
   if (p.focus) {
@@ -61,7 +68,11 @@ document.querySelectorAll<HTMLButtonElement>(".snooze button").forEach((b) =>
 addEventListener("keydown", (e) => {
   if (performance.now() < armedAt) return;
   const k = e.key.toLowerCase();
-  const actions: Record<string, () => void> = {
+  const actions: Record<string, () => void> = isSummary() ? {
+    enter: () => answer("done"),
+    escape: () => answer("done"),
+    o: () => answer("open"),
+  } : {
     d: () => answer("doing"),
     enter: () => answer("done"),
     o: () => answer("open", 10),
@@ -93,7 +104,7 @@ async function start() {
       flood.classList.add("in");
       sfx.remind();
       armedAt = performance.now() + 700;
-      ($("doing") as HTMLButtonElement).focus({ preventScroll: true });
+      ($(isSummary() ? "done" : "doing") as HTMLButtonElement).focus({ preventScroll: true });
     }),
   );
 }

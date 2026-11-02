@@ -1,10 +1,11 @@
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { emitTo } from "@tauri-apps/api/event";
 import { sfx } from "./sfx";
 import {
   rollover, emptyData, dayKey, uid, weekday,
-  type Data, type Task, type Status, type Attachment, type Repeat, type Reminder,
+  type Data, type Task, type Status, type Attachment, type Repeat, type Reminder, type Step,
 } from "./model";
 
 export const [data, setData] = createStore<Data>(emptyData());
@@ -92,7 +93,9 @@ export async function chooseDataDir(path: string) {
 
 export const mediaUrl = (rel: string) => {
   const dir = dataDir();
-  return dir ? convertFileSrc(`${dir}\\${rel.replace(/\//g, "\\")}`) : "";
+  if (!dir) return "";
+  // Windows paths use backslashes; macOS and Linux keep the forward slashes.
+  return dir.includes("\\") ? convertFileSrc(`${dir}\\${rel.replace(/\//g, "\\")}`) : convertFileSrc(`${dir}/${rel}`);
 };
 
 // ---- task spaces ----------------------------------------------------------------
@@ -147,6 +150,19 @@ export function addTask(title: string, attachments: Attachment[], repeatDays?: n
   sfx.add();
 }
 
+/** A task made somewhere else (something dropped on the bubble or a mini), into a given list. */
+export function addTaskTo(key: string | null, title: string, attachments: Attachment[], note?: string) {
+  title = title.trim() || attachments[0]?.name || "";
+  if (!title) return;
+  const t = today();
+  const task: Task = {
+    id: uid(), title, status: "todo", day: t, since: t, attachments, created: Date.now(),
+    ...(note ? { note } : {}),
+    ...(key ? { space: key } : {}),
+  };
+  mutate((d) => void d.tasks.push(task));
+}
+
 const find = (d: Data, id: string) => d.tasks.find((t) => t.id === id);
 
 export function setStatus(id: string, status: Status) {
@@ -165,6 +181,102 @@ export function setStatus(id: string, status: Status) {
   if (status === "done" && prev && prev !== "done") {
     const title = find(unwrap(data), id)?.title ?? "";
     showToast(`“${title}” done`, { label: "Undo", run: () => setStatus(id, prev) });
+    // Finishing the task pinned to the bubble: it celebrates, and the pin comes off.
+    if (data.focus?.id === id) {
+      mutate((d) => void delete d.focus);
+      void emitTo("bubble", "bubble-cheer", { title });
+    }
+  }
+}
+
+// ---- focus pin, due dates, "not today" ------------------------------------------------
+
+/** Pins a task to the bubble (it's started, if it wasn't), or with null takes the pin off. */
+export function setFocus(id: string | null) {
+  if (!id) return mutate((d) => void delete d.focus);
+  const t = find(unwrap(data), id);
+  if (!t) return;
+  if (t.status !== "doing") setStatus(id, "doing");
+  mutate((d) => void (d.focus = { id, since: Date.now() }));
+}
+
+export function setDue(id: string, due: string | undefined) {
+  mutate((d) => {
+    const t = find(d, id);
+    if (!t) return;
+    if (due) t.due = due;
+    else delete t.due;
+  });
+}
+
+/** "Not today": hides the task (and holds its reminders) until `day`. */
+export function putOff(id: string, day: string) {
+  const title = find(unwrap(data), id)?.title ?? "";
+  mutate((d) => {
+    const t = find(d, id);
+    if (!t) return;
+    t.later = day;
+    if (t.status === "doing") t.status = "todo";
+    if (d.focus?.id === id) delete d.focus;
+  });
+  sfx.snooze();
+  showToast(`“${title}” is back ${day === dayKey(new Date(Date.now() + 86_400_000)) ? "tomorrow" : "on its day"}`, {
+    label: "Undo",
+    run: () => bringBack(id),
+  });
+}
+
+export function bringBack(id: string) {
+  mutate((d) => {
+    const t = find(d, id);
+    if (t) delete t.later;
+  });
+}
+
+// ---- steps (a task's checklist) -------------------------------------------------------------
+
+/** Changes a task's steps, and its repeat's so future copies get the same checklist. */
+function editSteps(id: string, change: (steps: Step[]) => Step[]) {
+  mutate((d) => {
+    const t = find(d, id);
+    if (!t) return;
+    const steps = change(t.steps ?? []);
+    if (steps.length) t.steps = steps;
+    else delete t.steps;
+    const r = t.repeatId ? d.repeats.find((r) => r.id === t.repeatId) : undefined;
+    if (r) {
+      if (steps.length) r.steps = steps.map((s) => s.title);
+      else delete r.steps;
+    }
+  });
+}
+
+export function addStep(id: string, title: string) {
+  title = title.trim();
+  if (title) editSteps(id, (steps) => [...steps, { id: uid(), title, done: false }]);
+}
+
+export function renameStep(id: string, stepId: string, title: string) {
+  title = title.trim();
+  editSteps(id, (steps) => (title ? steps.map((s) => (s.id === stepId ? { ...s, title } : s)) : steps.filter((s) => s.id !== stepId)));
+}
+
+export function removeStep(id: string, stepId: string) {
+  editSteps(id, (steps) => steps.filter((s) => s.id !== stepId));
+}
+
+export function toggleStep(id: string, stepId: string) {
+  mutate((d) => {
+    const s = find(d, id)?.steps?.find((s) => s.id === stepId);
+    if (s) s.done = !s.done;
+  });
+  const t = find(unwrap(data), id);
+  const steps = t?.steps ?? [];
+  if (!t || !steps.find((s) => s.id === stepId)?.done) return;
+  sfx.step();
+  // The last step ticked: offer to finish the whole task.
+  if (steps.every((s) => s.done) && t.status !== "done") {
+    showToast("All steps done", { label: "Finish task", run: () => setStatus(id, "done") });
   }
 }
 

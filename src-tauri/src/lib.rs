@@ -1,3 +1,4 @@
+mod balloon;
 mod bubble;
 mod fx;
 mod reminder;
@@ -444,6 +445,12 @@ fn set_icon_color(app: AppHandle, color: String) {
     }
 }
 
+/// Reminders wait while this is true (when the user asked for that): a full-screen app is in front.
+#[tauri::command]
+fn system_busy() -> bool {
+    win::busy()
+}
+
 fn quit(app: &AppHandle) {
     // Let the page flush its pending save before the process goes away.
     let _ = app.emit("flush", ());
@@ -564,7 +571,7 @@ pub fn run() {
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
                 // closing the bubble (Alt+F4) just switches the bubble off. The reminder can only
                 // be closed through its own buttons (Esc snoozes).
-                WindowEvent::CloseRequested { api, .. } if window.label() != "reminder" && window.label() != "fx" => {
+                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "reminder" | "fx" | "balloon") => {
                     api.prevent_close();
                     if window.label() == "bubble" {
                         let _ = bubble::set_show_bubble(app.clone(), false);
@@ -594,6 +601,7 @@ pub fn run() {
             open_data_dir,
             hide_main,
             set_icon_color,
+            system_busy,
             bubble::get_show_bubble,
             bubble::set_show_bubble,
             bubble::get_bubble_locked,
@@ -611,6 +619,9 @@ pub fn run() {
             bubble::mini_pop,
             bubble::set_pinned,
             bubble::app_icon,
+            balloon::balloon_focus,
+            balloon::balloon_peek,
+            balloon::balloon_state,
             fx::fx_payload,
             fx::fx_ready,
             fx::fx_handoff,

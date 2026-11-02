@@ -72,6 +72,10 @@ kbd {
 }
 .snooze button:hover, .snooze button.default { background: color-mix(in srgb, var(--on-accent) 26%, transparent); }
 
+/* After quiet hours: one list of what waited, so no "I'm on it" or snoozing. */
+.summary #doing, .summary .snooze { display: none; }
+.summary .note { text-align: left; font-size: 20px; line-height: 1.6; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }

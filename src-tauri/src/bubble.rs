@@ -7,11 +7,11 @@
 //! It glides between spots rather than jumping, and only shows while the main window is off
 //! screen and no reminder is up.
 
+use crate::balloon;
 use crate::fx::{self, Kind};
 use crate::win::{self, AppWindow, Rect};
 use crate::{main_on_screen, read_config, show_main, update_config, StuckApp};
 use serde::Serialize;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -106,7 +106,7 @@ pub fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize
 }
 
 /// Work area of whichever monitor contains a point (any monitor, not just the main one).
-fn work_area_at(app: &AppHandle, x: i32, y: i32) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {
+pub fn work_area_at(app: &AppHandle, x: i32, y: i32) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {
     app.available_monitors().ok()?.into_iter().find_map(|m| {
         let wa = m.work_area();
         let (p, s) = (wa.position, wa.size);
@@ -350,6 +350,7 @@ pub fn housekeeping(app: &AppHandle) {
             }
 
             sync(&app);
+            balloon::sync(&app);
             let Some(b) = window(&app) else { continue };
 
             // A walled mini drag whose page lost track of the mouse: finish it where it is.
@@ -440,6 +441,17 @@ pub fn hold(on: bool) {
     state().held = on;
 }
 
+/// Not being dragged, tugged around inside an app, or held for a big moment.
+pub fn settled() -> bool {
+    let st = state();
+    !st.dragging && st.wall.is_none() && !st.held
+}
+
+/// The task space the bubble is showing as (an app's mini), or None for the normal bubble.
+pub fn current_space() -> Option<String> {
+    state().mode.clone().flatten()
+}
+
 /// After a big moment: straight into the new form and spot (the page is still invisible).
 pub fn settle(app: &AppHandle) {
     apply(app, true);
@@ -454,7 +466,10 @@ fn center(app: &AppHandle) -> Option<(i32, i32)> {
 /// "chrome.exe" and "WINWORD.EXE" read as "Chrome" and "Winword"; names that already mix cases,
 /// like macOS app bundles ("Visual Studio Code.app"), stay as they are.
 fn pretty_name(exe: &str) -> String {
-    let stem = Path::new(exe).file_stem().and_then(|s| s.to_str()).unwrap_or("app");
+    // Either kind of separator: names are worked out the same way on every system.
+    let file = exe.rsplit(['/', '\\']).next().unwrap_or(exe);
+    let stem = file.rsplit_once('.').map_or(file, |(s, _)| s);
+    let stem = if stem.is_empty() { "app" } else { stem };
     if stem.chars().any(char::is_uppercase) && stem.chars().any(char::is_lowercase) {
         return stem.to_string();
     }

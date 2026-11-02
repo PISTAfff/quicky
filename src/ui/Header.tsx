@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from "solid-js";
 import { spaceTasks, today } from "../lib/store";
-import { parseDay } from "../lib/model";
+import { isLater, parseDay } from "../lib/model";
 import { WEEK_LONG } from "./state";
 
 export const useProgress = () =>
@@ -9,6 +9,7 @@ export const useProgress = () =>
     let done = 0;
     let total = 0;
     for (const task of spaceTasks()) {
+      if (isLater(task, t)) continue;
       if (task.status !== "done") total++;
       else if (task.doneDay === t) {
         done++;

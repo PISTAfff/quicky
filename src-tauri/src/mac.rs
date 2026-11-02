@@ -329,6 +329,19 @@ pub fn set_big_icon(w: &WebviewWindow, rgba: &[u8], width: u32, height: u32) {
     });
 }
 
+/// The app in front fills its whole screen (a full-screen app, game, video or presentation).
+pub fn busy() -> bool {
+    let Some(pid) = front_pid().filter(|&p| p != our_pid()) else { return false };
+    let Some(w) = windows(ON_SCREEN_ONLY | EXCLUDE_DESKTOP, 0).into_iter().find(|w| w.pid == pid && w.layer == 0) else { return false };
+    let c = CGPoint { x: w.bounds.origin.x + w.bounds.size.width / 2.0, y: w.bounds.origin.y + w.bounds.size.height / 2.0 };
+    let (mut id, mut count) = (0u32, 0u32);
+    if unsafe { CGGetDisplaysWithPoint(c, 1, &mut id, &mut count) } != 0 || count == 0 {
+        return false;
+    }
+    let d = unsafe { CGDisplayBounds(id) };
+    w.bounds.size.width >= d.size.width && w.bounds.size.height >= d.size.height
+}
+
 /// The menu bar is at the top and the Dock is out of the way; the work area already allows for both.
 pub fn taskbar() -> Option<(Rect, u32)> {
     None

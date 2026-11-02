@@ -537,3 +537,96 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 /* ---- sounds ---- */
 .volume-row { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 13px; color: var(--sub); }
 .volume-row input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+/* ---- due dates, not today, steps, pinned (0.1.18) ---- */
+.chip.due { color: var(--accent-ink); background: var(--accent-soft); }
+.chip.due.today { color: var(--warm); background: color-mix(in srgb, var(--peach) 70%, var(--card)); }
+.chip.due.late { color: #fff; background: var(--danger); }
+.chip.steps { color: var(--sub); background: var(--soft); }
+.chip.steps.all { color: var(--done); background: color-mix(in srgb, var(--mint) 35%, var(--card)); }
+.chip.focus { color: var(--on-accent); background: var(--accent); }
+.card.overdue { box-shadow: inset 4px 0 0 var(--danger); }
+.card.focused { border-color: var(--accent); box-shadow: 3px 3px 0 var(--accent); }
+.drawers { display: flex; gap: 8px; margin: 10px 16px 16px; }
+.drawers .drawer-btn { margin: 0; flex: 1; }
+.drawers .drawer-btn.later { flex: 0 0 auto; padding: 0 14px; background: var(--card); color: var(--ink); }
+.focus-btn {
+  display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; border-radius: var(--r);
+  border: 2px dashed var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: 800;
+}
+.focus-btn small { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+.focus-btn.on { border-style: solid; background: var(--accent); color: var(--on-accent); }
+.focus-btn.on small { color: color-mix(in srgb, var(--on-accent) 80%, transparent); }
+.focus-btn:hover { transform: translateY(-1px); }
+.date-input {
+  height: 32px; margin-left: auto; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 6px;
+  font: 800 13px "Nunito", sans-serif; color: var(--ink); outline: 0;
+}
+.date-input:focus { border-color: var(--accent); }
+.later-row { justify-content: flex-start; border-top: 1.5px dashed var(--line); padding-top: 8px; }
+.later-pick { position: relative; overflow: hidden; cursor: pointer; }
+.later-pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.steps-box { gap: 6px; }
+.step { display: flex; align-items: center; gap: 8px; }
+.step input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--done); cursor: pointer; flex-shrink: 0; }
+.step-title { flex: 1; min-width: 0; border: 0; background: transparent; font: 700 14px "Nunito", sans-serif; color: var(--ink); outline: 0; padding: 4px 2px; border-radius: 6px; }
+.step-title:focus { background: var(--bg); }
+.step.done .step-title { text-decoration: line-through; color: var(--muted); }
+.step .ib.soft { width: 26px; height: 26px; }
+.step-add {
+  border: 2px dashed var(--line); border-radius: 10px; background: transparent; padding: 7px 10px;
+  font: 700 14px "Nunito", sans-serif; color: var(--ink); outline: 0;
+}
+.step-add:focus { border-style: solid; border-color: var(--accent); }
+
+/* ---- search ---- */
+.search-field {
+  display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 12px; border: 2px solid var(--edge); border-radius: var(--r);
+  background: var(--card); box-shadow: var(--shadow); color: var(--sub);
+}
+.search-field input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: 700 15px "Nunito", sans-serif; color: var(--ink); }
+.search-hit { all: unset; display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 12px; padding: 8px 12px; cursor: pointer; }
+.search-hit:hover, .search-hit:focus-visible { background: var(--accent-soft); }
+.search-hit .dot { pointer-events: none; }
+.search-hit.done .search-title { color: var(--muted); }
+.search-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.search-title { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-sub { font-size: 12px; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- quiet hours ---- */
+.quiet-times { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; font-weight: 800; color: var(--sub); }
+.quiet-times input[type="time"] {
+  height: 32px; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 6px; margin-left: 4px;
+  font: 800 13px "Nunito", sans-serif; color: var(--ink); outline: 0;
+}
+
+/* ---- first-run tour ---- */
+.tour-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--ink) 35%, transparent); animation: fade 0.2s ease; }
+.tour {
+  width: min(340px, 100%); background: var(--bg); border: 2px solid var(--edge); border-radius: 20px; box-shadow: 5px 5px 0 var(--edge);
+  padding: 18px 20px 14px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px;
+  animation: tourin 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+.tour h2 { margin: 4px 0 0; font: 600 21px/1.15 "Fredoka", sans-serif; }
+.tour p { margin: 0; color: var(--sub); font-weight: 700; }
+.tour-art { position: relative; width: 180px; height: 96px; display: grid; place-items: center; }
+.tour-window { position: absolute; left: 20px; top: 14px; width: 120px; height: 72px; border: 2px solid var(--edge); border-radius: 10px; background: var(--card); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tour-window i { display: block; height: 6px; border-radius: 3px; background: var(--line); }
+.tour-window i:nth-child(2) { width: 70%; }
+.tour-window i:nth-child(3) { width: 45%; }
+.tour-blob { position: absolute; display: grid; place-items: center; }
+.tour-blob.drag { animation: tourdrag 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.tour-art.menu .tour-blob { left: 30px; top: 26px; animation: tourwiggle 1.6s ease-in-out infinite; }
+.tour-menu { position: absolute; left: 82px; top: 18px; width: 82px; padding: 8px; border: 2px solid var(--edge); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; animation: tourmenu 1.6s ease-in-out infinite; }
+.tour-menu i { display: block; height: 6px; border-radius: 3px; background: var(--soft); }
+.tour-menu i:first-child { background: var(--accent-soft); }
+.tour-key { font: 800 18px "Nunito", sans-serif; padding: 8px 14px; border: 2px solid var(--edge); border-radius: 12px; background: var(--card); box-shadow: 3px 3px 0 var(--edge); animation: tourpress 1.4s ease-in-out infinite; }
+.tour-blob.small { right: 18px; bottom: 6px; }
+.tour-dots { display: flex; gap: 6px; margin-top: 4px; }
+.tour-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: background 0.2s, width 0.2s; }
+.tour-dots i.on { width: 20px; border-radius: 4px; background: var(--accent); }
+.tour-actions { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+@keyframes tourin { from { opacity: 0; transform: translateY(16px) scale(0.94); } }
+@keyframes tourdrag { 0%, 15% { transform: translate(-70px, 34px); } 55%, 80% { transform: translate(22px, -6px) scale(0.8); } 100% { transform: translate(-70px, 34px); } }
+@keyframes tourwiggle { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-6deg) scale(1.05); } 60% { transform: rotate(4deg); } }
+@keyframes tourmenu { 0%, 20% { opacity: 0; transform: translateY(-6px) scale(0.92); } 35%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes tourpress { 0%, 60%, 100% { transform: none; box-shadow: 3px 3px 0 var(--edge); } 70% { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--edge); } }

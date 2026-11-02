@@ -1,24 +1,32 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { data, setStatus, today, spaceRepeats, spaceTasks } from "../lib/store";
-import { reminderOf, type Status, type Task } from "../lib/model";
+import { byUrgency, isLater, reminderOf, type Status } from "../lib/model";
 import { DateTitle, Header, Progress } from "./Header";
 import { QuickAdd } from "./QuickAdd";
 import { TaskCard } from "./TaskCard";
-import { Blob, IArrow, IRepeat, IUp, IBell } from "./icons";
+import { Blob, IArrow, IRepeat, IUp, IBell, IMoon } from "./icons";
 import { setSheet } from "./state";
 
-const open = () => spaceTasks().filter((t) => t.status !== "done");
-const byStatus = (a: Task, b: Task) => (a.status === b.status ? 0 : a.status === "doing" ? -1 : 1);
+const open = () => spaceTasks().filter((t) => t.status !== "done" && !isLater(t, today()));
+/** Put off with "not today", waiting for their day. */
+const laterCount = () => spaceTasks().filter((t) => t.status !== "done" && isLater(t, today())).length;
 const doneCount = () => spaceTasks().filter((t) => t.status === "done").length;
 const activeReminders = () => data.tasks.filter((t) => t.status !== "done" && reminderOf(t)?.on).length;
 
 function DrawerButton() {
   return (
-    <button class="drawer-btn" onClick={() => setSheet({ kind: "done" })}>
-      <Blob size={18} color="var(--mint)" mood="done" />
-      Done drawer · {doneCount()} hidden
-      <IUp size={14} />
-    </button>
+    <div class="drawers">
+      <button class="drawer-btn" onClick={() => setSheet({ kind: "done" })}>
+        <Blob size={18} color="var(--mint)" mood="done" />
+        Done drawer · {doneCount()} hidden
+        <IUp size={14} />
+      </button>
+      <Show when={laterCount()}>
+        <button class="drawer-btn later" aria-label={`Later: ${laterCount()} put off`} title="Put off with “Not today”" onClick={() => setSheet({ kind: "later" })}>
+          <IMoon size={14} /> {laterCount()}
+        </button>
+      </Show>
+    </div>
   );
 }
 
@@ -39,8 +47,8 @@ export function ListView() {
     const f = filter();
     return open().filter((t) => f === "all" || t.status === f);
   });
-  const carried = createMemo(() => tasks().filter((t) => t.since < today()).sort(byStatus));
-  const fresh = createMemo(() => tasks().filter((t) => t.since >= today()).sort(byStatus));
+  const carried = createMemo(() => tasks().filter((t) => t.since < today()).sort(byUrgency));
+  const fresh = createMemo(() => tasks().filter((t) => t.since >= today()).sort(byUrgency));
   const count = (s: Status) => open().filter((t) => t.status === s).length;
 
   return (
@@ -80,7 +88,7 @@ export function ListView() {
 }
 
 export function MiniView() {
-  const next = createMemo(() => [...open()].sort(byStatus).slice(0, 2));
+  const next = createMemo(() => [...open()].sort(byUrgency).slice(0, 2));
   const rest = () => Math.max(0, open().length - next().length);
   return (
     <div class="view mini">
@@ -157,7 +165,7 @@ function useCardDrag() {
 
 export function BoardView() {
   const drag = useCardDrag();
-  const col = (s: Status) => open().filter((t) => t.status === s);
+  const col = (s: Status) => open().filter((t) => t.status === s).sort(byUrgency);
   const COLS = [
     { key: "todo", label: "To do" },
     { key: "doing", label: "Doing" },
@@ -173,6 +181,9 @@ export function BoardView() {
           <button onClick={() => setSheet({ kind: "repeats" })}><IRepeat size={14} /> Repeats · {spaceRepeats().length}</button>
           <button onClick={() => setSheet({ kind: "reminders" })}><IBell size={14} /> Reminders · {activeReminders()}</button>
           <button onClick={() => setSheet({ kind: "done" })}><Blob size={15} color="var(--mint)" mood="done" /> Done · {doneCount()}</button>
+          <Show when={laterCount()}>
+            <button onClick={() => setSheet({ kind: "later" })}><IMoon size={14} /> Later · {laterCount()}</button>
+          </Show>
         </div>
       </aside>
       <div class="board-main">

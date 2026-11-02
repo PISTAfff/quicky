@@ -49,6 +49,11 @@ export const IGear = (p: P) => (
   </Svg>
 );
 export const IArrow =(p: P) => <Svg {...p}><path d="M5 12h14M13 6l6 6-6 6" /></Svg>;
+export const ISearch = (p: P) => <Svg {...p}><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></Svg>;
+export const ICalendar = (p: P) => <Svg {...p}><rect x="4" y="5" width="16" height="15" rx="3" /><path d="M4 10h16M9 3v4M15 3v4" /></Svg>;
+export const IMoon = (p: P) => <Svg {...p}><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></Svg>;
+export const IChecks = (p: P) => <Svg {...p}><path d="M3 7l2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8" /></Svg>;
+export const ITarget = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.5" /></Svg>;
 
 /** The Quicky blob. `mood` "done" gives it happy closed eyes. */
 export const Blob = (p: { size?: number; color?: string; mood?: "done" }) => {

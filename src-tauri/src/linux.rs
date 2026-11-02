@@ -35,6 +35,7 @@ x11rb::atom_manager! {
         _NET_WM_PID,
         _NET_WM_STATE,
         _NET_WM_STATE_HIDDEN,
+        _NET_WM_STATE_FULLSCREEN,
         _NET_WM_WINDOW_TYPE,
         _NET_WM_WINDOW_TYPE_NORMAL,
         _NET_WM_WINDOW_TYPE_DIALOG,
@@ -218,6 +219,12 @@ fn pointer() -> Option<(i32, i32, bool)> {
 
 /// The window icon set with `set_icon` is the one taskbars and docks show on Linux.
 pub fn set_big_icon(_w: &WebviewWindow, _rgba: &[u8], _width: u32, _height: u32) {}
+
+/// The window in front is full screen (a game, video or presentation).
+pub fn busy() -> bool {
+    let Some(x) = x() else { return false };
+    active(x).is_some_and(|w| !is_ours(x, w) && prop(x, w, x.atoms._NET_WM_STATE).contains(&x.atoms._NET_WM_STATE_FULLSCREEN))
+}
 
 /// Panels differ between desktops; the work area already leaves room for them.
 pub fn taskbar() -> Option<(Rect, u32)> {

@@ -436,6 +436,14 @@ pub fn set_big_icon(w: &tauri::WebviewWindow, rgba: &[u8], width: u32, height: u
     }
 }
 
+/// A full-screen app, game or presentation is in front, so reminders should wait.
+pub fn busy() -> bool {
+    use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN};
+    let mut state = 0;
+    let ok = unsafe { SHQueryUserNotificationState(&mut state) } == 0;
+    ok && matches!(state, QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE)
+}
+
 /// The main taskbar's rectangle and which screen edge it's on (0 left, 1 top, 2 right, 3 bottom).
 /// Works with an auto-hiding taskbar too, where the work area is the whole screen.
 pub fn taskbar() -> Option<(Rect, u32)> {

@@ -10,6 +10,13 @@ export interface Attachment {
   kind: Kind;
 }
 
+/** One item of a task's checklist. */
+export interface Step {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -31,6 +38,12 @@ export interface Task {
   lastFired?: string;
   /** Which app's task space it belongs to (the app's .exe key); none = the general list. */
   space?: string;
+  /** The day it's due (YYYY-MM-DD). */
+  due?: string;
+  /** "Not today": hidden from the lists (and its reminders held) until this day. */
+  later?: string;
+  /** A small checklist inside the task. */
+  steps?: Step[];
 }
 
 export interface Repeat {
@@ -43,6 +56,8 @@ export interface Repeat {
   reminder?: Reminder;
   remind?: string[];
   space?: string;
+  /** Checklist copied (unticked) onto each new copy of the task. */
+  steps?: string[];
 }
 
 export interface Data {
@@ -51,6 +66,8 @@ export interface Data {
   repeats: Repeat[];
   /** Display names of app task spaces, by key (e.g. "c:\\...\\chrome.exe" → "Chrome"). */
   spaces?: Record<string, string>;
+  /** The task pinned to the bubble, and since when (ms). */
+  focus?: { id: string; since: number };
 }
 
 export const emptyData = (): Data => ({ version: 1, tasks: [], repeats: [] });
@@ -87,11 +104,15 @@ export const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 export function rollover(data: Data, today: string): Data {
   let changed = false;
   const tasks = data.tasks.map((t) => {
-    if (t.status !== "done" && t.day < today) {
-      changed = true;
-      return { ...t, day: today };
+    let next = t;
+    if (t.status !== "done" && t.day < today) next = { ...next, day: today };
+    // Back from "not today": listed again, as a fresh task of its day.
+    if (t.later && t.later <= today) {
+      next = { ...next, since: t.later > t.since ? t.later : t.since };
+      delete next.later;
     }
-    return t;
+    if (next !== t) changed = true;
+    return next;
   });
 
   const repeats = data.repeats.map((r) => {
@@ -110,6 +131,7 @@ export function rollover(data: Data, today: string): Data {
         created: Date.now(),
         ...(r.reminder ? { reminder: structuredClone(r.reminder) } : r.remind?.length ? { remind: [...r.remind] } : {}),
         ...(r.space ? { space: r.space } : {}),
+        ...(r.steps?.length ? { steps: r.steps.map((title) => ({ id: uid(), title, done: false })) } : {}),
       });
     }
     return { ...r, lastSpawned: today };
@@ -192,7 +214,7 @@ export function slotsOn(r: Reminder, day: Date): number[] {
  * isn't hours late).
  */
 export function dueReminder(t: Task, now: Date): string | null {
-  if (t.status !== "todo") return null;
+  if (t.status !== "todo" || isLater(t, dayKey(now))) return null;
   if (t.snoozeUntil) return now.getTime() >= t.snoozeUntil ? `snooze ${t.snoozeUntil}` : null;
   const r = reminderOf(t);
   if (!r) return null;
@@ -217,6 +239,7 @@ export function upcoming(t: Task, now: Date, count = 3): number[] {
   for (let i = 0; r && i < 8 && out.length < count + 1; i++) {
     const day = new Date(now);
     day.setDate(day.getDate() + i);
+    if (isLater(t, dayKey(day))) continue;
     for (const at of slotsOn(r, day)) if (at > after) out.push(at);
   }
   return [...new Set(out)].sort((a, b) => a - b).slice(0, count);
@@ -265,4 +288,62 @@ export function describeReminder(r: Reminder | undefined, now: Date): string {
     }
   }
   return r.skip === dayKey(now) ? `${s} (not today)` : s;
+}
+// ---- due dates, "not today", steps, search -------------------------------------------------
+
+/** Put off with "not today" and not back yet. */
+export const isLater = (t: Pick<Task, "later">, today: string) => !!t.later && t.later > today;
+
+/** "Overdue · Mon 3", "Due today", "Due tomorrow", "Due Fri", "Due 12 Nov". */
+export function dueLabel(due: string, today: string): { text: string; tone: "late" | "today" | "soon" } {
+  const days = daysBetween(today, due);
+  const d = parseDay(due);
+  const short = days > 1 && days < 7 ? DAY_NAMES[d.getDay()] : `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+  if (days < 0) return { text: days === -1 ? "Overdue · yesterday" : `Overdue · ${DAY_NAMES[d.getDay()]} ${d.getDate()}`, tone: "late" };
+  if (days === 0) return { text: "Due today", tone: "today" };
+  if (days === 1) return { text: "Due tomorrow", tone: "soon" };
+  return { text: `Due ${short}`, tone: "soon" };
+}
+
+/** Lists order: Doing first, then by how soon it's due (overdue first), then the rest as added. */
+export function byUrgency(a: Task, b: Task): number {
+  const doing = (t: Task) => (t.status === "doing" ? 0 : 1);
+  if (doing(a) !== doing(b)) return doing(a) - doing(b);
+  const due = (t: Task) => t.due ?? "9999";
+  return due(a) < due(b) ? -1 : due(a) > due(b) ? 1 : 0;
+}
+
+/** "2/3" for a task's checklist, or null without one. */
+export function stepsDone(t: Pick<Task, "steps">): { done: number; total: number } | null {
+  if (!t.steps?.length) return null;
+  return { done: t.steps.filter((s) => s.done).length, total: t.steps.length };
+}
+
+/** Lower-case, without accents, so "cafe" finds "Café". */
+const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Tasks matching every word of the query, in the title, note, steps or attachment names. Open tasks
+ * come first (Doing, then To do), then finished ones, most recent first.
+ */
+export function searchTasks(tasks: Task[], query: string): Task[] {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const hits = tasks.filter((t) => {
+    const hay = fold([t.title, t.note ?? "", ...(t.steps ?? []).map((s) => s.title), ...t.attachments.map((a) => a.name)].join("\n"));
+    return words.every((w) => hay.includes(w));
+  });
+  const rank = (t: Task) => (t.status === "doing" ? 0 : t.status === "todo" ? 1 : 2);
+  return hits.sort((a, b) => rank(a) - rank(b) || (rank(a) === 2 ? (b.doneDay ?? "").localeCompare(a.doneDay ?? "") : a.created - b.created));
+}
+
+/** Whether a moment falls in quiet hours from..to ("HH:MM"), which may run past midnight. */
+export function inQuietHours(now: Date, from: string, to: string): boolean {
+  const m = now.getHours() * 60 + now.getMinutes();
+  const [fh, fm] = from.split(":").map(Number);
+  const [th, tm] = to.split(":").map(Number);
+  const a = fh * 60 + fm;
+  const b = th * 60 + tm;
+  if (a === b) return false;
+  return a < b ? m >= a && m < b : m >= a || m < b;
 }

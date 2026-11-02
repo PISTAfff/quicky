@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, 
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
-  addAttachments, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, tick, toast,
+  addAttachments, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, tick, toast, today,
 } from "./lib/store";
 import { importPaths } from "./lib/media";
 import { startReminders } from "./lib/reminders";
@@ -11,8 +11,11 @@ import { TitleBar } from "./ui/TitleBar";
 import { FolderSetup } from "./ui/FolderSetup";
 import { BoardView, ListView, MiniView } from "./ui/Views";
 import { Sheets } from "./ui/Sheets";
+import { Tour } from "./ui/Tour";
 import { dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
 import { Blob } from "./ui/icons";
+import { modDown } from "./lib/platform";
+import { isLater } from "./lib/model";
 
 type Mode = "mini" | "list" | "board";
 const modeFor = (w: number, h: number): Mode => (w < 330 || h < 340 ? "mini" : w >= 680 ? "board" : "list");
@@ -27,7 +30,7 @@ export default function App() {
     const spaces: Record<string, number> = {};
     let open = 0;
     for (const t of data.tasks) {
-      if (t.status === "done") continue;
+      if (t.status === "done" || isLater(t, today())) continue;
       if (t.space) spaces[t.space] = (spaces[t.space] ?? 0) + 1;
       else open++;
     }
@@ -52,9 +55,12 @@ export default function App() {
     const minute = setInterval(tick, 60_000);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && sheet()) setSheet(null);
-      else if (e.ctrlKey && e.key.toLowerCase() === "n") {
+      else if (modDown(e) && e.key.toLowerCase() === "n") {
         e.preventDefault();
         focusQuickAdd();
+      } else if (modDown(e) && e.key.toLowerCase() === "f" && dataDir()) {
+        e.preventDefault();
+        setSheet({ kind: "search" });
       }
     };
     addEventListener("keydown", onKey);
@@ -142,6 +148,7 @@ export default function App() {
                 <Match when={mode() === "list"}><ListView /></Match>
               </Switch>
               <Sheets />
+              <Tour />
             </Show>
           </Show>
         </Show>

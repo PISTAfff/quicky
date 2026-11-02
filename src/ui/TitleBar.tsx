@@ -2,9 +2,10 @@ import { Show } from "solid-js";
 import { SpacePicker } from "./SpacePicker";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { Blob, IClose, IGear, IMin, IPin } from "./icons";
+import { Blob, IClose, IGear, IMin, IPin, ISearch } from "./icons";
 import { pinned, setPinned, setSheet } from "./state";
 import { data, flush, space } from "../lib/store";
+import { MOD_KEY, QUICK_KEY } from "../lib/platform";
 
 const win = getCurrentWindow();
 
@@ -28,6 +29,9 @@ export function TitleBar() {
         </Show>
       </div>
       <div class="winbtns">
+        <button class="wb" aria-label="Search all tasks" title={`Search all tasks (${MOD_KEY}F)`} onClick={() => setSheet({ kind: "search" })}>
+          <ISearch size={14} />
+        </button>
         <button class="wb" aria-label="Settings" title="Settings: colours, startup, data folder" onClick={() => setSheet({ kind: "settings" })}>
           <IGear size={14} />
         </button>
@@ -47,7 +51,7 @@ export function TitleBar() {
         <button
           class="wb close"
           aria-label="Close to tray"
-          title="Close (keeps running in the tray, Ctrl+Space to open)"
+          title={`Close (keeps running in the tray, ${QUICK_KEY} to open)`}
           onClick={async () => {
             await flush();
             await invoke("hide_main");
