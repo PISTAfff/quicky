@@ -31,7 +31,7 @@ function render(p: Payload) {
   $("title").textContent = p.title;
   $("note").textContent = p.note;
   $("note").hidden = !p.note;
-  $("time").textContent = p.time === "Snoozed reminder" ? "Back again!" : `It's ${p.time} — remember this?`;
+  $("time").textContent = p.time === "Snoozed reminder" ? "Back again!" : `It's ${p.time}. Remember this?`;
   flood.style.setProperty("--ox", `${p.origin.x}px`);
   flood.style.setProperty("--oy", `${p.origin.y}px`);
   if (p.focus) {

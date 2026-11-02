@@ -1,6 +1,6 @@
 # Front end (`src/`)
 
-Three pages share this folder: the main window (`index.tsx` → `App.tsx`, SolidJS), the always-on-top bubble (`bubble.ts`, plain TS, no framework so it stays tiny) and the full-screen reminder (`reminder.ts`, plain TS). They talk to Rust through Tauri `invoke` / events and to each other through Rust events and shared `localStorage`.
+Four pages share this folder: the main window (`index.tsx` → `App.tsx`, SolidJS), the always-on-top bubble (`bubble.ts`, plain TS, no framework so it stays tiny), the full-screen reminder (`reminder.ts`, plain TS) and the short-lived overlay for the bubble's big moments (`fx.ts`, plain TS). They talk to Rust through Tauri `invoke` / events and to each other through Rust events and shared `localStorage`.
 
 ## Stack
 SolidJS 1.9 (stores + signals), TypeScript, Vite; `@tauri-apps/api` v2 plus the dialog and autostart plugins. No CSS framework: one stylesheet per page (`styles.css`, `reminder.css`, inline `<style>` in `bubble.html`).

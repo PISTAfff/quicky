@@ -36,11 +36,15 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update files so installed copies can trust them (see README, Releasing).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: Quicky v__VERSION__
           releaseBody: |
             Download **Quicky_*_x64-setup.exe** below and run it. No admin rights needed.
-            Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**.
+            Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**. Already have Quicky? It updates itself (Settings, Updates).
+          includeUpdaterJson: true
           releaseDraft: false
           prerelease: false

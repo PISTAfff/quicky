@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { getVersion } from "@tauri-apps/api/app";
+import { autoCheck, checkForUpdate, installUpdate, setAutoCheck, updateState } from "../lib/updates";
 import { ACCENTS, setTheme, theme } from "../lib/theme";
 import { onAccent } from "../lib/theme-colors";
 import {
@@ -334,6 +336,18 @@ function SettingsSheet() {
     await invoke("set_show_bubble", { show: next });
     setBubble(next);
   };
+  const [version, setVersion] = createSignal("");
+  getVersion().then(setVersion).catch(() => {});
+  const [auto, setAuto] = createSignal(autoCheck());
+  const updateLine = () => {
+    const u = updateState();
+    if (u.kind === "checking") return "Checking…";
+    if (u.kind === "latest") return "You have the latest version";
+    if (u.kind === "ready") return `Version ${u.version} is ready to install`;
+    if (u.kind === "installing") return `Updating… ${Math.round(u.progress * 100)}%`;
+    if (u.kind === "failed") return "Couldn't check right now. Try again in a bit";
+    return "";
+  };
   return (
     <Panel title="Settings" class="settings-sheet">
       <div class="box">
@@ -435,6 +449,36 @@ function SettingsSheet() {
             />
           </label>
         </Show>
+      </div>
+      <div class="box">
+        <div class="box-row">
+          <span class="box-label">Updates · Quicky {version()}</span>
+          <Show
+            when={updateState().kind === "ready"}
+            fallback={
+              <button class="btn small" disabled={updateState().kind === "checking" || updateState().kind === "installing"} onClick={() => void checkForUpdate()}>
+                Check now
+              </button>
+            }
+          >
+            <button class="btn small primary" onClick={() => void installUpdate()}>Update and restart</button>
+          </Show>
+        </div>
+        <Show when={updateLine()}>
+          <small class="muted" role="status">{updateLine()}</small>
+        </Show>
+        <label class="switch-row">
+          <span>Check for updates automatically<small>Looks for new versions on GitHub now and then; you choose when to install</small></span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={auto()}
+            onChange={() => {
+              setAutoCheck(!auto());
+              setAuto(!auto());
+            }}
+          />
+        </label>
       </div>
       <div class="box">
         <div class="box-row">

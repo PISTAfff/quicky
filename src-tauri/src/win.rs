@@ -1,18 +1,20 @@
 //! Thin wrappers over the few Win32 calls Quicky needs: finding other apps' windows, keeping the
 //! bubble on top without stealing focus, and pulling the reminder to the front.
 
-use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, RECT};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows_sys::Win32::System::Threading::{
     AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
     PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
+use windows_sys::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_LBUTTON, VK_MENU};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow,
-    GA_ROOT, GA_ROOTOWNER, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE,
-    SW_SHOWNOACTIVATE,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SetForegroundWindow, SetWindowPos, ShowWindow,
+    GA_ROOT, GA_ROOTOWNER, HWND_TOPMOST, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+    SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_MOVING, WM_SIZING, WM_WINDOWPOSCHANGING,
 };
 
 /// Window handles cross threads as plain integers.
@@ -87,12 +89,19 @@ pub fn frame(hwnd: Hwnd) -> Option<Rect> {
     Some(Rect { left: r.left, top: r.top, right: r.right, bottom: r.bottom })
 }
 
-/// A real app window: alive, visible, not minimized, not cloaked, not the desktop or taskbar.
+/// A real app window: alive, visible, not minimized, not cloaked, and not part of the Windows
+/// shell. Explorer draws the taskbar, the tray's hidden-icons popup, Alt+Tab and the desktop as
+/// well as its folder windows, so of Explorer's windows only folder windows count.
 pub fn usable(hwnd: Hwnd) -> bool {
     let alive = unsafe { IsWindow(h(hwnd)) != 0 && IsWindowVisible(h(hwnd)) != 0 && IsIconic(h(hwnd)) == 0 };
-    alive
-        && !cloaked(hwnd)
-        && !matches!(class_of(hwnd).as_str(), "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW")
+    if !alive || cloaked(hwnd) {
+        return false;
+    }
+    let class = class_of(hwnd);
+    if matches!(class.as_str(), "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW" | "Windows.UI.Core.CoreWindow") {
+        return false;
+    }
+    class == "CabinetWClass" || !exe_of(hwnd).is_some_and(|e| e.to_ascii_lowercase().ends_with("\\explorer.exe"))
 }
 
 /// The app the user is in right now. `None` while one of Quicky's own windows has focus.
@@ -266,4 +275,155 @@ pub fn force_foreground(hwnd: Hwnd) {
             AttachThreadInput(me, fg_thread, 0);
         }
     }
+}
+
+// ---- keeping Quicky inside the app it is opened in ---------------------------------------------
+
+/// The app window Quicky is open inside (0 = none). Moving and resizing Quicky stop at its edges.
+/// Read inside the window procedure, so it is an atomic rather than behind a lock.
+pub static HOST: AtomicIsize = AtomicIsize::new(0);
+/// Set while Quicky places its own window: its resize-then-move steps pass through in-between
+/// rectangles that must not be clamped.
+pub static PLACING: AtomicBool = AtomicBool::new(false);
+
+/// Hooks the main window's messages so drags, resizes, snapping and maximizing all stay inside
+/// `HOST` while one is set. Call once, on the thread that created the window.
+pub fn keep_inside_host(hwnd: Hwnd) {
+    unsafe { SetWindowSubclass(h(hwnd), Some(host_walls), 1, 0) };
+}
+
+/// Where the window's outer rectangle may go: the host's visible frame, widened by our own
+/// invisible resize borders (Windows measures moves and sizes by the outer rectangle).
+fn host_bounds(hwnd: HWND) -> Option<RECT> {
+    let host = HOST.load(Ordering::Relaxed);
+    // No walls while the app is gone, hidden or minimized (its frame is then far off screen).
+    if host == 0 || unsafe { IsWindow(h(host)) == 0 || IsWindowVisible(h(host)) == 0 || IsIconic(h(host)) != 0 } {
+        return None;
+    }
+    let app = frame(host)?;
+    // Maximized (Win+Up, double-clicking the title bar): fill the app exactly; a maximized
+    // window has no invisible borders to allow for.
+    if unsafe { IsZoomed(hwnd) } != 0 {
+        return Some(RECT { left: app.left, top: app.top, right: app.right, bottom: app.bottom });
+    }
+    let me = frame(hwnd as Hwnd)?;
+    let mut outer = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    if unsafe { GetWindowRect(hwnd, &mut outer) } == 0 {
+        return None;
+    }
+    Some(RECT {
+        left: app.left - (me.left - outer.left),
+        top: app.top - (me.top - outer.top),
+        right: app.right + (outer.right - me.right),
+        bottom: app.bottom + (outer.bottom - me.bottom),
+    })
+}
+
+/// Slides a rectangle (same size) back inside the bounds; if it's bigger, it lines up top-left.
+fn slide_inside(r: &mut RECT, b: &RECT) {
+    let (w, ht) = (r.right - r.left, r.bottom - r.top);
+    let x = r.left.min(b.right - w).max(b.left);
+    let y = r.top.min(b.bottom - ht).max(b.top);
+    *r = RECT { left: x, top: y, right: x + w, bottom: y + ht };
+}
+
+unsafe extern "system" fn host_walls(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM, _id: usize, _data: usize) -> LRESULT {
+    match msg {
+        // Dragging: the window stops at the app's edges instead of crossing them.
+        WM_MOVING => {
+            let res = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+            if let Some(b) = host_bounds(hwnd) {
+                slide_inside(unsafe { &mut *(lparam as *mut RECT) }, &b);
+                return 1;
+            }
+            res
+        }
+        // Resizing: the edge being dragged stops at the app's edge.
+        WM_SIZING => {
+            let res = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+            if let Some(b) = host_bounds(hwnd) {
+                let r = unsafe { &mut *(lparam as *mut RECT) };
+                *r = RECT { left: r.left.max(b.left), top: r.top.max(b.top), right: r.right.min(b.right), bottom: r.bottom.min(b.bottom) };
+                return 1;
+            }
+            res
+        }
+        // Everything else that moves or sizes it (snapping, maximizing, Win+arrows).
+        WM_WINDOWPOSCHANGING if !PLACING.load(Ordering::Relaxed) => {
+            let wp = unsafe { &mut *(lparam as *mut WINDOWPOS) };
+            let moving = wp.flags & SWP_NOMOVE == 0 || wp.flags & SWP_NOSIZE == 0;
+            if moving && wp.flags & SWP_HIDEWINDOW == 0 && unsafe { IsIconic(hwnd) } == 0 && wp.x > -30000 {
+                if let Some(b) = host_bounds(hwnd) {
+                    let mut now = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    unsafe { GetWindowRect(hwnd, &mut now) };
+                    let (x, y) = if wp.flags & SWP_NOMOVE != 0 { (now.left, now.top) } else { (wp.x, wp.y) };
+                    let (cw, ch) = if wp.flags & SWP_NOSIZE != 0 { (now.right - now.left, now.bottom - now.top) } else { (wp.cx, wp.cy) };
+                    let (cw, ch) = (cw.min(b.right - b.left), ch.min(b.bottom - b.top));
+                    let mut r = RECT { left: x, top: y, right: x + cw, bottom: y + ch };
+                    slide_inside(&mut r, &b);
+                    (wp.x, wp.y, wp.cx, wp.cy) = (r.left, r.top, r.right - r.left, r.bottom - r.top);
+                    wp.flags &= !(SWP_NOMOVE | SWP_NOSIZE);
+                }
+            }
+            unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+        }
+        _ => unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) },
+    }
+}
+
+/// Sets a window's big icon (the one its taskbar button shows) from RGBA pixels. Tauri's
+/// `set_icon` only replaces the small one, so the taskbar would keep the .exe's icon.
+pub fn set_big_icon(hwnd: Hwnd, rgba: &[u8], width: u32, height: u32) {
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, SendMessageW, ICONINFO, ICON_BIG, WM_SETICON};
+    /// The icon we set last, destroyed once it's replaced.
+    static LAST: AtomicIsize = AtomicIsize::new(0);
+    if rgba.len() < (width * height * 4) as usize {
+        return;
+    }
+    unsafe {
+        let mut bi: BITMAPINFO = std::mem::zeroed();
+        bi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bi.bmiHeader.biWidth = width as i32;
+        bi.bmiHeader.biHeight = -(height as i32); // top-down rows, like the RGBA buffer
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        let mut bits = std::ptr::null_mut();
+        let color = CreateDIBSection(std::ptr::null_mut(), &bi, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0);
+        if color.is_null() || bits.is_null() {
+            return;
+        }
+        let px = std::slice::from_raw_parts_mut(bits as *mut u8, (width * height * 4) as usize);
+        for (d, s) in px.chunks_mut(4).zip(rgba.chunks(4)) {
+            d.copy_from_slice(&[s[2], s[1], s[0], s[3]]); // BGRA
+        }
+        let mask = CreateBitmap(width as i32, height as i32, 1, 1, std::ptr::null());
+        let info = ICONINFO { fIcon: 1, xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: color };
+        let icon = CreateIconIndirect(&info);
+        DeleteObject(color);
+        DeleteObject(mask);
+        if icon.is_null() {
+            return;
+        }
+        SendMessageW(h(hwnd), WM_SETICON, ICON_BIG as usize, icon as isize);
+        let old = LAST.swap(icon as isize, Ordering::Relaxed);
+        if old != 0 {
+            DestroyIcon(old as _);
+        }
+    }
+}
+
+/// The main taskbar's rectangle and which screen edge it's on (0 left, 1 top, 2 right, 3 bottom).
+/// Works with an auto-hiding taskbar too, where the work area is the whole screen.
+pub fn taskbar() -> Option<(Rect, u32)> {
+    use windows_sys::Win32::UI::Shell::{SHAppBarMessage, ABM_GETTASKBARPOS, APPBARDATA};
+    let mut d: APPBARDATA = unsafe { std::mem::zeroed() };
+    d.cbSize = std::mem::size_of::<APPBARDATA>() as u32;
+    if unsafe { SHAppBarMessage(ABM_GETTASKBARPOS, &mut d) } == 0 {
+        return None;
+    }
+    Some((Rect { left: d.rc.left, top: d.rc.top, right: d.rc.right, bottom: d.rc.bottom }, d.uEdge))
 }

@@ -1,4 +1,5 @@
 mod bubble;
+mod fx;
 mod reminder;
 #[cfg(windows)]
 mod win;
@@ -35,6 +36,9 @@ pub struct StuckApp {
     /// (physical px). None = cover the app with a small margin.
     #[serde(default)]
     pub area: Option<[i32; 4]>,
+    /// This mini is locked in place (each mini has its own lock, apart from the normal bubble's).
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -212,8 +216,8 @@ fn hide_main(app: AppHandle) {
     bubble::sync(&app);
 }
 
-/// Tray click: show the app, or tuck it away if it's already in front.
-fn toggle_main(app: &AppHandle) {
+/// Tray click: show the general list by the tray, or tuck it away if it's already in front.
+fn toggle_main(app: &AppHandle, at: (i32, i32)) {
     let Some(main) = app.get_webview_window("main") else { return };
     if main_on_screen(app) && main.is_focused().unwrap_or(false) {
         let _ = app.emit("flush", ());
@@ -221,7 +225,7 @@ fn toggle_main(app: &AppHandle) {
         let _ = main.hide();
         bubble::sync(app);
     } else {
-        bubble::open_for_context(app, false);
+        bubble::open_from_tray(app, at);
     }
 }
 
@@ -349,6 +353,80 @@ pub fn main_on_screen(app: &AppHandle) -> bool {
         .is_some_and(|m| m.is_visible().unwrap_or(false) && !m.is_minimized().unwrap_or(false))
 }
 
+// ---- taskbar and tray icons in the accent colour ---------------------------------------------
+// Both are Quicky's blob, drawn from layers in `live-icons/` (rendered from brand/logo): what sits
+// under the body (its hard shadow), the body (white, tinted to the accent), and what sits over it
+// (outline and face). The tray uses the small, outline-free blob.
+const WINDOW_LAYERS: [&[u8]; 3] = [
+    include_bytes!("../live-icons/window-under.png"),
+    include_bytes!("../live-icons/window-body.png"),
+    include_bytes!("../live-icons/window-over.png"),
+];
+const TRAY_LAYERS: [&[u8]; 2] = [include_bytes!("../live-icons/tray-body.png"), include_bytes!("../live-icons/tray-face.png")];
+const GRAPE: [u8; 3] = [0x6d, 0x4c, 0xff];
+
+fn decode_rgba(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    let mut dec = png::Decoder::new(bytes);
+    dec.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
+    let mut reader = dec.read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    buf.truncate(info.buffer_size());
+    (info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight).then_some((buf, info.width, info.height))
+}
+
+/// Paints straight-alpha pixel `s` over `d`.
+fn paint_over(d: &mut [u8], s: &[u8]) {
+    let (sa, da) = (s[3] as f32 / 255.0, d[3] as f32 / 255.0);
+    let oa = sa + da * (1.0 - sa);
+    if oa <= 0.0 {
+        d.fill(0);
+        return;
+    }
+    for c in 0..3 {
+        d[c] = ((s[c] as f32 * sa + d[c] as f32 * da * (1.0 - sa)) / oa).round() as u8;
+    }
+    d[3] = (oa * 255.0).round() as u8;
+}
+
+/// Stacks the layers bottom to top, with layer `body` tinted to `rgb`.
+fn blob_icon(layers: &[&[u8]], body: usize, rgb: [u8; 3]) -> Option<tauri::image::Image<'static>> {
+    let mut out: Option<(Vec<u8>, u32, u32)> = None;
+    for (i, bytes) in layers.iter().enumerate() {
+        let (mut px, w, h) = decode_rgba(bytes)?;
+        if i == body {
+            px.chunks_mut(4).for_each(|p| p[..3].copy_from_slice(&rgb));
+        }
+        match out.as_mut() {
+            None => out = Some((px, w, h)),
+            Some((dst, ..)) => dst.chunks_mut(4).zip(px.chunks(4)).for_each(|(d, s)| paint_over(d, s)),
+        }
+    }
+    out.map(|(px, w, h)| tauri::image::Image::new_owned(px, w, h))
+}
+
+/// Recolours the taskbar and tray icons to the accent picked in Settings ("#rrggbb").
+#[tauri::command]
+fn set_icon_color(app: AppHandle, color: String) {
+    let hex = color.trim_start_matches('#');
+    let Some(rgb) = (hex.len() == 6)
+        .then(|| [0, 2, 4].map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok()))
+        .and_then(|[r, g, b]| Some([r?, g?, b?]))
+    else {
+        return;
+    };
+    if let (Some(main), Some(icon)) = (app.get_webview_window("main"), blob_icon(&WINDOW_LAYERS, 1, rgb)) {
+        // The taskbar shows the big icon, which Tauri leaves alone; set both.
+        if let Ok(h) = main.hwnd() {
+            win::set_big_icon(h.0 as win::Hwnd, icon.rgba(), icon.width(), icon.height());
+        }
+        let _ = main.set_icon(icon);
+    }
+    if let (Some(tray), Some(icon)) = (app.tray_by_id("main"), blob_icon(&TRAY_LAYERS, 0, rgb)) {
+        let _ = tray.set_icon(Some(icon));
+    }
+}
+
 fn quit(app: &AppHandle) {
     // Let the page flush its pending save before the process goes away.
     let _ = app.emit("flush", ());
@@ -387,6 +465,9 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        // Updates from GitHub Releases (signed latest.json); the page asks, the user installs.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             if let Err(e) = app.global_shortcut().register(quick_key) {
@@ -400,6 +481,10 @@ pub fn run() {
                 let _ = update_config(&handle, |c| c.autostart_initialized = true);
             }
 
+            // Opened inside an app, the main window can't be moved or resized past the app's edges.
+            if let Some(h) = app.get_webview_window("main").and_then(|m| m.hwnd().ok()) {
+                win::keep_inside_host(h.0 as isize);
+            }
             bubble::SHOW.store(cfg.show_bubble, Ordering::Relaxed);
             bubble::place(&handle);
             if !std::env::args().any(|a| a == STARTUP_ARG) {
@@ -412,13 +497,13 @@ pub fn run() {
             let bubble_item = MenuItem::with_id(app, "bubble", "Show bubble", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &bubble_item, &quit_item])?;
-            TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            TrayIconBuilder::with_id("main")
+                .icon(blob_icon(&TRAY_LAYERS, 0, GRAPE).unwrap_or_else(|| app.default_window_icon().unwrap().clone()))
                 .tooltip("Quicky")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
-                    "show" => bubble::open_for_context(app, false),
+                    "show" => bubble::open_from_tray(app, win::cursor()),
                     "bubble" => {
                         let _ = bubble::set_show_bubble(app.clone(), true);
                     }
@@ -429,10 +514,11 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
                         ..
                     } = e
                     {
-                        toggle_main(tray.app_handle());
+                        toggle_main(tray.app_handle(), (position.x as i32, position.y as i32));
                     }
                 })
                 .build(app)?;
@@ -444,7 +530,7 @@ pub fn run() {
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
                 // closing the bubble (Alt+F4) just switches the bubble off. The reminder can only
                 // be closed through its own buttons (Esc snoozes).
-                WindowEvent::CloseRequested { api, .. } if window.label() != "reminder" => {
+                WindowEvent::CloseRequested { api, .. } if window.label() != "reminder" && window.label() != "fx" => {
                     api.prevent_close();
                     if window.label() == "bubble" {
                         let _ = bubble::set_show_bubble(app.clone(), false);
@@ -473,6 +559,7 @@ pub fn run() {
             remove_media,
             open_data_dir,
             hide_main,
+            set_icon_color,
             bubble::get_show_bubble,
             bubble::set_show_bubble,
             bubble::get_bubble_locked,
@@ -490,6 +577,10 @@ pub fn run() {
             bubble::mini_pop,
             bubble::set_pinned,
             bubble::app_icon,
+            fx::fx_payload,
+            fx::fx_ready,
+            fx::fx_handoff,
+            fx::fx_done,
             reminder::show_reminder,
             reminder::reminder_payload,
             reminder::reminder_ready,
@@ -502,6 +593,18 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn icons_take_the_accent_colour() {
+        let pink = [0xd6, 0x33, 0x6c];
+        for (layers, body, (x, y)) in [(&WINDOW_LAYERS[..], 1, (13, 42)), (&TRAY_LAYERS[..], 0, (6, 18))] {
+            let icon = blob_icon(layers, body, pink).expect("icon layers decode");
+            let (w, px) = (icon.width() as usize, icon.rgba());
+            let at = |x: usize, y: usize| px[(y * w + x) * 4..(y * w + x) * 4 + 4].to_vec();
+            assert_eq!(at(x, y), vec![0xd6, 0x33, 0x6c, 255], "body pixel takes the accent");
+            assert_eq!(at(0, 0)[3], 0, "corners stay transparent");
+        }
+    }
 
     #[test]
     fn picked_folder_gets_a_quicky_subfolder() {

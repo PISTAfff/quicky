@@ -12,7 +12,8 @@ const badge = document.getElementById("n") as HTMLSpanElement;
 
 // ---- click vs drag -------------------------------------------------------------
 // A press that moves more than a few pixels drags the bubble (unless it's locked); a press that
-// doesn't is a click that opens Quicky next to it.
+// doesn't is a click that opens Quicky next to it. The normal bubble and each app's mini have
+// their own lock; this is the one for whatever the bubble is showing as right now.
 let locked = false;
 invoke<boolean>("get_bubble_locked").then((v) => (locked = v)).catch(() => {});
 
@@ -128,31 +129,14 @@ draw();
 // A mini can only be dragged around inside its app's window (Rust clamps it to the window and
 // reports how hard it's being pushed past a wall). Pushed against a wall it squashes flat like a
 // rubber ball, gets angrier, and if pushed hard enough it pops out: that app's mini is gone.
+// The big moments themselves (dividing into a new mini, popping, hiding one) play in a separate
+// overlay window with room to move (src/fx.ts); this page just hands over to it and back.
 const squish = document.querySelector(".squish") as HTMLElement;
 const POP_AT = 90; // logical px of push past a wall that pops it out
 let isMini = false;
 let walled = false;
 let popping = false;
-let splitting = false;
-
-function sparkle(count = 7) {
-  for (let i = 0; i < count; i++) {
-    const dot = document.createElement("i");
-    dot.className = "spark";
-    document.body.append(dot);
-    const a = (i / count) * Math.PI * 2 + Math.random() * 0.6;
-    const r = 26 + Math.random() * 14;
-    dot
-      .animate(
-        [
-          { transform: "translate(-50%, -50%) scale(1)", opacity: 1 },
-          { transform: `translate(calc(-50% + ${Math.cos(a) * r}px), calc(-50% + ${Math.sin(a) * r}px)) scale(0.2)`, opacity: 0 },
-        ],
-        { duration: 480 + Math.random() * 200, easing: "cubic-bezier(.2,.8,.3,1)" },
-      )
-      .finished.then(() => dot.remove());
-  }
-}
+let veiled = false;
 
 /** Squash flat against the wall being pushed into; angrier the closer it gets to popping. */
 function squash(px: number, py: number) {
@@ -199,31 +183,14 @@ function calm() {
   button.classList.remove("furious");
 }
 
-/** Pushed too hard: burst and vanish; the app no longer has a mini until Quicky is dropped on it again. */
+/** Pushed too hard: the app no longer has a mini until Quicky is dropped on it again. Hold the
+ *  squashed pose; the overlay takes over from exactly this pose and plays the burst. */
 function pop() {
   if (popping) return;
   popping = true;
   walled = false;
   press = null;
-  const from = squish.style.transform || "none";
-  squish
-    .animate(
-      [
-        { transform: from, opacity: 1 },
-        { transform: "scale(1.4)", opacity: 1, offset: 0.3 },
-        { transform: "scale(0)", opacity: 0 },
-      ],
-      { duration: 340, easing: "ease-in", fill: "forwards" },
-    )
-    .finished.then(async () => {
-      sparkle(9);
-      sfx.pop();
-      await invoke("mini_pop").catch(() => {});
-      squish.getAnimations().forEach((a) => a.cancel());
-      squish.style.transform = "";
-      calm();
-      popping = false;
-    });
+  void invoke("mini_pop").catch(() => (popping = false));
 }
 
 function endWall() {
@@ -237,64 +204,48 @@ function endWall() {
   if (t) squish.animate([{ transform: t }, { transform: "scale(1.07, 0.94)", offset: 0.5 }, { transform: "none" }], { duration: 320, easing: "ease-out" });
 }
 
-/** Dropped on a new app: Quicky divides. One half stays as the app's mini, the other heads home. */
-function split(hx: number, hy: number) {
-  splitting = true;
-  const len = Math.hypot(hx, hy) || 1;
-  const [ux, uy] = [hx / len, hy / len];
-  const twin = squish.cloneNode(true) as HTMLElement;
-  twin.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
-  twin.classList.add("twin");
-  squish.parentElement!.append(twin);
-  const ease = "cubic-bezier(.3,.9,.3,1.15)";
-  // Both start as one blob, swell into a peanut as they pull apart, then separate.
-  squish.animate(
-    [
-      { transform: "none" },
-      { transform: `translate(${-ux * 3}px, ${-uy * 3}px) scale(1.08, 0.94)`, offset: 0.2 },
-      { transform: `translate(${-ux * 8}px, ${-uy * 8}px) scale(0.84)`, offset: 0.42 },
-      { transform: `translate(${-ux * 2}px, ${-uy * 2}px) scale(0.62)`, offset: 0.75 },
-      { transform: "scale(0.66)" },
-    ],
-    { duration: 950, easing: ease, fill: "forwards" },
+// While the overlay draws Quicky, this blob is invisible (the window itself stays up, so nothing
+// replays its entrance). Rust moves and resizes it unseen, then it shows again in its new form.
+listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
+  if (on) {
+    veiled = true;
+    button.style.visibility = "hidden";
+    button.classList.remove("prep");
+    return;
+  }
+  squish.getAnimations().forEach((a) => a.cancel());
+  squish.style.transform = "";
+  button.classList.remove("prep");
+  calm();
+  popping = false;
+  // Two frames: let the new size and form render before showing it.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      veiled = false;
+      button.style.visibility = "";
+    }),
   );
-  twin
-    .animate(
-      [
-        { transform: "none", opacity: 1 },
-        { transform: `translate(${ux * 3}px, ${uy * 3}px) scale(1.08, 0.94)`, offset: 0.2, opacity: 1 },
-        { transform: `translate(${ux * 8}px, ${uy * 8}px) scale(0.84)`, offset: 0.42, opacity: 1 },
-        { transform: `translate(${ux * 70}px, ${uy * 70}px) scale(0.3)`, opacity: 0 },
-      ],
-      { duration: 950, easing: "cubic-bezier(.5,0,.25,1)", fill: "forwards" },
-    )
-    .finished.then(() => twin.remove());
-  setTimeout(() => {
-    sparkle(6);
-    sfx.split();
-  }, 400);
-}
+});
+// A little wind-up while the overlay loads.
+listen("bubble-prep", () => !veiled && button.classList.add("prep"));
 
 // Normal bubble vs. an app's mini Quicky (Rust resizes the window around the same centre).
 let mySpace: string | null = null;
-listen<{ mini: boolean; space: string | null }>("bubble-mini", ({ payload: { mini, space } }) => {
+listen<{ mini: boolean; space: string | null; locked?: boolean }>("bubble-mini", ({ payload: { mini, space, locked: l } }) => {
   isMini = mini;
   mySpace = space;
+  locked = !!l;
   showCount();
-  const payload = mini;
-  if (splitting && payload) {
-    // Hand over from the dividing animation (which ended at mini size) without a jump.
+  if (veiled) {
+    // Changing form unseen (after a big moment): no shrink/grow transition when it reappears.
     button.style.transition = "none";
-    button.classList.add("mini");
-    squish.getAnimations().forEach((a) => a.cancel());
+    button.classList.toggle("mini", mini);
     void button.offsetWidth;
     button.style.transition = "";
-    splitting = false;
     return;
   }
-  button.classList.toggle("mini", payload);
+  button.classList.toggle("mini", mini);
 });
-listen<{ dx: number; dy: number }>("bubble-split", ({ payload }) => split(payload.dx, payload.dy));
 
 // ---- pointer --------------------------------------------------------------------------------
 button.addEventListener("pointerdown", (e) => {
@@ -390,12 +341,13 @@ button.addEventListener("contextmenu", async (e) => {
   press = null;
   const ctx = await invoke<{ exe: string; name: string; stuck: boolean } | null>("bubble_context").catch(() => null);
   const open = await MenuItem.new({ text: "Open Quicky", action: () => void invoke("open_from_bubble") });
+  const forSpace = isMini && ctx?.stuck ? mySpace : null;
   const lock = await CheckMenuItem.new({
-    text: "Lock in place",
+    text: forSpace ? "Lock this mini in place" : "Lock in place",
     checked: locked,
     action: async () => {
       locked = !locked;
-      await invoke("set_bubble_locked", { locked });
+      await invoke("set_bubble_locked", { locked, space: forSpace });
     },
   });
   const sep = () => PredefinedMenuItem.new({ item: "Separator" });

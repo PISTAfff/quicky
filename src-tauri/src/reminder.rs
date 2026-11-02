@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Webview
 
 static PAYLOAD: Mutex<Option<Value>> = Mutex::new(None);
 /// Same as `additionalBrowserArgs` in tauri.conf.json (Tauri's defaults + sound without a click).
-const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
+pub const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
 
 /// All screens together (physical px), so the reminder can cover every display.
 fn all_screens(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {

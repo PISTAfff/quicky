@@ -5,7 +5,7 @@ description: Map a codebase into areas and write layered CLAUDE.md files (root, 
 
 # CLAUDE.md hierarchy builder
 
-Goal: give every area of the codebase the right context at the right scope, so Claude only pays for detail when it is working where that detail matters — and make sure the structure survives new teammates and new areas.
+Goal: give every area of the codebase the right context at the right scope, so Claude only pays for detail when it is working where that detail matters, and make sure the structure survives new teammates and new areas.
 
 ## The layers (broadest to narrowest)
 
@@ -63,8 +63,8 @@ Keep them short. Budgets: root ≤ ~150 lines, area ≤ ~80 lines, rule ≤ ~40 
 <2–4 sentences: product, architecture shape>
 
 ## Map
-- `apps/web` — <one line> (has its own CLAUDE.md)
-- `services/api` — <one line> (has its own CLAUDE.md)
+- `apps/web`: <one line> (has its own CLAUDE.md)
+- `services/api`: <one line> (has its own CLAUDE.md)
 
 ## Commands
 - Install: `...`
@@ -87,7 +87,7 @@ Keep them short. Budgets: root ≤ ~150 lines, area ≤ ~80 lines, rule ≤ ~40 
 ```markdown
 # <area name>
 
-<What this area does and how it fits the system — 2 sentences.>
+<What this area does and how it fits the system, in 2 sentences.>
 
 ## Stack
 <framework, key libs, versions that matter>
@@ -96,7 +96,7 @@ Keep them short. Budgets: root ≤ ~150 lines, area ≤ ~80 lines, rule ≤ ~40 
 - Dev: `...`  Test: `...`
 
 ## How we do things here
-- <pattern> — see `<path/to/example>`
+- <pattern> (see `<path/to/example>`)
 
 ## Gotchas
 - <non-obvious traps>
@@ -115,7 +115,7 @@ paths:
 
 # <Topic> rules
 - <rule>
-- <rule> — example: `<path>`
+- <rule> (example: `<path>`)
 ```
 
 **Personal file**: create `CLAUDE.local.md` only if the user asks.
@@ -140,7 +140,7 @@ This is what keeps the hierarchy from drifting when teammates add new areas. Do 
    ```
    Ask the user for `<owner>` (their GitHub handle or team). If they are not available, leave `@OWNER-TODO` and list it in the report. Do not add `CLAUDE.local.md`.
 4. **Gitignore personal files.** Ensure `CLAUDE.local.md` and `**/CLAUDE.local.md` are in `.gitignore`.
-5. **Optional CI check** — offer it, add it only if the user agrees: a small script (`scripts/check-claude-md.sh`) that lists every folder containing a package manifest (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) outside ignored dirs and fails if any lacks a `CLAUDE.md`, plus a CI step that runs it. Respect an allowlist file `.claude/claude-md-ignore` for folders that intentionally have none.
+5. **Optional CI check**: offer it, add it only if the user agrees: a small script (`scripts/check-claude-md.sh`) that lists every folder containing a package manifest (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) outside ignored dirs and fails if any lacks a `CLAUDE.md`, plus a CI step that runs it. Respect an allowlist file `.claude/claude-md-ignore` for folders that intentionally have none.
 
 Do not commit or push; leave the changes as working-tree changes for the user to review in a PR.
 

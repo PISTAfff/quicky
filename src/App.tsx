@@ -6,6 +6,7 @@ import {
 } from "./lib/store";
 import { importPaths } from "./lib/media";
 import { startReminders } from "./lib/reminders";
+import { bannerClosed, installUpdate, setBannerClosed, startUpdateChecks, updateState } from "./lib/updates";
 import { TitleBar } from "./ui/TitleBar";
 import { FolderSetup } from "./ui/FolderSetup";
 import { BoardView, ListView, MiniView } from "./ui/Views";
@@ -32,7 +33,12 @@ export default function App() {
     }
     return { open, spaces };
   });
-  const sendCounts = () => void emitTo("bubble", "counts", counts());
+  // The bubble shows them as its badge; the big-moment overlay (fx) needs them to draw the bubble's
+  // all-clear look.
+  const sendCounts = () => {
+    void emitTo("bubble", "counts", counts());
+    void emitTo("fx", "counts", counts());
+  };
   createEffect(on(counts, sendCounts));
 
   onMount(async () => {
@@ -105,12 +111,27 @@ export default function App() {
 
     await init();
     await startReminders();
+    startUpdateChecks();
   });
   onCleanup(() => unlisten.forEach((u) => u()));
 
   return (
     <div class="app pop-in" data-mode={mode()} ref={appEl}>
       <TitleBar />
+      <Show when={!bannerClosed() && (updateState().kind === "ready" || updateState().kind === "installing")}>
+        <div class="update-banner" role="status">
+          <Show
+            when={updateState().kind === "ready"}
+            fallback={<span>Updating… {Math.round(((updateState() as { progress: number }).progress ?? 0) * 100)}%</span>}
+          >
+            <span>Quicky {(updateState() as { version: string }).version} is ready</span>
+            <button class="btn small" onClick={() => void installUpdate()}>Update and restart</button>
+            <button class="icon-btn" aria-label="Later" title="Later" onClick={() => setBannerClosed(true)}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </Show>
+        </div>
+      </Show>
       <main class="content">
         <Show when={ready()}>
           <Show when={!loadError()} fallback={<p class="error pad" role="alert">{loadError()}</p>}>

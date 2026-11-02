@@ -325,6 +325,17 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .toast button {
   flex-shrink: 0; height: 30px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-weight: 800;
 }
+/* A new version is ready: a slim sticker under the title bar. */
+.update-banner {
+  display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 6px 6px 6px 12px;
+  background: var(--accent-soft); color: var(--ink); border: 2px solid var(--edge); border-radius: var(--r); box-shadow: var(--shadow);
+  font-size: 13px; font-weight: 800; animation: up 0.18s ease;
+}
+.update-banner span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.update-banner .icon-btn {
+  display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer;
+}
+.update-banner .icon-btn:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
 .drop-overlay {
   position: fixed; inset: 6px; z-index: 50; border: 3px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg) 92%, transparent);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 800; pointer-events: none;

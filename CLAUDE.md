@@ -4,11 +4,12 @@
 A tiny Windows task manager: quick-add mini tasks (To do / Doing / Done), daily carry-over, repeats, reminders, media attachments, and an always-on-top "Quicky" bubble that can live inside other apps as per-app minis with their own task lists. Tauri 2 (Rust, WebView2) hosts three SolidJS/TS pages: the main window, the bubble, and a full-screen reminder.
 
 ## Map
-- `src/` — front end: main window (SolidJS), bubble page and reminder page (plain TS). Has its own CLAUDE.md.
-- `src-tauri/` — Rust backend: windows, bubble placement/physics driving, Win32 calls, config, file I/O. Has its own CLAUDE.md.
-- `index.html`, `bubble.html`, `reminder.html` — the three page entry points (all listed in `vite.config.ts` inputs).
-- `tests/` — Node test runner tests for the pure data model (`src/lib/model.ts`).
-- `.github/workflows/release.yml` — builds the NSIS installer and publishes a GitHub Release on `v*` tags.
+- `src/`: front end (main window in SolidJS, bubble page and reminder page in plain TS). Has its own CLAUDE.md.
+- `src-tauri/`: Rust backend (windows, bubble placement/physics driving, Win32 calls, config, file I/O). Has its own CLAUDE.md.
+- `index.html`, `bubble.html`, `reminder.html`, `fx.html`: the four page entry points (all listed in `vite.config.ts` inputs).
+- `tests/`: Node test runner tests for the pure data model (`src/lib/model.ts`).
+- `brand/`: logo, mascot, screenshots and portfolio images (see `brand/README.md`); not bundled into the app.
+- `.github/workflows/release.yml`: builds the NSIS installer and publishes a GitHub Release on `v*` tags.
 
 ## Commands
 - Install: `pnpm install`
@@ -16,11 +17,11 @@ A tiny Windows task manager: quick-add mini tasks (To do / Doing / Done), daily 
 - Front-end tests: `pnpm test`
 - Type-check: `pnpm check`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml --lib`
-- Installer: `pnpm tauri build` → `src-tauri/target/release/bundle/nsis/Quicky_<version>_x64-setup.exe`
+- Installer: `pnpm tauri build` → `src-tauri/target/release/bundle/nsis/Quicky_<version>_x64-setup.exe`. Needs `TAURI_SIGNING_PRIVATE_KEY` (the updater key, `%USERPROFILE%\.tauri\quicky.key`, never in the repo) and an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
 ## Releasing
 - Bump the version in all three: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (and the example tag in `README.md`).
-- Run `pnpm check`, `pnpm test` and the Rust tests, then push a `v<version>` tag; CI publishes the release (tag name comes from the app version, `v__VERSION__`).
+- Run `pnpm check`, `pnpm test` and the Rust tests, then push a `v<version>` tag; CI publishes the release (tag name comes from the app version, `v__VERSION__`) with a signed `latest.json` for the in-app updater (repository secret `TAURI_SIGNING_PRIVATE_KEY`). The public key is in `tauri.conf.json`; changing the key pair strands existing installs.
 - Never move or force-push an existing tag; bump to a new version instead.
 
 ## Standards (everywhere)
@@ -33,6 +34,7 @@ A tiny Windows task manager: quick-add mini tasks (To do / Doing / Done), daily 
 ## Do not touch
 - `src-tauri/gen/`, `src-tauri/target/`, `dist/`, `node_modules/` (generated).
 - `src-tauri/icons/*` except `source.svg`; regenerate the rest with `pnpm tauri icon src-tauri/icons/source.svg` (then delete the `android/` and `ios/` folders it creates).
+- `src-tauri/live-icons/*.png`: layers of the blob (under / body / over) that Rust tints to the accent for the taskbar and tray icons; re-render them together from `brand/logo/` if the blob changes.
 - `pnpm-lock.yaml` / `Cargo.lock` by hand.
 
 ## Testing on a real install (Claude desktop app)

@@ -1,5 +1,6 @@
 // Accent colour + light/dark mode. Stored per PC in the WebView's localStorage, which the
 // bubble window shares (same origin) and hears about through the `storage` event.
+import { invoke } from "@tauri-apps/api/core";
 import { createSignal } from "solid-js";
 import { ACCENTS, DEFAULT_CUSTOM, THEME_KEY, isHex, onAccent, resolveAccent } from "./theme-colors";
 
@@ -24,12 +25,24 @@ export function readTheme(): Theme {
 
 const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 
+// The taskbar and tray icons are Quicky's blob in the accent colour too (Rust redraws them).
+// Waits a moment so dragging the custom colour picker doesn't redraw them on every step.
+let iconColor = "";
+let iconTimer = 0;
+function tintIcons(color: string) {
+  if (color === iconColor) return;
+  iconColor = color;
+  clearTimeout(iconTimer);
+  iconTimer = window.setTimeout(() => void invoke("set_icon_color", { color }).catch(() => {}), 150);
+}
+
 function apply(t: Theme) {
   const root = document.documentElement;
   const accent = resolveAccent(t);
   root.style.setProperty("--accent", accent);
   root.style.setProperty("--on-accent", onAccent(accent));
   root.dataset.mode = t.mode === "auto" ? (darkQuery.matches ? "dark" : "light") : t.mode;
+  tintIcons(accent);
 }
 
 const [theme, setThemeSignal] = createSignal<Theme>(readTheme());
