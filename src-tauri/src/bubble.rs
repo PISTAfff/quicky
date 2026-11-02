@@ -98,10 +98,6 @@ fn window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.get_webview_window("bubble")
 }
 
-fn hwnd(app: &AppHandle) -> Option<win::Hwnd> {
-    window(app)?.hwnd().ok().map(|h| h.0 as win::Hwnd)
-}
-
 /// Work area (screen minus taskbar) of the primary monitor, in physical px, plus its scale.
 pub fn work_area(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64)> {
     let m = app.primary_monitor().ok()??;
@@ -205,7 +201,7 @@ fn apply(app: &AppHandle, force: bool) {
             return;
         }
     }
-    let (Some(b), Some(h), Some((spot, space))) = (window(app), hwnd(app), target(app)) else { return };
+    let (Some(b), Some((spot, space))) = (window(app), target(app)) else { return };
     let mini = space.is_some();
     let locked = locked_for(app, space.as_deref());
     let visible = b.is_visible().unwrap_or(false);
@@ -221,7 +217,7 @@ fn apply(app: &AppHandle, force: bool) {
         if let Some((x, y)) = st.at {
             let shift = (old - new) / 2.0;
             st.at = Some((x + shift, y + shift));
-            win::move_to(h, (x + shift).round() as i32, (y + shift).round() as i32);
+            win::move_to(&b, (x + shift).round() as i32, (y + shift).round() as i32);
         }
     }
     if force || st.mode.as_ref() != Some(&space) {
@@ -231,14 +227,14 @@ fn apply(app: &AppHandle, force: bool) {
     }
     st.goal = Some(spot);
     if force || !visible || st.at.is_none() {
-        win::move_to(h, spot.0, spot.1);
+        win::move_to(&b, spot.0, spot.1);
         st.at = Some((spot.0 as f64, spot.1 as f64));
     }
 }
 
 /// One step of gliding towards the goal. Returns true while still on the way.
 fn glide(app: &AppHandle, dt_ms: f64) -> bool {
-    let Some(h) = hwnd(app) else { return false };
+    let Some(b) = window(app) else { return false };
     let mut st = state();
     if st.dragging || st.wall.is_some() || st.held {
         return false;
@@ -256,7 +252,7 @@ fn glide(app: &AppHandle, dt_ms: f64) -> bool {
     let (px, py) = (x.round() as i32, y.round() as i32);
     let (rx, ry) = (nx.round() as i32, ny.round() as i32);
     if (rx, ry) != (px, py) {
-        win::move_to(h, rx, ry);
+        win::move_to(&b, rx, ry);
     }
     st.at = Some((nx, ny));
     true
@@ -273,12 +269,12 @@ pub fn place(app: &AppHandle) {
 
 /// Shown only while the app is off screen, no reminder is up, and the user wants it.
 pub fn sync(app: &AppHandle) {
-    let (Some(b), Some(h)) = (window(app), hwnd(app)) else { return };
+    let Some(b) = window(app) else { return };
     let want = SHOW.load(Ordering::Relaxed) && !OVERLAY_UP.load(Ordering::Relaxed) && !main_on_screen(app);
     // Win32 both ways: showing must not steal focus, and Tauri's own show/hide bookkeeping
     // would get out of step if the two were mixed.
     if want != b.is_visible().unwrap_or(false) {
-        win::show(h, want);
+        win::show(&b, want);
     }
 }
 
@@ -354,7 +350,7 @@ pub fn housekeeping(app: &AppHandle) {
             }
 
             sync(&app);
-            let Some(h) = hwnd(&app) else { continue };
+            let Some(b) = window(&app) else { continue };
 
             // A walled mini drag whose page lost track of the mouse: finish it where it is.
             // Walled drag of a mini: follow the real cursor until the button comes up.
@@ -396,8 +392,8 @@ pub fn housekeeping(app: &AppHandle) {
                 state().focus = win::foreground_app();
             }
 
-            if !OVERLAY_UP.load(Ordering::Relaxed) && window(&app).is_some_and(|b| b.is_visible().unwrap_or(false)) {
-                win::keep_topmost(h);
+            if !OVERLAY_UP.load(Ordering::Relaxed) && b.is_visible().unwrap_or(false) {
+                win::keep_topmost(&b);
             }
             apply(&app, false);
             let dt = last_frame.elapsed().as_secs_f64() * 1000.0;
@@ -455,8 +451,13 @@ fn center(app: &AppHandle) -> Option<(i32, i32)> {
     Some((p.x + s / 2, p.y + s / 2))
 }
 
+/// "chrome.exe" and "WINWORD.EXE" read as "Chrome" and "Winword"; names that already mix cases,
+/// like macOS app bundles ("Visual Studio Code.app"), stay as they are.
 fn pretty_name(exe: &str) -> String {
     let stem = Path::new(exe).file_stem().and_then(|s| s.to_str()).unwrap_or("app");
+    if stem.chars().any(char::is_uppercase) && stem.chars().any(char::is_lowercase) {
+        return stem.to_string();
+    }
     let mut c = stem.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + &c.as_str().to_lowercase()).unwrap_or_default()
 }
@@ -529,7 +530,7 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
         Some((entry, focus, rect)) => {
             // Leaving the general window: remember its size and spot to restore later.
             if state().space.is_none() {
-                if let Some(f) = main.hwnd().ok().and_then(|h| win::frame(h.0 as win::Hwnd)) {
+                if let Some(f) = win::own_frame(&main) {
                     state().general = Some((f.left, f.top, (f.right - f.left) as u32, (f.bottom - f.top) as u32));
                 }
             }
@@ -543,7 +544,7 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
             set_visible_frame(&main, x, y, w, h);
             let mut st = state();
             st.space = Some((entry.exe.clone(), focus.hwnd));
-            st.placed_frame = main.hwnd().ok().and_then(|h| win::frame(h.0 as win::Hwnd));
+            st.placed_frame = win::own_frame(&main);
             drop(st);
             let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": space_key(&entry.exe), "name": entry.name }));
         }
@@ -581,7 +582,7 @@ pub fn open_from_tray(app: &AppHandle, (x, y): (i32, i32)) {
             x >= p.x && y >= p.y && x < p.x + s.width as i32 && y < p.y + s.height as i32
         })
     });
-    let frame = main.hwnd().ok().and_then(|h| win::frame(h.0 as win::Hwnd));
+    let frame = win::own_frame(&main);
     if let (Some(m), Some(f)) = (monitor, frame) {
         let (w, h) = (f.right - f.left, f.bottom - f.top);
         let wa = m.work_area();
@@ -607,16 +608,14 @@ pub fn open_from_tray(app: &AppHandle, (x, y): (i32, i32)) {
         set_visible_frame(&main, nx, ny, w, h);
     }
     show_main(app);
-    if let Ok(h) = main.hwnd() {
-        win::force_foreground(h.0 as win::Hwnd);
-    }
+    win::force_foreground(&main);
 }
 
 /// Places a window so its *visible* frame is exactly (x, y, w, h): Windows adds invisible resize
 /// borders around it, so measure them and compensate.
 fn set_visible_frame(w: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
-    let (Ok(h), Ok(outer), Ok(inner)) = (w.hwnd(), w.outer_position(), w.inner_size()) else { return };
-    let (bl, bt, extra_w, extra_h) = match win::frame(h.0 as win::Hwnd) {
+    let (Ok(outer), Ok(inner)) = (w.outer_position(), w.inner_size()) else { return };
+    let (bl, bt, extra_w, extra_h) = match win::own_frame(w) {
         Some(f) => (f.left - outer.x, f.top - outer.y, (f.right - f.left) - inner.width as i32, (f.bottom - f.top) - inner.height as i32),
         None => (0, 0, 0, 0),
     };
@@ -633,8 +632,7 @@ pub fn remember_app_window(app: &AppHandle) {
     if !main.is_visible().unwrap_or(false) {
         return;
     }
-    let Ok(mh) = main.hwnd() else { return };
-    let (Some(q), Some(rect)) = (win::frame(mh.0 as win::Hwnd), win::frame(app_hwnd)) else { return };
+    let (Some(q), Some(rect)) = (win::own_frame(&main), win::frame(app_hwnd)) else { return };
     // Untouched since we placed it: nothing to remember (keeps the cover-with-a-margin default).
     if state().placed_frame == Some(q) {
         return;
@@ -670,8 +668,7 @@ pub fn on_main_blur(app: &AppHandle) {
         if PINNED.load(Ordering::Relaxed) || main.is_focused().unwrap_or(true) || !main_on_screen(&app) {
             return;
         }
-        let Ok(h) = main.hwnd() else { return };
-        if win::foreground_is_related(h.0 as win::Hwnd) {
+        if win::foreground_is_related(&main) {
             return;
         }
         let _ = app.emit_to("main", "flush", ());
@@ -704,7 +701,7 @@ pub fn mini_drag_start(app: AppHandle) -> bool {
 fn wall_step(app: &AppHandle) {
     let s = scale(app);
     let side = side(app);
-    let Some(h) = hwnd(app) else { return };
+    let Some(bubble) = window(app) else { return };
     let (cx, cy) = win::cursor();
     let mut st = state();
     let Some(w) = st.wall.as_mut() else { return };
@@ -717,7 +714,7 @@ fn wall_step(app: &AppHandle) {
     let (x, y) = (wx.clamp(l, r.max(l)), wy.clamp(t, b.max(t)));
     let at = (x.round() as i32, y.round() as i32);
     if at != w.at {
-        win::move_to(h, at.0, at.1);
+        win::move_to(&bubble, at.0, at.1);
         w.at = at;
     }
     // How hard it's being pushed: how far the pointer is past the mini's middle on each axis it's
@@ -850,7 +847,7 @@ pub fn unstick_bubble(app: AppHandle, exe: String) -> Result<(), String> {
     Ok(())
 }
 
-/// An app's own icon as a data URL, for the task-list menu. Cached; None if it has none.
+/// An app's own icon as a data URL, for the task-list menu. Cached once found.
 #[tauri::command]
 pub async fn app_icon(exe: String) -> Option<String> {
     use base64::Engine as _;
@@ -861,7 +858,10 @@ pub async fn app_icon(exe: String) -> Option<String> {
     }
     let url = win::exe_icon_png(&exe, 48)
         .map(|png| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)));
-    CACHE.lock().ok()?.get_or_insert_with(HashMap::new).insert(exe, url.clone());
+    // Not cached when missing: on Linux the icon can only be read once a window of the app was seen.
+    if url.is_some() {
+        CACHE.lock().ok()?.get_or_insert_with(HashMap::new).insert(exe, url.clone());
+    }
     url
 }
 
@@ -895,6 +895,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn reads_a_real_app_icon_as_png() {
         let png = win::exe_icon_png(r"C:\Windows\explorer.exe", 48).expect("explorer has an icon");
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
@@ -905,5 +906,7 @@ mod tests {
     fn app_names_read_nicely() {
         assert_eq!(pretty_name(r"C:\Program Files\Google\Chrome\chrome.exe"), "Chrome");
         assert_eq!(pretty_name(r"C:\x\WINWORD.EXE"), "Winword");
+        assert_eq!(pretty_name("/Applications/Visual Studio Code.app"), "Visual Studio Code");
+        assert_eq!(pretty_name("/usr/lib/firefox/firefox"), "Firefox");
     }
 }

@@ -139,9 +139,9 @@ pub fn fx_payload() -> Option<Value> {
 /// The page has drawn its first frame (the bubble as it is now): show it and hide the real one.
 #[tauri::command]
 pub fn fx_ready(app: AppHandle) {
-    let Some(h) = app.get_webview_window(LABEL).and_then(|w| w.hwnd().ok()) else { return };
-    win::show(h.0 as win::Hwnd, true);
-    win::keep_topmost(h.0 as win::Hwnd);
+    let Some(w) = app.get_webview_window(LABEL) else { return };
+    win::show(&w, true);
+    win::keep_topmost(&w);
     let _ = app.emit_to("bubble", "bubble-veil", json!({ "on": true }));
 }
 

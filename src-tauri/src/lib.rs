@@ -1,8 +1,14 @@
 mod bubble;
 mod fx;
 mod reminder;
-#[cfg(windows)]
+// Native window calls behind one set of functions: Win32 on Windows, AppKit and CoreGraphics on
+// macOS, X11 on Linux.
+#[cfg_attr(windows, path = "win.rs")]
+#[cfg_attr(target_os = "macos", path = "mac.rs")]
+#[cfg_attr(target_os = "linux", path = "linux.rs")]
 mod win;
+#[cfg(not(windows))]
+mod own;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -363,6 +369,13 @@ const WINDOW_LAYERS: [&[u8]; 3] = [
     include_bytes!("../live-icons/window-over.png"),
 ];
 const TRAY_LAYERS: [&[u8]; 2] = [include_bytes!("../live-icons/tray-body.png"), include_bytes!("../live-icons/tray-face.png")];
+/// The Dock shows icons much bigger than a taskbar does.
+#[cfg(target_os = "macos")]
+const DOCK_LAYERS: [&[u8]; 3] = [
+    include_bytes!("../live-icons/dock-under.png"),
+    include_bytes!("../live-icons/dock-body.png"),
+    include_bytes!("../live-icons/dock-over.png"),
+];
 const GRAPE: [u8; 3] = [0x6d, 0x4c, 0xff];
 
 fn decode_rgba(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
@@ -416,9 +429,13 @@ fn set_icon_color(app: AppHandle, color: String) {
         return;
     };
     if let (Some(main), Some(icon)) = (app.get_webview_window("main"), blob_icon(&WINDOW_LAYERS, 1, rgb)) {
-        // The taskbar shows the big icon, which Tauri leaves alone; set both.
-        if let Ok(h) = main.hwnd() {
-            win::set_big_icon(h.0 as win::Hwnd, icon.rgba(), icon.width(), icon.height());
+        // The taskbar (Windows) or Dock (macOS) shows the big icon, which Tauri leaves alone.
+        #[cfg(target_os = "macos")]
+        let big = blob_icon(&DOCK_LAYERS, 1, rgb);
+        #[cfg(not(target_os = "macos"))]
+        let big = Some(icon.clone());
+        if let Some(big) = big {
+            win::set_big_icon(&main, big.rgba(), big.width(), big.height());
         }
         let _ = main.set_icon(icon);
     }
@@ -439,6 +456,23 @@ fn quit(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Linux: GTK on X11 even in a Wayland session (through XWayland), because Wayland doesn't let
+    // an app place its own windows and the bubble lives by placing itself. WebKitGTK's DMA-BUF
+    // renderer is skipped too: it leaves windows blank on some graphics drivers.
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: the first thing Quicky does, before any other thread exists.
+        if std::env::var_os("DISPLAY").is_some() && std::env::var_os("GDK_BACKEND").is_none() {
+            unsafe { std::env::set_var("GDK_BACKEND", "x11") };
+        }
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+        }
+    }
+    // Ctrl+Space, except on macOS where that switches keyboard input sources: Option+Space there.
+    #[cfg(target_os = "macos")]
+    let quick_key = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    #[cfg(not(target_os = "macos"))]
     let quick_key = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
 
     tauri::Builder::default()
@@ -471,7 +505,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             if let Err(e) = app.global_shortcut().register(quick_key) {
-                eprintln!("Ctrl+Space is taken by another app: {e}");
+                eprintln!("The quick-add shortcut is taken by another app: {e}");
             }
 
             let handle = app.handle().clone();
@@ -482,8 +516,8 @@ pub fn run() {
             }
 
             // Opened inside an app, the main window can't be moved or resized past the app's edges.
-            if let Some(h) = app.get_webview_window("main").and_then(|m| m.hwnd().ok()) {
-                win::keep_inside_host(h.0 as isize);
+            if let Some(main) = app.get_webview_window("main") {
+                win::keep_inside_host(&main);
             }
             bubble::SHOW.store(cfg.show_bubble, Ordering::Relaxed);
             bubble::place(&handle);
@@ -586,8 +620,19 @@ pub fn run() {
             reminder::reminder_ready,
             reminder::close_reminder
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Quicky");
+        .build(tauri::generate_context!())
+        .expect("error while building Quicky")
+        .run(|app, event| match event {
+            // Quitting from outside Quicky's own menu (Cmd+Q, logging out): save first.
+            tauri::RunEvent::ExitRequested { code: None, api, .. } => {
+                api.prevent_exit();
+                quit(app);
+            }
+            // Clicking the Dock icon opens Quicky.
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => show_main(app),
+            _ => {}
+        });
 }
 
 #[cfg(test)]

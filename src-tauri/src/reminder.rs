@@ -90,10 +90,7 @@ pub fn reminder_ready(app: AppHandle) {
     let Some(win) = app.get_webview_window("reminder") else { return };
     let _ = win.show();
     let _ = win.set_always_on_top(true);
-    #[cfg(windows)]
-    if let Ok(h) = win.hwnd() {
-        crate::win::force_foreground(h.0 as crate::win::Hwnd);
-    }
+    crate::win::force_foreground(&win);
     let _ = win.set_focus();
 }
 

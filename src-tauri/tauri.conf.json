@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -43,7 +44,9 @@
         "skipTaskbar": true,
         "focus": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required",
-        "visible": false
+        "visible": false,
+        "visibleOnAllWorkspaces": true,
+        "acceptFirstMouse": true
       }
     ],
     "security": {

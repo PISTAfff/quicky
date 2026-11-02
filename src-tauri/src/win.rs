@@ -1,5 +1,8 @@
 //! Thin wrappers over the few Win32 calls Quicky needs: finding other apps' windows, keeping the
 //! bubble on top without stealing focus, and pulling the reminder to the front.
+//!
+//! `mac.rs` and `linux.rs` offer the same functions for the other systems (lib.rs picks one).
+//! Other apps' windows are `Hwnd`s; Quicky's own windows are passed as Tauri windows.
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -37,6 +40,11 @@ pub struct AppWindow {
 
 fn h(hwnd: Hwnd) -> HWND {
     hwnd as HWND
+}
+
+/// One of Quicky's own windows as a Win32 handle.
+fn own(w: &tauri::WebviewWindow) -> Option<Hwnd> {
+    w.hwnd().ok().map(|h| h.0 as Hwnd)
 }
 
 fn pid_of(hwnd: Hwnd) -> u32 {
@@ -89,6 +97,11 @@ pub fn frame(hwnd: Hwnd) -> Option<Rect> {
     Some(Rect { left: r.left, top: r.top, right: r.right, bottom: r.bottom })
 }
 
+/// The visible frame of one of Quicky's own windows.
+pub fn own_frame(w: &tauri::WebviewWindow) -> Option<Rect> {
+    frame(own(w)?)
+}
+
 /// A real app window: alive, visible, not minimized, not cloaked, and not part of the Windows
 /// shell. Explorer draws the taskbar, the tray's hidden-icons popup, Alt+Tab and the desktop as
 /// well as its folder windows, so of Explorer's windows only folder windows count.
@@ -122,7 +135,8 @@ pub fn foreground_is_ours() -> bool {
 /// Whether focus went somewhere that still belongs to `owner`: one of our own windows (file
 /// dialogs, the reminder), a window it owns, or a WebView2 popup (colour/date pickers, menus).
 /// No foreground at all (mid-switch) also counts, to be safe.
-pub fn foreground_is_related(owner: Hwnd) -> bool {
+pub fn foreground_is_related(w: &tauri::WebviewWindow) -> bool {
+    let Some(owner) = own(w) else { return true };
     let fg = unsafe { GetForegroundWindow() } as Hwnd;
     if fg == 0 || is_ours(fg) {
         return true;
@@ -245,23 +259,27 @@ pub fn left_button_down() -> bool {
     (unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } as u16 & 0x8000) != 0
 }
 
-pub fn keep_topmost(hwnd: Hwnd) {
+pub fn keep_topmost(w: &tauri::WebviewWindow) {
+    let Some(hwnd) = own(w) else { return };
     unsafe {
         SetWindowPos(h(hwnd), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     }
 }
 
-pub fn move_to(hwnd: Hwnd, x: i32, y: i32) {
+pub fn move_to(w: &tauri::WebviewWindow, x: i32, y: i32) {
+    let Some(hwnd) = own(w) else { return };
     unsafe { SetWindowPos(h(hwnd), std::ptr::null_mut(), x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
 }
 
-pub fn show(hwnd: Hwnd, visible: bool) {
+pub fn show(w: &tauri::WebviewWindow, visible: bool) {
+    let Some(hwnd) = own(w) else { return };
     unsafe { ShowWindow(h(hwnd), if visible { SW_SHOWNOACTIVATE } else { SW_HIDE }) };
 }
 
 /// Brings a window to the front even when Windows' focus-stealing guard would normally only flash
 /// its taskbar button: a synthetic Alt tap plus borrowing the current foreground thread's input.
-pub fn force_foreground(hwnd: Hwnd) {
+pub fn force_foreground(w: &tauri::WebviewWindow) {
+    let Some(hwnd) = own(w) else { return };
     unsafe {
         let fg = GetForegroundWindow();
         let fg_thread = GetWindowThreadProcessId(fg, std::ptr::null_mut());
@@ -288,7 +306,8 @@ pub static PLACING: AtomicBool = AtomicBool::new(false);
 
 /// Hooks the main window's messages so drags, resizes, snapping and maximizing all stay inside
 /// `HOST` while one is set. Call once, on the thread that created the window.
-pub fn keep_inside_host(hwnd: Hwnd) {
+pub fn keep_inside_host(w: &tauri::WebviewWindow) {
+    let Some(hwnd) = own(w) else { return };
     unsafe { SetWindowSubclass(h(hwnd), Some(host_walls), 1, 0) };
 }
 
@@ -373,13 +392,14 @@ unsafe extern "system" fn host_walls(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
 
 /// Sets a window's big icon (the one its taskbar button shows) from RGBA pixels. Tauri's
 /// `set_icon` only replaces the small one, so the taskbar would keep the .exe's icon.
-pub fn set_big_icon(hwnd: Hwnd, rgba: &[u8], width: u32, height: u32) {
+pub fn set_big_icon(w: &tauri::WebviewWindow, rgba: &[u8], width: u32, height: u32) {
     use windows_sys::Win32::Graphics::Gdi::{
         CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, SendMessageW, ICONINFO, ICON_BIG, WM_SETICON};
     /// The icon we set last, destroyed once it's replaced.
     static LAST: AtomicIsize = AtomicIsize::new(0);
+    let Some(hwnd) = own(w) else { return };
     if rgba.len() < (width * height * 4) as usize {
         return;
     }
