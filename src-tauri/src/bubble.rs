@@ -1,11 +1,13 @@
-//! The little always-on-top Quicky bubble: where it sits, when it shows, and sticking it to apps.
+//! The little always-on-top Quicky bubbles: where they sit, when they show, and sticking them to apps.
 //!
-//! There is one bubble window. It lives in one of two places:
-//! - mini: when the focused app has its own mini Quicky (made by dropping the bubble on it), it
-//!   shrinks and sits on that app's window at the chosen spot, following the window around;
-//! - normal: everywhere else, at the spot the user dragged it to (or the bottom-left corner).
+//! There are two bubble windows, both drawn by bubble.html:
+//! - the bubble (`bubble`): Quicky's own, always at the spot the user dragged it to (or the
+//!   bottom-left corner), counting the general list;
+//! - the mini (`mini`): while the focused app has its own mini Quicky (made by dropping the
+//!   bubble on it), a smaller blob on that app's window at the chosen spot, following the window
+//!   around and counting that app's list.
 //!
-//! It glides between spots rather than jumping, and only shows while the main window is off
+//! Both glide to their spots rather than jumping, and only show while the main window is off
 //! screen and no reminder is up.
 
 use crate::balloon;
@@ -15,39 +17,53 @@ use crate::win::{self, AppWindow, Rect};
 use crate::config::{read_config, update_config, StuckApp};
 use crate::main_window::{self, main_on_screen};
 use serde::Serialize;
+use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 /// Logical px; matches the bubble window in tauri.conf.json (room around the blob to bounce).
 pub const SIZE: f64 = 104.0;
 const MARGIN: f64 = -6.0; // the blob sits ~23 px inside its (roomy) window
 
 pub static SHOW: AtomicBool = AtomicBool::new(true);
-/// A full-screen reminder is up: keep the bubble out of its way.
+/// A full-screen reminder is up: keep the bubbles out of its way.
 pub static OVERLAY_UP: AtomicBool = AtomicBool::new(false);
 
 /// Logical px of the mini Quicky shown inside an app (smaller window, smaller blob).
 pub const MINI: f64 = 64.0;
+
+/// Window labels: Quicky's own bubble, and the mini of the app in front.
+pub const BUBBLE_LABEL: &str = "bubble";
+pub const MINI_LABEL: &str = "mini";
+
+/// Logical px kept between the bubble's centre and a new mini's: their windows (half widths 52 and
+/// 32) don't overlap, so neither hides the other or takes its clicks.
+const APART: f64 = 88.0;
+
+/// Where a bubble window is now (top-left, sub-pixel, for smooth gliding) and where it's heading.
+struct Glide {
+    at: Option<(f64, f64)>,
+    goal: Option<(i32, i32)>,
+}
 
 struct State {
     /// The user is dragging the bubble; don't move it, save where it lands.
     dragging: bool,
     /// The last app (not Quicky) that had focus.
     focus: Option<AppWindow>,
-    /// Where the window is now (top-left, sub-pixel, for smooth gliding) and where it's heading.
-    at: Option<(f64, f64)>,
-    goal: Option<(i32, i32)>,
-    /// What the bubble is showing as: None = not set yet, Some(None) = the normal bubble,
-    /// Some(Some(key)) = the mini of the app with that space key.
-    mode: Option<Option<String>>,
+    bubble: Glide,
+    mini: Glide,
+    /// Whose mini the mini window shows: None = not set yet, Some(None) = no app's (it's away),
+    /// Some(Some(key)) = the app with that space key.
+    space: Option<Option<String>>,
     /// A big moment (dividing, popping) is playing in the overlay: hold everything still.
     held: bool,
     /// A mini is being dragged around inside its app (the app's window is its walls).
     wall: Option<WallDrag>,
-    /// Streaming the cursor to the page for a tug on a locked bubble.
-    tracking: bool,
+    /// Streaming the cursor to that window's page for a tug on it while it's locked.
+    tracking: Option<&'static str>,
 }
 
 struct WallDrag {
@@ -73,23 +89,34 @@ const POP_AT: f64 = 90.0;
 static STATE: Mutex<State> = Mutex::new(State {
     dragging: false,
     focus: None,
-    at: None,
-    goal: None,
-    mode: None,
+    bubble: Glide { at: None, goal: None },
+    mini: Glide { at: None, goal: None },
+    space: None,
     held: false,
     wall: None,
-    tracking: false,
+    tracking: None,
 });
 
-/// How quickly the bubble glides to a new spot (time constant, ms): small = snappy.
+/// How quickly a bubble glides to a new spot (time constant, ms): small = snappy.
 const GLIDE_MS: f64 = 70.0;
 
 fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub(crate) fn window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
-    app.get_webview_window("bubble")
+/// Quicky's own bubble.
+pub(crate) fn window(app: &AppHandle) -> Option<WebviewWindow> {
+    app.get_webview_window(BUBBLE_LABEL)
+}
+
+/// The window that shows the focused app's mini.
+pub(crate) fn mini_window(app: &AppHandle) -> Option<WebviewWindow> {
+    app.get_webview_window(MINI_LABEL)
+}
+
+/// Which of the two a page is, as a label that lives forever (for events back to it).
+pub(crate) fn label_of(w: &WebviewWindow) -> &'static str {
+    if w.label() == MINI_LABEL { MINI_LABEL } else { BUBBLE_LABEL }
 }
 
 /// Work area (screen minus taskbar) of the primary monitor, in physical px, plus its scale.
@@ -116,12 +143,27 @@ pub(crate) fn scale(app: &AppHandle) -> f64 {
         .unwrap_or(1.0)
 }
 
-/// The bubble window's current width in physical px (normal or mini).
+/// The bubble window's width in physical px.
 pub(crate) fn side(app: &AppHandle) -> i32 {
     window(app)
         .and_then(|b| b.outer_size().ok())
         .map(|s| s.width as i32)
         .unwrap_or((SIZE * scale(app)) as i32)
+}
+
+/// The mini window's width in physical px.
+fn mini_side(app: &AppHandle) -> i32 {
+    mini_window(app)
+        .and_then(|m| m.outer_size().ok())
+        .map(|s| s.width as i32)
+        .unwrap_or((MINI * scale(app)) as i32)
+}
+
+/// Centre of a bubble window (physical px).
+fn center_of(w: &WebviewWindow) -> Option<(i32, i32)> {
+    let p = w.outer_position().ok()?;
+    let s = w.outer_size().ok()?.width as i32;
+    Some((p.x + s / 2, p.y + s / 2))
 }
 
 /// Spot the user dragged it to, nudged fully onto whichever screen it's mostly on. Falls back to
@@ -156,6 +198,33 @@ fn stuck_spot(entry: &StuckApp, rect: Rect) -> (i32, i32) {
     (x, y)
 }
 
+/// A new mini's centre, moved out from under the bubble (centre `home`) when the two would
+/// overlap: straight away from it, or towards the middle of the app if that leaves the app's
+/// window. `reach` is the distance to keep, `half` the mini's half width (physical px).
+fn clear_of(home: (i32, i32), rect: Rect, spot: (i32, i32), reach: f64, half: i32) -> (i32, i32) {
+    let away = |(dx, dy): (f64, f64)| {
+        let d = dx.hypot(dy).max(1e-6);
+        let (x, y) = ((home.0 as f64 + dx / d * reach).round() as i32, (home.1 as f64 + dy / d * reach).round() as i32);
+        let (l, t) = (rect.left + half, rect.top + half);
+        (x.clamp(l, (rect.right - half).max(l)), y.clamp(t, (rect.bottom - half).max(t)))
+    };
+    let far = |(x, y): (i32, i32)| ((x - home.0) as f64).hypot((y - home.1) as f64) >= reach - 1.0;
+    if far(spot) {
+        return spot;
+    }
+    let mid = (((rect.left + rect.right) / 2 - home.0) as f64, ((rect.top + rect.bottom) / 2 - home.1) as f64);
+    let off = ((spot.0 - home.0) as f64, (spot.1 - home.1) as f64);
+    let first = if off.0.hypot(off.1) > 0.5 { away(off) } else { away(mid) };
+    if far(first) { first } else { away(mid) }
+}
+
+/// A mini's spot in an app, kept clear of the bubble's own spot.
+fn clear_of_home(app: &AppHandle, rect: Rect, spot: (i32, i32)) -> (i32, i32) {
+    let Some(home) = home_center(app) else { return spot };
+    let s = scale(app);
+    clear_of(home, rect, spot, APART * s, (MINI * s / 2.0) as i32)
+}
+
 /// The stuck app currently in focus, with its window frame.
 pub(crate) fn active_stuck(app: &AppHandle) -> Option<(StuckApp, AppWindow, Rect)> {
     let focus = state().focus.clone()?;
@@ -172,73 +241,71 @@ pub fn space_key(exe: &str) -> String {
     exe.to_lowercase()
 }
 
-/// Top-left to put the bubble at, and which app's mini it is (None = the normal bubble).
-fn target(app: &AppHandle) -> Option<((i32, i32), Option<String>)> {
-    match active_stuck(app) {
-        Some((entry, _, rect)) => {
-            let (cx, cy) = stuck_spot(&entry, rect);
-            let half = (MINI * scale(app) / 2.0) as i32;
-            Some(((cx - half, cy - half), Some(space_key(&entry.exe))))
-        }
-        None => normal_spot(app).map(|p| (p, None)),
-    }
+/// Top-left for the mini of the app in focus, and that app's space key.
+fn mini_target(app: &AppHandle) -> Option<((i32, i32), String)> {
+    let (entry, _, rect) = active_stuck(app)?;
+    let (cx, cy) = stuck_spot(&entry, rect);
+    let half = (MINI * scale(app) / 2.0) as i32;
+    Some(((cx - half, cy - half), space_key(&entry.exe)))
 }
 
-/// Works out where the bubble should be. Off screen (or forced) it jumps straight there; on
-/// screen it only sets the goal and `glide` moves it there smoothly.
+/// Works out where both should be. Off screen (or forced) a window jumps straight there; on
+/// screen it only gets a goal and `glide` moves it there smoothly.
 fn apply(app: &AppHandle, force: bool) {
-    // Never yank it out from under the user's pointer (e.g. while a drag crosses screens),
+    // Never yank one out from under the user's pointer (e.g. while a drag crosses screens),
     // and hold still while the overlay plays a big moment.
-    {
-        let st = state();
-        if st.dragging || st.wall.is_some() || st.held {
-            return;
-        }
+    if !settled() {
+        return;
     }
-    let (Some(b), Some((spot, space))) = (window(app), target(app)) else { return };
-    let mini = space.is_some();
+    if let (Some(b), Some(spot)) = (window(app), normal_spot(app)) {
+        let visible = b.is_visible().unwrap_or(false);
+        aim(&b, &mut state().bubble, spot, force || !visible);
+    }
+    let Some(m) = mini_window(app) else { return };
+    let target = mini_target(app);
+    let space = target.as_ref().map(|(_, key)| key.clone());
     let locked = locked_for(app, space.as_deref());
-    let visible = b.is_visible().unwrap_or(false);
+    let visible = m.is_visible().unwrap_or(false);
     let mut st = state();
-    let was_mini = st.mode.as_ref().map(|m| m.is_some());
-    if force || was_mini != Some(mini) {
-        // Switching between the normal bubble and an app's mini: resize around the same centre
-        // (so it shrinks/grows in place, then glides).
-        let old = b.outer_size().map(|s| s.width as f64).unwrap_or(0.0);
-        let size = if mini { MINI } else { SIZE };
-        let _ = b.set_size(LogicalSize::new(size, size));
-        let new = size * scale(app);
-        if let Some((x, y)) = st.at {
-            let shift = (old - new) / 2.0;
-            st.at = Some((x + shift, y + shift));
-            win::move_to(&b, (x + shift).round() as i32, (y + shift).round() as i32);
-        }
+    if force || st.space.as_ref() != Some(&space) {
+        // Tell the page whose mini it is now (whose tasks its badge counts, and its lock).
+        let _ = app.emit_to(MINI_LABEL, "bubble-mini", json!({ "space": space, "locked": locked }));
+        st.space = Some(space);
     }
-    if force || st.mode.as_ref() != Some(&space) {
-        // Tell the page which it is now (and whose task count to show on the badge).
-        let _ = app.emit_to("bubble", "bubble-mini", serde_json::json!({ "mini": mini, "space": space, "locked": locked }));
-        st.mode = Some(space);
-    }
-    st.goal = Some(spot);
-    if force || !visible || st.at.is_none() {
-        win::move_to(&b, spot.0, spot.1);
-        st.at = Some((spot.0 as f64, spot.1 as f64));
+    if let Some((spot, _)) = target {
+        aim(&m, &mut st.mini, spot, force || !visible);
     }
 }
 
-/// One step of gliding towards the goal. Returns true while still on the way.
+/// Points a window at `spot`: straight there when `jump`, otherwise `glide` takes it there.
+fn aim(w: &WebviewWindow, g: &mut Glide, spot: (i32, i32), jump: bool) {
+    g.goal = Some(spot);
+    if jump || g.at.is_none() {
+        win::move_to(w, spot.0, spot.1);
+        g.at = Some((spot.0 as f64, spot.1 as f64));
+    }
+}
+
+/// One step of gliding both towards their goals. Returns true while either is still on the way.
 fn glide(app: &AppHandle, dt_ms: f64) -> bool {
-    let Some(b) = window(app) else { return false };
-    let mut st = state();
-    if st.dragging || st.wall.is_some() || st.held {
+    if !settled() {
         return false;
     }
-    let (Some((x, y)), Some((gx, gy))) = (st.at, st.goal) else { return false };
+    let k = 1.0 - (-dt_ms / GLIDE_MS).exp();
+    let (b, m) = (window(app), mini_window(app));
+    let mut st = state();
+    let bubble = b.is_some_and(|b| step(&b, &mut st.bubble, k));
+    let mini = m.is_some_and(|m| step(&m, &mut st.mini, k));
+    bubble || mini
+}
+
+/// Moves a window a step (`k` of the way) towards its goal. Returns true while still on the way.
+fn step(w: &WebviewWindow, g: &mut Glide, k: f64) -> bool {
+    let (Some((x, y)), Some((gx, gy))) = (g.at, g.goal) else { return false };
     let (gx, gy) = (gx as f64, gy as f64);
     if (gx - x).abs() < 0.5 && (gy - y).abs() < 0.5 {
         return false;
     }
-    let k = 1.0 - (-dt_ms / GLIDE_MS).exp();
     let (mut nx, mut ny) = (x + (gx - x) * k, y + (gy - y) * k);
     if (gx - nx).abs() < 0.6 && (gy - ny).abs() < 0.6 {
         (nx, ny) = (gx, gy);
@@ -246,92 +313,102 @@ fn glide(app: &AppHandle, dt_ms: f64) -> bool {
     let (px, py) = (x.round() as i32, y.round() as i32);
     let (rx, ry) = (nx.round() as i32, ny.round() as i32);
     if (rx, ry) != (px, py) {
-        win::move_to(&b, rx, ry);
+        win::move_to(w, rx, ry);
     }
-    st.at = Some((nx, ny));
+    g.at = Some((nx, ny));
     true
 }
 
-/// Sizes the bubble exactly and puts it where it belongs (startup, reset, display changes).
+/// Sizes both exactly and puts them where they belong (startup, reset, display changes).
 pub fn place(app: &AppHandle) {
-    if let Some(b) = window(app) {
+    for (w, size) in [(window(app), SIZE), (mini_window(app), MINI)] {
+        let Some(w) = w else { continue };
         // Windows pads small captioned windows to a minimum width; drop that floor.
-        let _ = b.set_min_size(Some(LogicalSize::new(1.0, 1.0)));
+        let _ = w.set_min_size(Some(LogicalSize::new(1.0, 1.0)));
+        let _ = w.set_size(LogicalSize::new(size, size));
     }
     apply(app, true);
 }
 
-/// Shown only while the app is off screen, no reminder is up, and the user wants it.
+/// Shown only while the app is off screen, no reminder is up, and the user wants them; the mini
+/// only while the app in front has one. While the overlay plays a big moment the mini stays as it
+/// is (the overlay shows or hides it at the handoff).
 pub fn sync(app: &AppHandle) {
-    let Some(b) = window(app) else { return };
     let want = SHOW.load(Ordering::Relaxed) && !OVERLAY_UP.load(Ordering::Relaxed) && !main_on_screen(app);
+    if let Some(b) = window(app) {
+        show(app, &b, want);
+    }
+    let (held, has_mini) = {
+        let st = state();
+        (st.held, matches!(st.space, Some(Some(_))))
+    };
+    if let (false, Some(m)) = (held, mini_window(app)) {
+        show(app, &m, want && has_mini);
+    }
+}
+
+fn show(app: &AppHandle, w: &WebviewWindow, want: bool) {
     // Win32 both ways: showing must not steal focus, and Tauri's own show/hide bookkeeping
     // would get out of step if the two were mixed.
-    if want != b.is_visible().unwrap_or(false) {
-        win::show(&b, want);
+    if want != w.is_visible().unwrap_or(false) {
+        win::show(w, want);
         // The page can't tell for itself: a hidden window's page still counts as visible.
         if want {
-            let _ = app.emit_to("bubble", "bubble-shown", ());
+            let _ = app.emit_to(label_of(w), "bubble-shown", ());
         }
     }
 }
 
-/// Whether the bubble is on screen right now (for a moment the page wants the user to see).
+/// Whether this bubble is on screen right now (for a moment the page wants the user to see).
 #[tauri::command]
-pub fn bubble_on_screen(app: AppHandle) -> bool {
-    window(&app).is_some_and(|b| b.is_visible().unwrap_or(false))
+pub fn bubble_on_screen(window: WebviewWindow) -> bool {
+    window.is_visible().unwrap_or(false)
 }
 
-/// Where a drag ended decides what happens:
-/// - dropped on an app's window: that app gets (or moves) its mini Quicky to that spot;
-/// - dropped on the desktop: it's the normal bubble's new spot, and if it was an app's mini that
-///   was dragged out, that app no longer has one.
+/// Where a drag of the bubble ended decides what happens:
+/// - dropped on an app's window: that app gets its mini Quicky there (or its mini moves there),
+///   and the bubble goes back to its own spot;
+/// - dropped on the desktop: that's the bubble's new spot.
 fn save_drop(app: &AppHandle) {
-    let Some(pos) = window(app).and_then(|b| b.outer_position().ok()) else { return };
-    let side = side(app);
-    let center = (pos.x + side / 2, pos.y + side / 2);
-    let was = active_stuck(app).map(|(entry, _, _)| entry.exe);
+    let Some(b) = window(app) else { return };
+    let (Some(center), Ok(pos)) = (center_of(&b), b.outer_position()) else { return };
+    {
+        // Glides on from where it was let go.
+        let mut st = state();
+        st.bubble.at = Some((pos.x as f64, pos.y as f64));
+        st.bubble.goal = None;
+    }
     match win::app_under(center.0, center.1).and_then(|w| win::frame(w.hwnd).map(|r| (w, r))) {
         Some((under, rect)) => {
-            let (right, bottom, dx, dy) = anchor(rect, center);
-            let is_new = !read_config(app).stuck_apps.iter().any(|s| s.exe.eq_ignore_ascii_case(&under.exe));
-            // Moving an existing mini keeps its window size and its lock.
-            let old = read_config(app).stuck_apps.into_iter().find(|s| s.exe.eq_ignore_ascii_case(&under.exe));
-            let (area, locked) = old.map_or((None, false), |s| (s.area, s.locked));
-            let entry = StuckApp { exe: under.exe.clone(), name: pretty_name(&under.exe), right, bottom, dx, dy, area, locked };
-            let _ = update_config(app, |c| {
-                c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&entry.exe));
-                c.stuck_apps.push(entry);
-            });
-            state().focus = Some(under.clone());
-            if is_new {
-                // A new mini is born: Quicky divides, one half stays, the other heads home.
-                if let Some(home) = home_center(app) {
-                    let mut st = state();
-                    st.at = Some((pos.x as f64, pos.y as f64));
-                    st.goal = None;
-                    drop(st);
-                    let _ = app.emit("stuck-apps", ());
-                    fx::play(app, Kind::Split, center, home, Some(space_key(&under.exe)), (0.0, 0.0));
-                    return;
-                }
+            let spot = clear_of_home(app, rect, center);
+            if stick(app, &under, rect, spot).unwrap_or(false) && let Some(home) = home_center(app) {
+                // A new mini is born: Quicky divides, one half stays as the mini, the other heads home.
+                fx::play(app, Kind::Split, center, spot, home, Some(space_key(&under.exe)), (0.0, 0.0));
             }
         }
         None => {
             let normal = (SIZE * scale(app)) as i32;
             let spot = (center.0 - normal / 2, center.1 - normal / 2);
-            let _ = update_config(app, |c| {
-                if let Some(w) = &was {
-                    c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(w));
-                }
-                c.bubble_pos = Some(spot);
-            });
+            let _ = update_config(app, |c| c.bubble_pos = Some(spot));
         }
     }
+}
+
+/// Gives an app its mini centred at `spot` (or moves its mini there, keeping its window size and
+/// lock). Returns true when the app had none.
+fn stick(app: &AppHandle, under: &AppWindow, rect: Rect, spot: (i32, i32)) -> Result<bool, String> {
+    let (right, bottom, dx, dy) = anchor(rect, spot);
+    let old = read_config(app).stuck_apps.into_iter().find(|s| s.exe.eq_ignore_ascii_case(&under.exe));
+    let is_new = old.is_none();
+    let (area, locked) = old.map_or((None, false), |s| (s.area, s.locked));
+    let entry = StuckApp { exe: under.exe.clone(), name: pretty_name(&under.exe), right, bottom, dx, dy, area, locked };
+    update_config(app, |c| {
+        c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&entry.exe));
+        c.stuck_apps.push(entry);
+    })?;
+    state().focus = Some(under.clone());
     let _ = app.emit("stuck-apps", ());
-    let mut st = state();
-    st.at = Some((pos.x as f64, pos.y as f64));
-    st.goal = None;
+    Ok(is_new)
 }
 
 /// Background loop: drag tracking, focus tracking, staying on top of the taskbar, following a
@@ -357,9 +434,7 @@ pub fn housekeeping(app: &AppHandle) {
             sync(&app);
             balloon::sync(&app);
             menu::watch(&app);
-            let Some(b) = window(&app) else { continue };
 
-            // A walled mini drag whose page lost track of the mouse: finish it where it is.
             // Walled drag of a mini: follow the real cursor until the button comes up.
             if state().wall.is_some() {
                 if win::left_button_down() {
@@ -368,19 +443,20 @@ pub fn housekeeping(app: &AppHandle) {
                     continue;
                 }
                 mini_drag_end(app.clone());
-                let _ = app.emit_to("bubble", "bubble-calm", ());
+                let _ = app.emit_to(MINI_LABEL, "bubble-calm", ());
             }
-            // Tug on a locked bubble: stream the cursor to the page until the button comes up.
-            if state().tracking {
+            // Tug on a locked bubble: stream the cursor to its page until the button comes up.
+            let tracking = state().tracking;
+            if let Some(label) = tracking {
                 if win::left_button_down() {
                     let (x, y) = win::cursor();
                     let s = scale(&app);
-                    let _ = app.emit_to("bubble", "pointer-at", serde_json::json!({ "x": x as f64 / s, "y": y as f64 / s }));
+                    let _ = app.emit_to(label, "pointer-at", json!({ "x": x as f64 / s, "y": y as f64 / s }));
                     gliding = true;
                     continue;
                 }
-                state().tracking = false;
-                let _ = app.emit_to("bubble", "pointer-up", ());
+                state().tracking = None;
+                let _ = app.emit_to(label, "pointer-up", ());
             }
 
             let dragging = state().dragging;
@@ -396,8 +472,12 @@ pub fn housekeeping(app: &AppHandle) {
             note_focus();
 
             // While its menu is open, the menu stays on top instead.
-            if !OVERLAY_UP.load(Ordering::Relaxed) && !menu::is_open() && b.is_visible().unwrap_or(false) {
-                win::keep_topmost(&b);
+            if !OVERLAY_UP.load(Ordering::Relaxed) && !menu::is_open() {
+                for w in [window(&app), mini_window(&app)].into_iter().flatten() {
+                    if w.is_visible().unwrap_or(false) {
+                        win::keep_topmost(&w);
+                    }
+                }
             }
             apply(&app, false);
             let dt = last_frame.elapsed().as_secs_f64() * 1000.0;
@@ -407,7 +487,7 @@ pub fn housekeeping(app: &AppHandle) {
     });
 }
 
-/// Centre of the normal bubble's spot (physical px).
+/// Centre of the bubble's own spot (physical px).
 fn home_center(app: &AppHandle) -> Option<(i32, i32)> {
     let (x, y) = normal_spot(app)?;
     let half = (SIZE * scale(app) / 2.0) as i32;
@@ -425,20 +505,14 @@ pub fn settled() -> bool {
     !st.dragging && st.wall.is_none() && !st.held
 }
 
-/// The task space the bubble is showing as (an app's mini), or None for the normal bubble.
-pub fn current_space() -> Option<String> {
-    state().mode.clone().flatten()
+/// The task space of the mini the mini window shows (None when no app's mini is up).
+pub fn mini_space() -> Option<String> {
+    state().space.clone().flatten()
 }
 
-/// After a big moment: straight into the new form and spot (the page is still invisible).
+/// After a big moment: straight into the new spots (the pages are still invisible).
 pub fn settle(app: &AppHandle) {
     apply(app, true);
-}
-
-fn center(app: &AppHandle) -> Option<(i32, i32)> {
-    let p = window(app)?.outer_position().ok()?;
-    let s = side(app);
-    Some((p.x + s / 2, p.y + s / 2))
 }
 
 /// "chrome.exe" and "WINWORD.EXE" read as "Chrome" and "Winword"; names that already mix cases,
@@ -471,7 +545,7 @@ pub fn set_show_bubble(app: AppHandle, show: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Each mini has its own lock; `None` is the normal bubble's.
+/// Each mini has its own lock; `None` is the bubble's.
 fn locked_for(app: &AppHandle, space: Option<&str>) -> bool {
     let cfg = read_config(app);
     match space {
@@ -480,14 +554,15 @@ fn locked_for(app: &AppHandle, space: Option<&str>) -> bool {
     }
 }
 
-/// Whether the bubble, as it shows right now (normal or an app's mini), is locked in place.
+/// What a bubble page shows as when it loads: whose mini it is (None for the bubble) and whether
+/// it's locked in place. The mini hears of later changes through `bubble-mini` events.
 #[tauri::command]
-pub fn get_bubble_locked(app: AppHandle) -> bool {
-    let mode = state().mode.clone().flatten();
-    locked_for(&app, mode.as_deref())
+pub fn bubble_mode(app: AppHandle, window: WebviewWindow) -> serde_json::Value {
+    let space = if window.label() == MINI_LABEL { mini_space() } else { None };
+    json!({ "space": space, "locked": locked_for(&app, space.as_deref()) })
 }
 
-/// Locks or unlocks the normal bubble (`space` = None) or the mini of that task space.
+/// Locks or unlocks the bubble (`space` = None) or the mini of that task space.
 #[tauri::command]
 pub fn set_bubble_locked(app: AppHandle, locked: bool, space: Option<String>) -> Result<(), String> {
     update_config(&app, |c| match &space {
@@ -505,13 +580,25 @@ pub fn reset_bubble(app: AppHandle) -> Result<(), String> {
 }
 
 /// Bubble click: open Quicky. From an app's mini that's the app's own Quicky, inside the app;
-/// from the normal bubble it's the general list, right next to the bubble.
+/// from the bubble it's the general list, right next to the bubble.
 #[tauri::command]
-pub fn open_from_bubble(app: AppHandle) {
-    main_window::open_for_context(&app, true);
+pub fn open_from_bubble(app: AppHandle, window: WebviewWindow) {
+    if window.label() == MINI_LABEL {
+        main_window::open_for_context(&app, true);
+    } else {
+        main_window::open_general(&app, true);
+    }
 }
 
-/// Notes the app in front as the one Quicky is "for" (its mini, its list). Clicking the bubble or
+/// The task pinned to a bubble got done: the mini cheers when it's that app's task and the mini
+/// is that app's, otherwise the bubble does (as soon as it's back on screen, if it's away now).
+#[tauri::command]
+pub fn bubble_cheer(app: AppHandle, space: Option<String>) {
+    let to = if space.is_some() && space == mini_space() { MINI_LABEL } else { BUBBLE_LABEL };
+    let _ = app.emit_to(to, "bubble-cheer", ());
+}
+
+/// Notes the app in front as the one Quicky is "for" (its mini, its list). Clicking a bubble or
 /// Quicky itself keeps the previous one; anything else (another app, the desktop) replaces it.
 pub fn note_focus() {
     if !win::foreground_is_ours() {
@@ -527,12 +614,11 @@ pub fn bubble_drag_start() {
 
 // ---- dragging a mini inside its app ---------------------------------------------------------
 
-/// Starts dragging the mini of the app in focus. Returns false if the bubble isn't a mini now
-/// (then the page drags the normal bubble freely instead).
+/// Starts dragging the mini of the app in focus. Returns false if that app has none now.
 #[tauri::command]
 pub fn mini_drag_start(app: AppHandle) -> bool {
     let Some((entry, _, rect)) = active_stuck(&app) else { return false };
-    let Some(p) = window(&app).and_then(|b| b.outer_position().ok()) else { return false };
+    let Some(p) = mini_window(&app).and_then(|m| m.outer_position().ok()) else { return false };
     state().wall = Some(WallDrag { exe: entry.exe, rect, start: (p.x, p.y), at: (p.x, p.y), cursor0: win::cursor(), popped: false, strain: 0.0, push: (0.0, 0.0), last: Instant::now() });
     true
 }
@@ -541,8 +627,8 @@ pub fn mini_drag_start(app: AppHandle) -> bool {
 /// how hard it's pushing against the wall (for the squash), and pop it when pushed hard enough.
 fn wall_step(app: &AppHandle) {
     let s = scale(app);
-    let side = side(app);
-    let Some(bubble) = window(app) else { return };
+    let side = mini_side(app);
+    let Some(mini) = mini_window(app) else { return };
     let (cx, cy) = win::cursor();
     let mut st = state();
     let Some(w) = st.wall.as_mut() else { return };
@@ -555,7 +641,7 @@ fn wall_step(app: &AppHandle) {
     let (x, y) = (wx.clamp(l, r.max(l)), wy.clamp(t, b.max(t)));
     let at = (x.round() as i32, y.round() as i32);
     if at != w.at {
-        win::move_to(&bubble, at.0, at.1);
+        win::move_to(&mini, at.0, at.1);
         w.at = at;
     }
     // How hard it's being pushed: how far the pointer is past the mini's middle on each axis it's
@@ -582,28 +668,28 @@ fn wall_step(app: &AppHandle) {
     if reach > 0.5 {
         w.push = (dx, dy);
     }
-    st.at = Some((x, y));
-    st.goal = Some(at);
+    st.mini.at = Some((x, y));
+    st.mini.goal = Some(at);
     drop(st);
     let (px, py) = (dx * strain * POP_AT, dy * strain * POP_AT);
-    let _ = app.emit_to("bubble", "wall-push", serde_json::json!({ "x": px, "y": py }));
+    let _ = app.emit_to(MINI_LABEL, "wall-push", json!({ "x": px, "y": py }));
     if popped {
-        let _ = app.emit_to("bubble", "bubble-pop", ());
+        let _ = app.emit_to(MINI_LABEL, "bubble-pop", ());
     }
 }
 
-/// While the button is held on a locked bubble, stream the real cursor position to the page so
+/// While the button is held on a locked bubble, stream the real cursor position to its page so
 /// tugging keeps working once the pointer leaves the little window.
 #[tauri::command]
-pub fn pointer_track_start() {
-    state().tracking = true;
+pub fn pointer_track_start(window: WebviewWindow) {
+    state().tracking = Some(label_of(&window));
 }
 
 /// Drag finished inside the app: that's the mini's new spot.
 #[tauri::command]
 pub fn mini_drag_end(app: AppHandle) {
     let Some(w) = state().wall.take() else { return };
-    let half = side(&app) / 2;
+    let half = mini_side(&app) / 2;
     let (right, bottom, dx, dy) = anchor(w.rect, (w.at.0 + half, w.at.1 + half));
     let _ = update_config(&app, |c| {
         if let Some(s) = c.stuck_apps.iter_mut().find(|s| s.exe.eq_ignore_ascii_case(&w.exe)) {
@@ -619,13 +705,13 @@ pub fn mini_pop(app: AppHandle) {
     let wall = state().wall.take();
     let push = wall.as_ref().map_or((0.0, 0.0), |w| w.push);
     let exe = wall.map(|w| w.exe).or_else(|| active_stuck(&app).map(|(e, _, _)| e.exe));
-    let from = center(&app);
+    let from = mini_window(&app).and_then(|m| center_of(&m));
     if let Some(exe) = &exe {
         let _ = update_config(&app, |c| c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(exe)));
         let _ = app.emit("stuck-apps", ());
     }
     match (from, home_center(&app)) {
-        (Some(from), Some(home)) => fx::play(&app, Kind::Pop, from, home, exe.map(|e| space_key(&e)), push),
+        (Some(from), Some(home)) => fx::play(&app, Kind::Pop, from, from, home, exe.map(|e| space_key(&e)), push),
         _ => apply(&app, false),
     }
 }
@@ -637,38 +723,30 @@ pub struct BubbleContext {
     stuck: bool,
 }
 
-/// Which app the bubble's menu should offer to stick to (or unstick from).
+/// Which app the right-clicked bubble's menu is about: a mini's own app, or the app window under
+/// the bubble (to offer it a mini).
 #[tauri::command]
-pub fn bubble_context(app: AppHandle) -> Option<BubbleContext> {
-    if let Some((entry, _, _)) = active_stuck(&app) {
+pub fn bubble_context(app: AppHandle, window: WebviewWindow) -> Option<BubbleContext> {
+    if window.label() == MINI_LABEL {
+        let (entry, _, _) = active_stuck(&app)?;
         return Some(BubbleContext { exe: entry.exe, name: entry.name, stuck: true });
     }
-    let (x, y) = center(&app)?;
+    let (x, y) = center_of(&window)?;
     let under = win::app_under(x, y)?;
     let stuck = read_config(&app).stuck_apps.iter().any(|s| s.exe.eq_ignore_ascii_case(&under.exe));
     Some(BubbleContext { name: pretty_name(&under.exe), exe: under.exe, stuck })
 }
 
-/// Sticks the bubble, right where it is, to the app window underneath it.
+/// Gives the app window under the bubble a mini Quicky, right next to the bubble.
 #[tauri::command]
 pub fn stick_bubble(app: AppHandle) -> Result<String, String> {
-    let (x, y) = center(&app).ok_or("Bubble not found")?;
-    let under = win::app_under(x, y).ok_or("Drag the bubble onto an app window first")?;
+    let center = window(&app).and_then(|b| center_of(&b)).ok_or("Bubble not found")?;
+    let under = win::app_under(center.0, center.1).ok_or("Drag the bubble onto an app window first")?;
     let rect = win::frame(under.hwnd).ok_or("Couldn't read that window")?;
-    let (right, bottom, dx, dy) = anchor(rect, (x, y));
+    let spot = clear_of_home(&app, rect, center);
     let name = pretty_name(&under.exe);
-    let old = read_config(&app).stuck_apps.into_iter().find(|s| s.exe.eq_ignore_ascii_case(&under.exe));
-    let is_new = old.is_none();
-    let (area, locked) = old.map_or((None, false), |s| (s.area, s.locked));
-    let entry = StuckApp { exe: under.exe.clone(), name: name.clone(), right, bottom, dx, dy, area, locked };
-    update_config(&app, |c| {
-        c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&entry.exe));
-        c.stuck_apps.push(entry);
-    })?;
-    state().focus = Some(under.clone());
-    let _ = app.emit("stuck-apps", ());
-    if let (true, Some(home)) = (is_new, home_center(&app)) {
-        fx::play(&app, Kind::Split, (x, y), home, Some(space_key(&under.exe)), (0.0, 0.0));
+    if stick(&app, &under, rect, spot)? && let Some(home) = home_center(&app) {
+        fx::play(&app, Kind::Split, center, spot, home, Some(space_key(&under.exe)), (0.0, 0.0));
     }
     Ok(name)
 }
@@ -676,13 +754,13 @@ pub fn stick_bubble(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn unstick_bubble(app: AppHandle, exe: String) -> Result<(), String> {
     // Hiding the mini that's on screen right now: it puffs out and flies home.
-    let showing = state().mode.clone().flatten().is_some_and(|k| k == space_key(&exe))
-        && window(&app).is_some_and(|b| b.is_visible().unwrap_or(false));
-    let from = center(&app);
+    let key = space_key(&exe);
+    let showing = mini_space().is_some_and(|k| k == key);
+    let from = mini_window(&app).filter(|m| showing && m.is_visible().unwrap_or(false)).and_then(|m| center_of(&m));
     update_config(&app, |c| c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&exe)))?;
     let _ = app.emit("stuck-apps", ());
-    match (showing, from, home_center(&app)) {
-        (true, Some(from), Some(home)) => fx::play(&app, Kind::Hide, from, home, Some(space_key(&exe)), (0.0, 0.0)),
+    match (from, home_center(&app)) {
+        (Some(from), Some(home)) => fx::play(&app, Kind::Hide, from, from, home, Some(key), (0.0, 0.0)),
         _ => apply(&app, true),
     }
     Ok(())
@@ -733,6 +811,24 @@ mod tests {
         let (right, bottom, dx, dy) = anchor(rect, (790, 610));
         let entry = StuckApp { exe: String::new(), name: String::new(), right, bottom, dx, dy, area: None, locked: false };
         assert_eq!(stuck_spot(&entry, Rect { right: 1000, bottom: 800, ..rect }), (890, 710));
+    }
+
+    #[test]
+    fn new_minis_keep_clear_of_the_bubble() {
+        let rect = Rect { left: 0, top: 0, right: 1920, bottom: 1040 };
+        let home = (50, 990);
+        let dist = |(x, y): (i32, i32)| ((x - home.0) as f64).hypot((y - home.1) as f64);
+        // Far enough already: stays where it was dropped.
+        assert_eq!(clear_of(home, rect, (400, 500), 60.0, 32), (400, 500));
+        // A little to the right of the bubble: pushed further right, same line.
+        let (x, y) = clear_of(home, rect, (70, 990), 60.0, 32);
+        assert!(dist((x, y)) >= 59.0 && y == 990 && x > 70, "got {x},{y}");
+        // Right on top of it ("Make a mini here"): towards the middle of the app.
+        let (x, y) = clear_of(home, rect, home, 60.0, 32);
+        assert!(dist((x, y)) >= 59.0 && x > home.0 && y < home.1, "got {x},{y}");
+        // Pushing away would leave the app's window (bubble at its bottom-left): towards the middle instead.
+        let (x, y) = clear_of(home, rect, (40, 1000), 60.0, 32);
+        assert!(dist((x, y)) >= 59.0 && x >= 32 && y <= 1008, "got {x},{y}");
     }
 
     #[test]

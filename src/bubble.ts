@@ -1,4 +1,5 @@
-// The always-on-screen bubble. Plain TS, no framework, so it costs almost nothing to keep open.
+// The always-on-screen bubble, and the focused app's mini (the same page in a smaller window,
+// labelled "mini"). Plain TS, no framework, so it costs almost nothing to keep open.
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -11,13 +12,15 @@ import type { MenuEntry } from "./lib/menus";
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
 const badge = document.getElementById("n") as HTMLSpanElement;
+/** This page is the mini window (an app's mini Quicky), not Quicky's own bubble. */
+const isMini = win.label === "mini";
+button.classList.toggle("mini", isMini);
 
 // ---- click vs drag -------------------------------------------------------------
 // A press that moves more than a few pixels drags the bubble (unless it's locked); a press that
-// doesn't is a click that opens Quicky next to it. The normal bubble and each app's mini have
-// their own lock; this is the one for whatever the bubble is showing as right now.
+// doesn't is a click that opens Quicky next to it. The bubble and each app's mini have their own
+// lock; a mini page has the one of whichever app's mini it is right now.
 let locked = false;
-invoke<boolean>("get_bubble_locked").then((v) => (locked = v)).catch(() => {});
 
 let press: { x: number; y: number } | null = null;
 
@@ -135,7 +138,6 @@ draw();
 // overlay window with room to move (src/fx.ts); this page just hands over to it and back.
 const squish = document.querySelector(".squish") as HTMLElement;
 const POP_AT = 90; // logical px of push past a wall that pops it out
-let isMini = false;
 let walled = false;
 let popping = false;
 let veiled = false;
@@ -207,7 +209,9 @@ function endWall() {
 }
 
 // While the overlay draws Quicky, this blob is invisible (the window itself stays up, so nothing
-// replays its entrance). Rust moves and resizes it unseen, then it shows again in its new form.
+// replays its entrance). Rust moves it unseen, then it shows again where the overlay left it.
+/** Until when (ms, performance.now) a just-handed-back blob skips its entrance hop. */
+let settledUntil = 0;
 listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
   if (on) {
     veiled = true;
@@ -220,7 +224,8 @@ listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
   button.classList.remove("prep");
   calm();
   popping = false;
-  // Two frames: let the new size and form render before showing it.
+  settledUntil = performance.now() + 400;
+  // Two frames: let the new spot render before showing it.
   requestAnimationFrame(() =>
     requestAnimationFrame(() => {
       veiled = false;
@@ -231,22 +236,21 @@ listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
 // A little wind-up while the overlay loads.
 listen("bubble-prep", () => !veiled && button.classList.add("prep"));
 
-// Normal bubble vs. an app's mini Quicky (Rust resizes the window around the same centre).
+// Whose list this one counts (null: the general list) and its lock. The bubble's never changes;
+// the mini hears from Rust whenever another app's mini takes its place.
 let mySpace: string | null = null;
-listen<{ mini: boolean; space: string | null; locked?: boolean }>("bubble-mini", ({ payload: { mini, space, locked: l } }) => {
-  isMini = mini;
+let told = false;
+const setMode = (space: string | null, l?: boolean) => {
   mySpace = space;
   locked = !!l;
   showCount();
-  if (veiled) {
-    // Changing form unseen (after a big moment): no shrink/grow transition when it reappears.
-    button.style.transition = "none";
-    button.classList.toggle("mini", mini);
-    void button.offsetWidth;
-    button.style.transition = "";
-    return;
-  }
-  button.classList.toggle("mini", mini);
+};
+invoke<{ space: string | null; locked: boolean }>("bubble_mode")
+  .then(({ space, locked: l }) => !told && setMode(space, l))
+  .catch(() => {});
+listen<{ space: string | null; locked?: boolean }>("bubble-mini", ({ payload: { space, locked: l } }) => {
+  told = true;
+  setMode(space, l);
 });
 
 // ---- pointer --------------------------------------------------------------------------------
@@ -283,7 +287,6 @@ button.addEventListener("pointermove", (e) => {
       if (ok) return;
       walled = false;
       press = null;
-      void invoke("bubble_drag_start").then(() => win.startDragging());
     });
     return;
   }
@@ -498,7 +501,14 @@ listen("bubble-cheer", async () => {
   cheerPending = true;
   if (await invoke<boolean>("bubble_on_screen").catch(() => false)) cheer();
 });
-listen("bubble-shown", () => cheerPending && setTimeout(cheer, 450));
+listen("bubble-shown", () => {
+  // Hop in whenever it comes back on screen (a mini: whenever its app comes to the front), but
+  // not when the overlay just handed it back in place.
+  if (!veiled && performance.now() > settledUntil) replay(button, "appear");
+  if (cheerPending) setTimeout(cheer, 450);
+});
+// A popped or hidden mini's droplets have flown home into the bubble.
+listen("bubble-gulp", () => replay(button, "gulp"));
 
 // ---- animations ------------------------------------------------------------------
 const replay = (el: Element, cls: string) => {
@@ -509,8 +519,6 @@ const replay = (el: Element, cls: string) => {
   // accidentally start it again: the entrance one begins fully transparent.
   el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
 };
-// Hop in whenever the bubble comes back on screen.
-document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && replay(button, "appear"));
 replay(button, "appear");
 // Blink now and then.
 const blink = () => {

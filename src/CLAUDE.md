@@ -1,6 +1,6 @@
 # Front end (`src/`)
 
-Six pages share this folder: the main window (`index.tsx` → `App.tsx`, SolidJS), the always-on-top bubble (`bubble.ts`, plain TS, no framework so it stays tiny), the full-screen reminder (`reminder.ts`, plain TS), the short-lived overlay for the bubble's big moments (`fx.ts`, plain TS), the speech balloon over the bubble (`balloon.ts`, plain TS: the pinned task, or a peek at the bubble's list) and the bubble's right-click menu (`menu.ts`, plain TS). They talk to Rust through Tauri `invoke` / events and to each other through Rust events and shared `localStorage`.
+Six pages share this folder: the main window (`index.tsx` → `App.tsx`, SolidJS), the always-on-top bubble and the focused app's mini (`bubble.ts` in two windows, `bubble` and `mini`, plain TS, no framework so it stays tiny), the full-screen reminder (`reminder.ts`, plain TS), the short-lived overlay for the bubble's big moments (`fx.ts`, plain TS), the speech balloon over the bubble (`balloon.ts`, plain TS: the pinned task, or a peek at the bubble's list) and the bubble's right-click menu (`menu.ts`, plain TS). They talk to Rust through Tauri `invoke` / events and to each other through Rust events and shared `localStorage`.
 
 ## Stack
 SolidJS 1.9 (stores + signals), TypeScript, Vite; `@tauri-apps/api` v2 plus the dialog and autostart plugins. No CSS framework: one stylesheet per page (`styles.css`, `reminder.css`, inline `<style>` in the small pages), plus `tokens.css` (colours, fonts) and `menu.css` (both menus) shared between pages.
@@ -21,7 +21,8 @@ SolidJS 1.9 (stores + signals), TypeScript, Vite; `@tauri-apps/api` v2 plus the 
 
 ## Gotchas
 - `lib/store.ts` `flush()` must run before hiding the window (title-bar close does it); Rust also emits `flush` on quit.
-- The bubble page receives `bubble-mini` events that can fire before it loads; treat its mode as unknown until the first one.
+- `bubble.ts` tells the two apart by its window label (`mini` or `bubble`). The mini's app (its `space`) and lock come from `bubble_mode` at load and `bubble-mini` events after; an event can arrive before the page listens, so never rely on events alone.
+- Commands the bubble pages call (open, lock, peek, menu, context) take the calling window in Rust; events back go to that window's label, never a hard-coded "bubble".
 - Native `<input type="time">` shows the OS locale (AM/PM here); values are still 24-hour strings.
 - Reminder/bubble pages can't rely on a user gesture for audio; WebView2 is started with `--autoplay-policy=no-user-gesture-required` (see `src-tauri/CLAUDE.md`).
 - The bubble window has `dragDropEnabled: false`, so its page gets the browser's own drop events (text, links and `File`s, no paths); the main window keeps Tauri's file drop (paths).

@@ -2,9 +2,10 @@
 //! hidden) play in a short-lived, click-through overlay window covering the bubble and its home
 //! spot, so they have room to move instead of being clipped to the little bubble window.
 //!
-//! The bubble page keeps its blob invisible while the overlay draws it (`bubble-veil`), and the
-//! bubble holds still (`bubble::hold`). At the end the overlay asks for the handoff: the bubble
-//! jumps to its new form and spot unseen, then shows again exactly where the overlay drew it.
+//! The bubble pages it draws instead keep their blobs invisible meanwhile (`bubble-veil`: the
+//! bubble and the new mini for a split, only the mini for a pop or hide), and both hold still
+//! (`bubble::hold`). At the end the overlay asks for the handoff: they jump to their spots unseen,
+//! then show again exactly where the overlay drew them.
 
 use crate::bubble;
 use crate::reminder::BROWSER_ARGS;
@@ -23,6 +24,8 @@ static PAYLOAD: Mutex<Option<Value>> = Mutex::new(None);
 /// A moment is playing; another one asked for meanwhile just happens without an animation.
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static HANDED: AtomicBool = AtomicBool::new(false);
+/// The bubble windows the playing moment draws instead of.
+static VEILS: Mutex<&'static [&'static str]> = Mutex::new(&[]);
 /// Which moment this is, so a late safety timeout can't end a newer one.
 static RUN: AtomicU64 = AtomicU64::new(0);
 
@@ -37,6 +40,16 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// The bubble windows the overlay draws instead of, while it plays.
+    fn veils(self) -> &'static [&'static str] {
+        match self {
+            // The bubble divides; the new mini (still hidden) comes in at the handoff.
+            Kind::Split => &[bubble::BUBBLE_LABEL, bubble::MINI_LABEL],
+            // The mini bursts; its droplets fly into the bubble, which stays on screen.
+            Kind::Pop | Kind::Hide => &[bubble::MINI_LABEL],
+        }
+    }
+
     fn name(self) -> &'static str {
         match self {
             Kind::Split => "split",
@@ -46,19 +59,21 @@ impl Kind {
     }
 }
 
-/// Plays a moment from `from` to `to` (centres of the bubble window, physical px). The caller has
-/// already changed the config; the bubble shows the result after the handoff. `space` is the
+/// Plays a moment that starts at `from` and ends at the mini's spot `mini` and the bubble's own
+/// spot `to` (window centres, physical px; for a pop or hide `mini` is `from`). The caller has
+/// already changed the config; the bubbles show the result after the handoff. `space` is the
 /// mini's task space, `push` the direction a popped mini was being pushed.
-pub fn play(app: &AppHandle, kind: Kind, from: (i32, i32), to: (i32, i32), space: Option<String>, push: (f64, f64)) {
+pub fn play(app: &AppHandle, kind: Kind, from: (i32, i32), mini: (i32, i32), to: (i32, i32), space: Option<String>, push: (f64, f64)) {
     if ACTIVE.swap(true, Ordering::SeqCst) {
         return; // the moment already playing hands over to the latest state anyway
     }
     HANDED.store(false, Ordering::SeqCst);
+    *VEILS.lock().unwrap_or_else(|e| e.into_inner()) = kind.veils();
     let run = RUN.fetch_add(1, Ordering::SeqCst) + 1;
     bubble::hold(true);
     if !matches!(kind, Kind::Pop) {
         // A little wind-up while the overlay loads (a popped mini is already squashed flat).
-        let _ = app.emit_to("bubble", "bubble-prep", ());
+        let _ = app.emit_to(kind.veils()[0], "bubble-prep", ());
     }
     let app = app.clone();
     // Windows can't be created from the main thread inside a command (it deadlocks), so always
@@ -66,11 +81,11 @@ pub fn play(app: &AppHandle, kind: Kind, from: (i32, i32), to: (i32, i32), space
     std::thread::spawn(move || {
         let scale = monitor_scale(&app, from).unwrap_or(1.0);
         let pad = (PAD * scale) as i32;
-        let (left, top) = (from.0.min(to.0) - pad, from.1.min(to.1) - pad);
-        let (right, bottom) = (from.0.max(to.0) + pad, from.1.max(to.1) + pad);
+        let (left, top) = (from.0.min(to.0).min(mini.0) - pad, from.1.min(to.1).min(mini.1) - pad);
+        let (right, bottom) = (from.0.max(to.0).max(mini.0) + pad, from.1.max(to.1).max(mini.1) + pad);
         let page = |(x, y): (i32, i32)| json!({ "x": (x - left) as f64 / scale, "y": (y - top) as f64 / scale });
         *PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(json!({ "kind": kind.name(), "from": page(from), "to": page(to), "space": space, "push": { "x": push.0, "y": push.1 } }));
+            Some(json!({ "kind": kind.name(), "from": page(from), "mini": page(mini), "to": page(to), "space": space, "push": { "x": push.0, "y": push.1 } }));
 
         if let Some(old) = app.get_webview_window(LABEL) {
             let _ = old.destroy();
@@ -125,8 +140,16 @@ fn handoff(app: &AppHandle) {
         return;
     }
     bubble::hold(false);
+    // Into their new spots and shown (or hidden) while still veiled, then visible again.
     bubble::settle(app);
-    let _ = app.emit_to("bubble", "bubble-veil", json!({ "on": false }));
+    bubble::sync(app);
+    veil(app, false);
+}
+
+fn veil(app: &AppHandle, on: bool) {
+    for label in *VEILS.lock().unwrap_or_else(|e| e.into_inner()) {
+        let _ = app.emit_to(*label, "bubble-veil", json!({ "on": on }));
+    }
 }
 
 // ---- commands (from fx.html) ------------------------------------------------------------
@@ -142,10 +165,10 @@ pub fn fx_ready(app: AppHandle) {
     let Some(w) = app.get_webview_window(LABEL) else { return };
     win::show(&w, true);
     win::keep_topmost(&w);
-    let _ = app.emit_to("bubble", "bubble-veil", json!({ "on": true }));
+    veil(&app, true);
 }
 
-/// The overlay has drawn the bubble in its final form and spot: bring the real one back there.
+/// The overlay has drawn the bubbles in their final spots: bring the real ones back there.
 #[tauri::command]
 pub fn fx_handoff(app: AppHandle) {
     handoff(&app);

@@ -1,11 +1,12 @@
 // Quicky's big moments, played in a short-lived, click-through window that covers the bubble and
 // its home spot, so they have room to move instead of being clipped to the little bubble window:
 // - split: dropped on a new app, Quicky divides; one half shrinks into the app's mini, the other
-//   hops home;
+//   hops home and stays there as the bubble;
 // - pop / hide: a mini pushed out of its app (or hidden from its menu) bursts into droplets that
-//   fly home and join back up into the bubble.
-// Rust keeps the real bubble invisible meanwhile and swaps it back in at the end (fx_handoff), so
-// the last frame here is drawn exactly where the bubble reappears. Plain TS, like the bubble.
+//   fly home and dive into the bubble, which gulps them down.
+// Rust keeps the real blobs this draws invisible meanwhile and swaps them back in at the end
+// (fx_handoff), so the last frame here is drawn exactly where they reappear. Plain TS, like the
+// bubble.
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { storedAccent } from "./lib/theme-colors";
@@ -18,8 +19,10 @@ interface Pt {
 }
 interface Payload {
   kind: Kind;
-  /** Centres of the bubble window where the moment starts and of the normal bubble's home spot. */
+  /** Centres of the bubble window where the moment starts, of the new mini's window (split; for
+   *  pop / hide the same as `from`), and of the bubble's home spot. */
   from: Pt;
+  mini: Pt;
   to: Pt;
   /** The mini's task space (split: the new one; pop / hide: the one going away). */
   space: string | null;
@@ -62,10 +65,6 @@ const easeOutCubic = (t: number) => 1 - (1 - clamp(t, 0, 1)) ** 3;
 const easeInOutCubic = (t: number) => {
   t = clamp(t, 0, 1);
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-};
-const easeInBack = (t: number) => {
-  t = clamp(t, 0, 1);
-  return 2.7 * t * t * t - 1.7 * t * t;
 };
 /** 0 → 1 with a bouncy overshoot, settled by about x = 1. */
 const springTo = (x: number) => (x <= 0 ? 0 : 1 - Math.exp(-5 * x) * Math.cos(10 * x));
@@ -143,7 +142,7 @@ class Body {
   }
 }
 
-/** A droplet from a burst: a small outlined dot, merging (goo) once it nears the home blob. */
+/** A droplet from a burst: a small outlined dot that flies home into the bubble. */
 interface Drop {
   x: number;
   y: number;
@@ -159,7 +158,6 @@ interface Drop {
   crisp: SVGGElement;
   dot: SVGCircleElement;
   shade: SVGCircleElement;
-  gooDot: SVGCircleElement;
 }
 
 interface Spark {
@@ -220,18 +218,20 @@ function ring(at: Pt, size: number) {
 // when the real bubble can come back ("handoff") and when this window can go ("done").
 type Step = (t: number, dt: number) => { handoff: boolean; done: boolean };
 
-function split(p: Payload, stayClear: boolean): Step {
+function split(p: Payload, stayClear: boolean, homeClear: boolean): Step {
   const from = { x: p.from.x, y: p.from.y + NORMAL_DY };
-  const mini = { x: p.from.x, y: p.from.y + MINI_DY };
+  const mini = { x: p.mini.x, y: p.mini.y + MINI_DY };
   const home = { x: p.to.x, y: p.to.y + NORMAL_DY };
-  const dx = home.x - from.x;
-  const dy = home.y - from.y;
-  const dist = Math.hypot(dx, dy) || 1;
-  const u = { x: dx / dist, y: dy / dist };
+  // The halves pull apart along the line from the mini's spot to home: the twin towards home.
+  const ax = home.x - mini.x;
+  const ay = home.y - mini.y;
+  const alen = Math.hypot(ax, ay);
+  const u = alen > 0.5 ? { x: ax / alen, y: ay / alen } : { x: -1, y: 0 };
   const ang = Math.atan2(u.y, u.x);
   // The twin's hop home: an arc bowed towards the top of the screen.
   let n = { x: -u.y, y: u.x };
   if (n.y > 0) n = { x: -n.x, y: -n.y };
+  const dist = Math.hypot(home.x - from.x, home.y - from.y);
   const lift = Math.min(170, dist * 0.32);
   const flight = clamp(380 + dist * 0.18, 420, 720);
   const PULL = 30;
@@ -241,6 +241,8 @@ function split(p: Payload, stayClear: boolean): Step {
     x: (1 - q) ** 2 * start.x + 2 * (1 - q) * q * ctrl.x + q * q * home.x,
     y: (1 - q) ** 2 * start.y + 2 * (1 - q) * q * ctrl.y + q * q * home.y,
   });
+  // Both halves at rest in their spots (ms after the snap): the real bubble and mini take over.
+  const rest = Math.max(560, flight + 320);
 
   const stay = new Body();
   stay.at(from);
@@ -282,9 +284,10 @@ function split(p: Payload, stayClear: boolean): Step {
         sparkle({ x: from.x + u.x * PULL * 0.25, y: from.y + u.y * PULL * 0.25 }, 7, 190);
         stay.face = twin.face = "surprised";
       }
-      // The half that stays recoils, then shrinks into the app's mini with a bouncy settle.
+      // The half that stays recoils, then settles into the app's mini with a bouncy shrink.
       const back = PULL * 0.55 * wobble(tau, 3.2, 6);
-      const base = { x: lerp(from.x, mini.x, clamp(tau / 300, 0, 1)), y: lerp(from.y, mini.y, clamp(tau / 300, 0, 1)) };
+      const m = easeOutCubic(tau / 320);
+      const base = { x: lerp(from.x, mini.x, m), y: lerp(from.y, mini.y, m) };
       stay.at({ x: base.x - u.x * back, y: base.y - u.y * back });
       stay.k = lerp(NORMAL * 0.85, MINI, springTo(tau / 420));
       const w = wobble(tau, 4.2, 7);
@@ -296,10 +299,9 @@ function split(p: Payload, stayClear: boolean): Step {
         Object.assign(stay, { sx: 1, sy: 1, k: MINI });
         stay.at(mini);
       }
-      // The real mini is showing again on top by now; stop drawing a copy under its gentle bob.
-      if (tau > 700) stay.shown = false;
 
-      // The twin hops home along the arc, stretching with its speed, lands and tucks in.
+      // The twin hops home along the arc, stretching with its speed, lands and stays: it's the
+      // bubble again.
       const q = tau / flight;
       twin.gooey = tau < 110;
       if (q < 1) {
@@ -321,16 +323,20 @@ function split(p: Payload, stayClear: boolean): Step {
           sparkle(home, 4, 120);
         }
         twin.at(home);
-        twin.rot = Math.PI / 2;
-        const w2 = wobble(land, 5, 12);
-        twin.sx = 1 - 0.16 * w2;
-        twin.sy = 1 + 0.12 * w2;
-        twin.k = NORMAL * (1 - easeInBack(clamp((land - 110) / 170, 0, 1)));
-        twin.face = land > 110 ? "squeeze" : "happy";
+        twin.k = NORMAL;
+        twin.face = homeClear ? "clear" : "happy";
+        if (land < 300) {
+          const w2 = wobble(land, 5, 12);
+          twin.rot = Math.PI / 2;
+          twin.sx = 1 - 0.16 * w2;
+          twin.sy = 1 + 0.12 * w2;
+        } else Object.assign(twin, { rot: 0, sx: 1, sy: 1 });
       }
+      // The real ones are showing again on top by now; stop drawing copies under their bob.
+      if (tau > rest + 100) stay.shown = twin.shown = false;
       stay.draw();
       twin.draw();
-      return { handoff: tau > 560, done: tau > 560 && tau > flight + 300 };
+      return { handoff: tau > rest, done: tau > rest + 140 };
     }
     stay.draw();
     twin.draw();
@@ -338,7 +344,7 @@ function split(p: Payload, stayClear: boolean): Step {
   };
 }
 
-function burst(p: Payload, homeClear: boolean, hard: boolean): Step {
+function burst(p: Payload, hard: boolean): Step {
   const from = { x: p.from.x, y: p.from.y + MINI_DY };
   const home = { x: p.to.x, y: p.to.y + NORMAL_DY };
   const dist = Math.hypot(home.x - from.x, home.y - from.y);
@@ -362,11 +368,6 @@ function burst(p: Payload, homeClear: boolean, hard: boolean): Step {
     blob.sx = 0.62;
     blob.sy = 1.28;
   }
-  const back = new Body();
-  back.at(home);
-  back.k = 0;
-  back.color = ACCENT;
-  back.face = homeClear ? "clear" : "happy";
 
   const drops: Drop[] = [];
   let burstDone = false;
@@ -381,9 +382,7 @@ function burst(p: Payload, homeClear: boolean, hard: boolean): Step {
       const g = el("g", {}, crisp);
       const shade = el("circle", { r, fill: INK }, g);
       const dot = el("circle", { r, fill: angry, stroke: INK, "stroke-width": 1.5 }, g);
-      const gooDot = el("circle", { r: r + 1, fill: ACCENT }, goo);
-      gooDot.style.display = "none";
-      drops.push({ x: from.x, y: from.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r, turn: BURST + 170 + i * 18, home: false, crisp: g, dot, shade, gooDot });
+      drops.push({ x: from.x, y: from.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r, turn: BURST + 170 + i * 18, home: false, crisp: g, dot, shade });
     }
   };
 
@@ -445,53 +444,28 @@ function burst(p: Payload, homeClear: boolean, hard: boolean): Step {
           d.home = true;
           arrived++;
           d.crisp.remove();
-          d.gooDot.remove();
           continue;
         }
       }
-      // Cooling down on the way home; merging (goo) once it's close to the blob re-forming there.
-      const near = Math.hypot(d.x - home.x, d.y - home.y) < 48 && arrived > 0;
-      const c = mix(hard ? angry : ACCENT, ACCENT, (t - BURST) / 500);
-      d.dot.setAttribute("fill", c);
-      d.gooDot.setAttribute("fill", c);
-      d.crisp.style.display = near ? "none" : "";
-      d.gooDot.style.display = near ? "" : "none";
-      d.dot.setAttribute("cx", d.x.toFixed(1));
-      d.dot.setAttribute("cy", d.y.toFixed(1));
-      d.shade.setAttribute("cx", (d.x + 1.6).toFixed(1));
-      d.shade.setAttribute("cy", (d.y + 1.6).toFixed(1));
-      d.gooDot.setAttribute("cx", d.x.toFixed(1));
-      d.gooDot.setAttribute("cy", d.y.toFixed(1));
+      // Cooling down on the way home, and shrinking as it dives into the bubble.
+      const r = d.r * clamp(Math.hypot(d.x - home.x, d.y - home.y) / 36, 0.3, 1);
+      d.dot.setAttribute("fill", mix(hard ? angry : ACCENT, ACCENT, (t - BURST) / 500));
+      for (const [c, off] of [[d.dot, 0], [d.shade, 1.6]] as const) {
+        c.setAttribute("cx", (d.x + off).toFixed(1));
+        c.setAttribute("cy", (d.y + off).toFixed(1));
+        c.setAttribute("r", r.toFixed(2));
+      }
     }
 
-    // The bubble re-forms at home as the droplets arrive, then bounces back to life.
-    let handoff = false;
-    let done = false;
-    if (arrived > 0) {
-      const want = NORMAL * Math.sqrt(arrived / N);
-      back.k += (want - back.k) * Math.min(1, 0.3 * (dt / 16));
-      back.gooey = arrived < N;
-      back.face = back.k > NORMAL * 0.55 ? (homeClear ? "clear" : "happy") : "squeeze";
-      if (arrived === N && allIn < 0) {
-        allIn = t;
-        sfx.tap();
-      }
-      if (allIn >= 0) {
-        const tau = t - allIn;
-        back.k = lerp(back.k, NORMAL, Math.min(1, tau / 90));
-        const w = wobble(tau, 4, 8);
-        back.sx = 1 + 0.16 * w;
-        back.sy = 1 - 0.14 * w;
-        back.rot = 0;
-        back.gooey = tau < 60;
-        if (tau > 240) Object.assign(back, { sx: 1, sy: 1, k: NORMAL, gooey: false });
-        handoff = tau > 260;
-        done = tau > 360;
-      }
+    // All home: the bubble (which stayed on screen) gulps them down.
+    if (arrived === N && allIn < 0) {
+      allIn = t;
+      sfx.tap();
+      void emitTo("bubble", "bubble-gulp");
     }
     blob.draw();
-    back.draw();
-    return { handoff, done };
+    // The mini is gone as soon as it bursts, so it's handed back (hidden) right away.
+    return { handoff: burstDone, done: allIn >= 0 && t - allIn > 60 };
   };
 }
 
@@ -516,7 +490,7 @@ async function main() {
   }
   const c = await counts(150);
   const openIn = (space: string | null) => (c ? (space ? c.spaces?.[space] ?? 0 : c.open) : 1);
-  const step = p.kind === "split" ? split(p, openIn(p.space) === 0) : burst(p, openIn(null) === 0, p.kind === "pop");
+  const step = p.kind === "split" ? split(p, openIn(p.space) === 0, openIn(null) === 0) : burst(p, p.kind === "pop");
 
   // Draw the first frame (identical to the bubble) before this window shows; Rust then shows it
   // and hides the real bubble's blob.

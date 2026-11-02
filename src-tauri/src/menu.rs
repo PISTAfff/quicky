@@ -9,7 +9,7 @@ use crate::win;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const LABEL: &str = "menu";
 
@@ -20,6 +20,12 @@ static SEQ: AtomicU32 = AtomicU32::new(0);
 type Request = (u32, Value, (i32, i32));
 /// The latest request.
 static PENDING: Mutex<Option<Request>> = Mutex::new(None);
+/// The bubble window that opened the menu: it runs the pick and hears when the menu closes.
+static OWNER: Mutex<&'static str> = Mutex::new(bubble::BUBBLE_LABEL);
+
+fn owner() -> &'static str {
+    *OWNER.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// The pointer reached the bubble: get the window ready.
 #[tauri::command]
@@ -29,13 +35,14 @@ pub fn menu_prewarm(app: AppHandle) {
     }
 }
 
-/// The bubble page: open the menu at the pointer with these items.
+/// A bubble page (the bubble or a mini): open the menu at the pointer with these items.
 #[tauri::command]
-pub fn bubble_menu_open(app: AppHandle, items: Value) {
+pub fn bubble_menu_open(app: AppHandle, window: WebviewWindow, items: Value) {
     let seq = SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    *OWNER.lock().unwrap_or_else(|e| e.into_inner()) = bubble::label_of(&window);
     *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some((seq, items.clone(), win::cursor()));
     if app.get_webview_window(LABEL).is_some() {
-        let _ = app.emit_to(LABEL, "menu-items", json!({ "seq": seq, "items": items }));
+        let _ = app.emit_to(LABEL, "menu-items", json!({ "seq": seq, "items": items, "owner": owner() }));
     } else {
         build(&app);
     }
@@ -45,7 +52,7 @@ pub fn bubble_menu_open(app: AppHandle, items: Value) {
 #[tauri::command]
 pub fn menu_pending() -> Option<Value> {
     let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
-    pending.as_ref().map(|(seq, items, _)| json!({ "seq": seq, "items": items }))
+    pending.as_ref().map(|(seq, items, _)| json!({ "seq": seq, "items": items, "owner": owner() }))
 }
 
 /// The menu page has drawn the items and measured them (logical px): size the window, put it at
@@ -91,7 +98,7 @@ pub fn hide(app: &AppHandle) {
     if OPEN.swap(false, Ordering::SeqCst) && let Some(w) = app.get_webview_window(LABEL) {
         win::show(&w, false);
     }
-    let _ = app.emit_to("bubble", "bubble-menu-closed", ());
+    let _ = app.emit_to(owner(), "bubble-menu-closed", ());
 }
 
 pub fn is_open() -> bool {
@@ -99,14 +106,14 @@ pub fn is_open() -> bool {
 }
 
 /// Each tick of the bubble loop: close the menu on a click anywhere else (focus doesn't move the
-/// same way on every system, so losing it can't be the only signal) or when the bubble goes away;
+/// same way on every system, so losing it can't be the only signal) or when its bubble goes away;
 /// otherwise keep it above the bubble.
 pub fn watch(app: &AppHandle) {
     if !is_open() {
         return;
     }
     let Some(w) = app.get_webview_window(LABEL) else { return };
-    let bubble_up = app.get_webview_window("bubble").is_some_and(|b| b.is_visible().unwrap_or(false));
+    let bubble_up = app.get_webview_window(owner()).is_some_and(|b| b.is_visible().unwrap_or(false));
     let (cx, cy) = win::cursor();
     let inside = win::own_frame(&w).is_some_and(|r| cx >= r.left && cx < r.right && cy >= r.top && cy < r.bottom);
     if !bubble_up || (win::left_button_down() && !inside) {

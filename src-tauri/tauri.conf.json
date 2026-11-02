@@ -48,6 +48,28 @@
         "visibleOnAllWorkspaces": true,
         "acceptFirstMouse": true,
         "dragDropEnabled": false
+      },
+      {
+        "label": "mini",
+        "title": "Quicky mini",
+        "url": "bubble.html",
+        "width": 64,
+        "height": 64,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "minimizable": false,
+        "maximizable": false,
+        "closable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required",
+        "visible": false,
+        "visibleOnAllWorkspaces": true,
+        "acceptFirstMouse": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {

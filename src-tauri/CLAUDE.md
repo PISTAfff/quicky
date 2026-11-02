@@ -1,6 +1,6 @@
 # Backend (`src-tauri/`)
 
-Rust side of the Tauri 2 app: creates and places the windows (main, bubble, reminder, fx, balloon, menu), runs the bubble housekeeping loop, does all file I/O for the user's data folder, keeps the app config, and wraps the native calls the bubble needs on Windows, macOS and Linux.
+Rust side of the Tauri 2 app: creates and places the windows (main, bubble, mini, reminder, fx, balloon, menu), runs the bubble housekeeping loop, does all file I/O for the user's data folder, keeps the app config, and wraps the native calls the bubble needs on Windows, macOS and Linux.
 
 ## Stack
 Tauri 2 (`protocol-asset`, `tray-icon`, `macos-private-api`), plugins: dialog, opener, autostart, global-shortcut, single-instance, updater, process. Native: `windows-sys` 0.59 (Windows), `objc2` / `objc2-app-kit` 0.3 plus raw CoreGraphics calls (macOS), `x11rb` 0.13 (Linux). `png` + `base64` for icons. Release profile is size-optimized. `tauri.macos.conf.json` and `tauri.linux.conf.json` hold each system's bundle targets.
@@ -14,10 +14,10 @@ Tauri 2 (`protocol-asset`, `tray-icon`, `macos-private-api`), plugins: dialog, o
 - `src/config.rs`: Quicky's settings (`Config`, `StuckApp`, `read_config` / `update_config`).
 - `src/data.rs`: the user's data folder and media commands (`write_atomic`).
 - `src/main_window.rs`: the main window as a popover: opening next to the bubble, by the tray, or inside or over an app (`open_for_context`), tucking away on blur, the quick-add shortcut, `MAIN_MIN`.
-- `src/bubble.rs`: the bubble: placement (normal spot vs. an app's mini), focus tracking, gliding, walled mini drags, popping, dividing.
+- `src/bubble.rs`: the two bubble windows: Quicky's own bubble (always at its spot) and the `mini` window (the focused app's mini, shown only while that app is in front), focus tracking, gliding, walled mini drags, popping, dividing.
 - `src/tray.rs`: the tray icon and its menu. `src/icons.rs`: taskbar, Dock and tray icons in the accent colour.
 - `src/reminder.rs`: the on-demand full-screen reminder window.
-- `src/fx.rs`: the short-lived, click-through overlay that plays dividing, popping and hiding a mini (the bubble holds still and is veiled meanwhile, then handed back).
+- `src/fx.rs`: the short-lived, click-through overlay that plays dividing, popping and hiding a mini (the bubbles hold still and the ones it draws are veiled meanwhile, then handed back).
 - `src/win.rs`: thin Win32 wrappers (foreground app, window under a point, visible frame, icon extraction, cursor, focus stealing, full-screen check).
 - `src/mac.rs`, `src/linux.rs`: the same functions for macOS (CoreGraphics window list, NSWorkspace) and Linux (X11). `lib.rs` compiles one of the three as `mod win`, so call sites never change.
 - `src/own.rs`: macOS and Linux versions of the calls on Quicky's own windows (through Tauri, which hops to the main thread for AppKit/GTK).

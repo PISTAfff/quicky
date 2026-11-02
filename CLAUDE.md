@@ -1,7 +1,7 @@
 # Quicky
 
 ## What this is
-A tiny task manager for Windows, macOS and Linux: quick-add mini tasks (To do / Doing / Done), daily carry-over, repeats, due dates, steps, reminders with quiet hours, media attachments, and an always-on-top "Quicky" bubble that can live inside other apps as per-app minis with their own task lists. Tauri 2 (Rust and the system web view) hosts six pages: the main window (SolidJS), the bubble, the full-screen reminder, the overlay for the bubble's big moments, the speech balloon over the bubble, and the bubble's right-click menu.
+A tiny task manager for Windows, macOS and Linux: quick-add mini tasks (To do / Doing / Done), daily carry-over, repeats, due dates, steps, reminders with quiet hours, media attachments, and an always-on-top "Quicky" bubble that stays at its spot while the app in front can have its own mini Quicky with its own task list. Tauri 2 (Rust and the system web view) hosts six pages: the main window (SolidJS), the bubble, the full-screen reminder, the overlay for the bubble's big moments, the speech balloon over the bubble, and the bubble's right-click menu.
 
 ## Map
 - `src/`: front end: the main window in SolidJS and five small pages in plain TS. Has its own CLAUDE.md.

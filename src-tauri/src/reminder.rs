@@ -37,12 +37,16 @@ pub async fn show_reminder(app: AppHandle, mut payload: Value) -> Result<(), Str
     let (fw, fh) = (focus.size().width as f64 / scale, focus.size().height as f64 / scale);
     payload["focus"] = json!({ "x": fx, "y": fy, "w": fw, "h": fh });
 
-    // Grow from the bubble's centre if it's showing, else that screen's bottom-left.
-    let bubble = app.get_webview_window("bubble").filter(|b| b.is_visible().unwrap_or(false));
-    let (ox, oy) = match bubble.and_then(|b| b.outer_position().ok()) {
-        Some(p) => {
+    // Grow from the centre of the app's mini if one is up (that's where the user is), else the
+    // bubble's if it's showing, else that screen's bottom-left.
+    let bubble = [bubble::MINI_LABEL, bubble::BUBBLE_LABEL]
+        .into_iter()
+        .find_map(|l| app.get_webview_window(l).filter(|b| b.is_visible().unwrap_or(false)));
+    let (ox, oy) = match bubble.and_then(|b| Some((b.outer_position().ok()?, b.outer_size().ok()?))) {
+        Some((p, s)) => {
             let (x, y) = to_page(p.x, p.y);
-            (x + bubble::SIZE / 2.0, y + bubble::SIZE / 2.0)
+            let half = s.width as f64 / scale / 2.0;
+            (x + half, y + half)
         }
         None => (fx + 50.0, fy + fh - 50.0),
     };

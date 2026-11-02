@@ -6,12 +6,14 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { followTheme } from "./lib/theme-colors";
 import { arrowFocus, type MenuEntry } from "./lib/menus";
 
-interface Request { seq: number; items: MenuEntry[] }
+/** `owner`: the bubble window that opened it ("bubble" or "mini"), which runs the pick. */
+interface Request { seq: number; items: MenuEntry[]; owner: string }
 
 const menu = document.getElementById("menu") as HTMLDivElement;
 /** Room for the hard shadow (3 px) past the card. */
 const SHADOW = 4;
 let seq = 0;
+let owner = "bubble";
 
 followTheme();
 
@@ -44,6 +46,7 @@ function render(items: MenuEntry[]) {
 async function open(r: Request) {
   if (r.seq <= seq) return;
   seq = r.seq;
+  owner = r.owner;
   render(r.items);
   menu.classList.remove("in");
   menu.style.visibility = "hidden";
@@ -69,7 +72,7 @@ const enabled = () => [...menu.querySelectorAll<HTMLButtonElement>("button:not(:
 menu.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest("button");
   if (!b || b.disabled) return;
-  void emitTo("bubble", "bubble-menu-pick", b.dataset.id);
+  void emitTo(owner, "bubble-menu-pick", b.dataset.id);
   close();
 });
 menu.addEventListener("pointermove", (e) => {

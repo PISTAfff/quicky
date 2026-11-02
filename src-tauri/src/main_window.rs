@@ -88,13 +88,13 @@ pub fn quick_add(app: &AppHandle) {
 /// mini (inside the app when its window can hold Quicky, over it when not), otherwise the
 /// general list.
 pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
-    let Some(main) = app.get_webview_window("main") else { return };
-    remember_app_window(app);
-    let s = bubble::scale(app);
-    let margin = (14.0 * s) as i32;
-    let (min_w, min_h) = min_size(s);
     match bubble::active_stuck(app) {
         Some((entry, focus, rect)) => {
+            let Some(main) = app.get_webview_window("main") else { return };
+            remember_app_window(app);
+            let s = bubble::scale(app);
+            let margin = (14.0 * s) as i32;
+            let (min_w, min_h) = min_size(s);
             // An app's Quicky gets a frame of its own, so a maximized general window comes down first.
             if main.is_maximized().unwrap_or(false) {
                 let _ = main.unmaximize();
@@ -131,15 +131,21 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
             p.placed_frame = win::own_frame(&main);
             drop(p);
             let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": bubble::space_key(&entry.exe), "name": entry.name }));
+            show_main(app);
         }
-        None => {
-            leave_space(&main);
-            let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
-            // Maximized, it already fills the screen: nothing to place.
-            if near_bubble && !main.is_maximized().unwrap_or(false) {
-                place_main_near(app);
-            }
-        }
+        None => open_general(app, near_bubble),
+    }
+}
+
+/// Opens the general list (next to the bubble when `near_bubble`), whatever app is in front.
+pub fn open_general(app: &AppHandle, near_bubble: bool) {
+    let Some(main) = app.get_webview_window("main") else { return };
+    remember_app_window(app);
+    leave_space(&main);
+    let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
+    // Maximized, it already fills the screen: nothing to place.
+    if near_bubble && !main.is_maximized().unwrap_or(false) {
+        place_main_near(app);
     }
     show_main(app);
 }

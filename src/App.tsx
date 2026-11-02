@@ -39,10 +39,11 @@ export default function App() {
     }
     return { open, spaces };
   });
-  // The bubble shows them as its badge; the big-moment overlay (fx) needs them to draw the bubble's
-  // all-clear look.
+  // The bubble and the mini show them as their badges; the big-moment overlay (fx) needs them to
+  // draw their all-clear look.
   const sendCounts = () => {
     void emitTo("bubble", "counts", counts());
+    void emitTo("mini", "counts", counts());
     void emitTo("fx", "counts", counts());
   };
   createEffect(on(counts, sendCounts));
@@ -67,11 +68,16 @@ export default function App() {
         more: Math.max(0, list.length - 3),
       };
     }
-    return { focus: pinned ? { title: pinned.title, since: f.since } : null, peek };
+    return { focus: pinned ? { title: pinned.title, since: f.since, space: pinned.space ?? null } : null, peek };
   });
   const sendBalloon = () => void emitTo("balloon", "balloon-data", balloon());
   createEffect(on(balloon, sendBalloon));
-  createEffect(on(() => !!balloon().focus, (on) => void invoke("balloon_focus", { on }).catch(() => {})));
+  // Rust puts the balloon over the pinned task's app's mini when that's the one up, else the bubble.
+  const pinnedList = () => {
+    const f = balloon().focus;
+    return f ? (f.space ?? "") : undefined;
+  };
+  createEffect(on(pinnedList, (list) => void invoke("balloon_focus", { on: list !== undefined, space: list || null }).catch(() => {})));
 
   onMount(async () => {
     let frame = 0;

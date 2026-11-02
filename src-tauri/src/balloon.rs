@@ -1,6 +1,7 @@
-//! The speech balloon over the bubble: the task pinned to it, or (while the pointer rests on the
-//! bubble) a peek at the top tasks of its list. A small click-through window of its own, made the
-//! first time it's needed, that follows the bubble around. Its words come from the main page.
+//! The speech balloon over a bubble: the pinned task (over its app's mini when that's the one up,
+//! else over the bubble), or (while the pointer rests on the bubble or a mini) a peek at the top
+//! tasks of its list. A small click-through window of its own, made the first time it's needed,
+//! that follows its bubble around. Its words come from the main page.
 
 use crate::bubble;
 use crate::reminder::BROWSER_ARGS;
@@ -8,7 +9,7 @@ use crate::win;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const LABEL: &str = "balloon";
 /// Logical px: room for a three-line peek. The page draws the balloon at the end nearest Quicky
@@ -16,23 +17,29 @@ const LABEL: &str = "balloon";
 const W: f64 = 240.0;
 const H: f64 = 124.0;
 
-/// A task is pinned to the bubble.
+/// A task is pinned, and the list it's in (None: the general list).
 static FOCUS: AtomicBool = AtomicBool::new(false);
-/// The pointer is resting on the bubble.
+static FOCUS_SPACE: Mutex<Option<String>> = Mutex::new(None);
+/// The pointer is resting on a bubble, and which one.
 static PEEK: AtomicBool = AtomicBool::new(false);
+static PEEK_AT: Mutex<&'static str> = Mutex::new(bubble::BUBBLE_LABEL);
 static SHOWN: AtomicBool = AtomicBool::new(false);
 static BUILDING: AtomicBool = AtomicBool::new(false);
 /// Where it was last put: (x, y, below the bubble, tail x in page px).
 static LAST: Mutex<Option<(i32, i32, bool, i32)>> = Mutex::new(None);
 
 #[tauri::command]
-pub fn balloon_focus(app: AppHandle, on: bool) {
+pub fn balloon_focus(app: AppHandle, on: bool, space: Option<String>) {
     FOCUS.store(on, Ordering::Relaxed);
+    *FOCUS_SPACE.lock().unwrap_or_else(|e| e.into_inner()) = space;
     sync(&app);
 }
 
 #[tauri::command]
-pub fn balloon_peek(app: AppHandle, on: bool) {
+pub fn balloon_peek(app: AppHandle, window: WebviewWindow, on: bool) {
+    if on {
+        *PEEK_AT.lock().unwrap_or_else(|e| e.into_inner()) = bubble::label_of(&window);
+    }
     PEEK.store(on, Ordering::Relaxed);
     let _ = app.emit_to(LABEL, "balloon-mode", mode());
     sync(&app);
@@ -46,15 +53,29 @@ pub fn balloon_state() -> serde_json::Value {
 }
 
 fn mode() -> serde_json::Value {
-    json!({ "peek": PEEK.load(Ordering::Relaxed), "space": bubble::current_space() })
+    let peek_at = *PEEK_AT.lock().unwrap_or_else(|e| e.into_inner());
+    let space = if peek_at == bubble::MINI_LABEL { bubble::mini_space() } else { None };
+    json!({ "peek": PEEK.load(Ordering::Relaxed), "space": space })
 }
 
-/// Called every tick of the bubble loop: shown while there's something to say and the bubble is
+/// The bubble window the balloon belongs over: the one being peeked at; else the pinned task's
+/// app's mini when that's the mini up, else the bubble. None while that one is off screen.
+fn anchor(app: &AppHandle) -> Option<WebviewWindow> {
+    let label = if PEEK.load(Ordering::Relaxed) {
+        *PEEK_AT.lock().unwrap_or_else(|e| e.into_inner())
+    } else {
+        let space = FOCUS_SPACE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if space.is_some() && space == bubble::mini_space() { bubble::MINI_LABEL } else { bubble::BUBBLE_LABEL }
+    };
+    app.get_webview_window(label).filter(|b| b.is_visible().unwrap_or(false))
+}
+
+/// Called every tick of the bubble loop: shown while there's something to say and its bubble is
 /// on screen and still, kept next to it, hidden otherwise.
 pub fn sync(app: &AppHandle) {
     let wanted = FOCUS.load(Ordering::Relaxed) || PEEK.load(Ordering::Relaxed);
-    let bubble = app.get_webview_window("bubble");
-    let up = wanted && bubble::settled() && bubble.as_ref().is_some_and(|b| b.is_visible().unwrap_or(false));
+    let bubble = if wanted && bubble::settled() { anchor(app) } else { None };
+    let up = bubble.is_some();
     let Some(w) = app.get_webview_window(LABEL) else {
         if up {
             build(app);
@@ -76,8 +97,8 @@ pub fn sync(app: &AppHandle) {
     }
 }
 
-/// Above the bubble, centred on it and kept on its screen; below it when there's no room above.
-fn place(app: &AppHandle, b: &tauri::WebviewWindow, w: &tauri::WebviewWindow) {
+/// Above its bubble, centred on it and kept on its screen; below it when there's no room above.
+fn place(app: &AppHandle, b: &WebviewWindow, w: &WebviewWindow) {
     let (Ok(bp), Ok(bs)) = (b.outer_position(), b.outer_size()) else { return };
     let side = bs.width as i32;
     let (cx, cy) = (bp.x + side / 2, bp.y + side / 2);

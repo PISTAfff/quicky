@@ -126,8 +126,8 @@ pub fn run() {
                 // be closed through its own buttons (Esc snoozes).
                 WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "reminder" | "fx" | "balloon" | "menu") => {
                     api.prevent_close();
-                    if window.label() == "bubble" {
-                        // Only when the user closed it (Alt+F4 on it, so it's in front): closing the
+                    if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) {
+                        // Only when the user closed one (Alt+F4 on it, so it's in front): closing the
                         // whole app from outside (taskkill, an installer) asks every window.
                         if window.is_focused().unwrap_or(false) {
                             let _ = bubble::set_show_bubble(app.clone(), false);
@@ -141,7 +141,7 @@ pub fn run() {
                 }
                 // A popover: losing focus to another app tucks Quicky away (unless pinned).
                 WindowEvent::Focused(false) if window.label() == "main" => main_window::on_main_blur(app),
-                WindowEvent::ScaleFactorChanged { .. } if window.label() == "bubble" => bubble::place(app),
+                WindowEvent::ScaleFactorChanged { .. } if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) => bubble::place(app),
                 _ => {}
             }
         })
@@ -163,7 +163,8 @@ pub fn run() {
             bubble::get_show_bubble,
             bubble::bubble_on_screen,
             bubble::set_show_bubble,
-            bubble::get_bubble_locked,
+            bubble::bubble_mode,
+            bubble::bubble_cheer,
             bubble::set_bubble_locked,
             bubble::reset_bubble,
             bubble::open_from_bubble,

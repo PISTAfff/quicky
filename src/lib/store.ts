@@ -1,7 +1,6 @@
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { emitTo } from "@tauri-apps/api/event";
 import { sfx } from "./sfx";
 import {
   rollover, emptyData, dayKey, plusDays, uid, weekday,
@@ -179,12 +178,14 @@ export function setStatus(id: string, status: Status) {
   });
   if (prev !== status) (status === "done" ? sfx.done : status === "doing" ? sfx.doing : sfx.undo)();
   if (status === "done" && prev && prev !== "done") {
-    const title = find(unwrap(data), id)?.title ?? "";
+    const task = find(unwrap(data), id);
+    const title = task?.title ?? "";
     showToast(`“${title}” done`, { label: "Undo", run: () => setStatus(id, prev) });
-    // Finishing the task pinned to the bubble: it celebrates, and the pin comes off.
+    // Finishing the pinned task: its bubble (the app's mini, or Quicky's own) celebrates, and the
+    // pin comes off.
     if (data.focus?.id === id) {
       mutate((d) => void delete d.focus);
-      void emitTo("bubble", "bubble-cheer", { title });
+      void invoke("bubble_cheer", { space: task?.space ?? null }).catch(() => {});
     }
   }
 }
