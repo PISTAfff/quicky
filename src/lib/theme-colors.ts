@@ -41,21 +41,38 @@ export function storedTheme(): { accent?: string; custom?: string; mode?: string
 
 const darkQuery = () => matchMedia("(prefers-color-scheme: dark)");
 
+/** The accent picked in Settings. */
+export const storedAccent = () => resolveAccent(storedTheme());
+
+/** Sets the accent and readable text on it (`--accent`, `--on-accent`) on this page. */
+export function paintAccent(accent: string) {
+  const root = document.documentElement.style;
+  root.setProperty("--accent", accent);
+  root.setProperty("--on-accent", onAccent(accent));
+}
+
 /** Paints a page in a theme: the accent, readable text on it, and light or dark ("auto" follows
  *  the system). Returns the accent. */
 export function paintTheme(t: { accent?: string; custom?: string; mode?: string }): string {
-  const root = document.documentElement;
   const accent = resolveAccent(t);
-  root.style.setProperty("--accent", accent);
-  root.style.setProperty("--on-accent", onAccent(accent));
-  root.dataset.mode = t.mode === "dark" || (t.mode === "auto" && darkQuery().matches) ? "dark" : "light";
+  paintAccent(accent);
+  document.documentElement.dataset.mode = t.mode === "dark" || (t.mode === "auto" && darkQuery().matches) ? "dark" : "light";
   return accent;
 }
 
-/** For the small plain-TS pages: paint the stored theme now, and again whenever it changes. */
+/** For a small plain-TS page that looks like the app (the menu): paint the stored theme now, and
+ *  again whenever it changes. */
 export function followTheme() {
   const paint = () => paintTheme(storedTheme());
   paint();
   addEventListener("storage", (e) => e.key === THEME_KEY && paint());
   darkQuery().addEventListener("change", paint);
+}
+
+/** For the pages that only take the accent (the bubble, its balloon): paint it now, and again
+ *  whenever Settings changes it. */
+export function followAccent() {
+  const paint = () => paintAccent(storedAccent());
+  paint();
+  addEventListener("storage", (e) => e.key === THEME_KEY && paint());
 }

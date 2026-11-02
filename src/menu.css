@@ -1,0 +1,26 @@
+/* Quicky's menus: the bubble's right-click menu (menu.html) and the one inside the main window
+   (ui/ContextMenu.tsx). Like Quicky's own panels: the app's card colour, the ink outline and the
+   hard shadow. Needs tokens.css. */
+.qmenu {
+  width: max-content; min-width: 172px; max-width: 320px; box-sizing: border-box; padding: 5px;
+  display: flex; flex-direction: column; background: var(--card); color: var(--ink);
+  border: 2px solid var(--edge); border-radius: var(--r); box-shadow: var(--shadow); outline: 0;
+  font: 800 13px/1.2 "Nunito", "Segoe UI", system-ui, sans-serif;
+}
+.qmenu.in { animation: qmenu-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes qmenu-in { from { opacity: 0; transform: scale(0.88); } }
+.qmenu button {
+  position: relative; display: block; width: 100%; height: 32px; padding: 0 14px; border: 0; border-radius: 9px;
+  background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; outline: 0;
+}
+.qmenu.checks button { padding-left: 32px; }
+/* Hover moves the focus too (like a system menu), so one highlight serves mouse and keys. */
+.qmenu button:focus { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
+.qmenu button:disabled { color: var(--muted); font-weight: 700; cursor: default; }
+.qmenu button.danger { color: var(--danger); }
+.qmenu button[aria-checked="true"]::before {
+  content: ""; position: absolute; left: 14px; top: 9px; width: 5px; height: 10px;
+  border: solid var(--accent-ink); border-width: 0 2.5px 2.5px 0; border-radius: 1px; transform: rotate(45deg);
+}
+.qmenu-sep { margin: 4px 8px; border-top: 1.5px dashed var(--line); }
+@media (prefers-reduced-motion: reduce) { .qmenu.in { animation: none; } }

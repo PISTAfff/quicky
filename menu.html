@@ -4,36 +4,15 @@
     <meta charset="utf-8" />
     <title>Quicky menu</title>
     <link rel="stylesheet" href="/src/tokens.css" />
+    <link rel="stylesheet" href="/src/menu.css" />
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
-      /* Like Quicky's own panels: the app's card colour, the ink outline and the hard shadow. The
-         window is sized to it (plus the shadow), so it sits at the top left. */
-      .menu {
-        position: absolute; left: 0; top: 0; width: max-content; min-width: 172px; max-width: 320px; box-sizing: border-box;
-        display: flex; flex-direction: column; padding: 5px; background: var(--card); color: var(--ink);
-        border: 2px solid var(--edge); border-radius: var(--r); box-shadow: var(--shadow); outline: 0;
-        font: 800 13px/1.2 "Nunito", "Segoe UI", system-ui, sans-serif;
-      }
-      .menu.in { animation: in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
-      @keyframes in { from { opacity: 0; transform: scale(0.88); } }
-      button {
-        position: relative; display: block; width: 100%; height: 32px; padding: 0 14px; border: 0; border-radius: 9px;
-        background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; outline: 0;
-      }
-      .checks button { padding-left: 32px; }
-      /* Hover moves the focus too (like a system menu), so one highlight serves mouse and keys. */
-      button:focus { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
-      button:disabled { color: var(--muted); font-weight: 700; cursor: default; }
-      button[aria-checked="true"]::before {
-        content: ""; position: absolute; left: 14px; top: 9px; width: 5px; height: 10px;
-        border: solid var(--accent-ink); border-width: 0 2.5px 2.5px 0; border-radius: 1px; transform: rotate(45deg);
-      }
-      .sep { margin: 4px 8px; border-top: 1.5px dashed var(--line); }
-      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+      /* The window is sized to the menu (plus its shadow), so it sits at the top left. */
+      .qmenu { position: absolute; left: 0; top: 0; }
     </style>
   </head>
   <body>
-    <div class="menu" id="menu" role="menu" aria-label="Quicky" tabindex="-1"></div>
+    <div class="qmenu" id="menu" role="menu" aria-label="Quicky" tabindex="-1"></div>
     <script type="module" src="/src/menu.ts"></script>
   </body>
 </html>

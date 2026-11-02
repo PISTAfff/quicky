@@ -85,6 +85,12 @@ export const parseDay = (key: string) => {
   return new Date(y, m - 1, d);
 };
 
+/** The day key `n` calendar days after `from` (by the calendar, so a clock change can't skip a day). */
+export const plusDays = (n: number, from = new Date()) => {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + n);
+  return dayKey(d);
+};
+
 export const weekday = (key: string) => parseDay(key).getDay();
 
 export const daysBetween = (a: string, b: string) =>
@@ -303,6 +309,15 @@ export function dueLabel(due: string, today: string): { text: string; tone: "lat
   if (days === 0) return { text: "Due today", tone: "today" };
   if (days === 1) return { text: "Due tomorrow", tone: "soon" };
   return { text: `Due ${short}`, tone: "soon" };
+}
+
+/** The same, short, where the date is shown next to it or room is tight: "Overdue", "Today",
+ *  "Tomorrow", "Fri", "12 Nov". */
+export function shortDueLabel(due: string, today: string): string {
+  const { text, tone } = dueLabel(due, today);
+  if (tone === "late") return "Overdue";
+  const s = text.replace(/^Due /, "");
+  return s[0].toUpperCase() + s.slice(1);
 }
 
 /** Lists order: Doing first, then by how soon it's due (overdue first), then the rest as added. */

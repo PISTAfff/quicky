@@ -2,11 +2,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
+import { followAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
 import { saveBlob } from "./lib/media";
 import type { Attachment } from "./lib/model";
-import type { MenuEntry } from "./menu";
+import type { MenuEntry } from "./lib/menus";
 
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
@@ -521,15 +521,7 @@ setTimeout(blink, 2500);
 
 // ---- theme -----------------------------------------------------------------------
 // Follows the accent colour picked in Settings (shared localStorage; `storage` fires on change).
-const applyAccent = () => {
-  let stored = {};
-  try {
-    stored = JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}") ?? {};
-  } catch {}
-  document.documentElement.style.setProperty("--accent", resolveAccent(stored));
-};
-applyAccent();
-addEventListener("storage", (e) => e.key === THEME_KEY && applyAccent());
+followAccent();
 
 // Ask the main window for the current count (it may have loaded first).
 void emitTo("main", "bubble-ready");

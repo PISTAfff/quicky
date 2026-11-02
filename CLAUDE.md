@@ -4,8 +4,8 @@
 A tiny task manager for Windows, macOS and Linux: quick-add mini tasks (To do / Doing / Done), daily carry-over, repeats, due dates, steps, reminders with quiet hours, media attachments, and an always-on-top "Quicky" bubble that can live inside other apps as per-app minis with their own task lists. Tauri 2 (Rust and the system web view) hosts six pages: the main window (SolidJS), the bubble, the full-screen reminder, the overlay for the bubble's big moments, the speech balloon over the bubble, and the bubble's right-click menu.
 
 ## Map
-- `src/`: front end (main window in SolidJS, bubble page and reminder page in plain TS). Has its own CLAUDE.md.
-- `src-tauri/`: Rust backend (windows, bubble placement/physics driving, Win32 calls, config, file I/O). Has its own CLAUDE.md.
+- `src/`: front end: the main window in SolidJS and five small pages in plain TS. Has its own CLAUDE.md.
+- `src-tauri/`: Rust backend: the windows, the bubble's placement and physics, native calls for each system, config, file I/O. Has its own CLAUDE.md.
 - `index.html`, `bubble.html`, `reminder.html`, `fx.html`, `balloon.html`, `menu.html`: the six page entry points (all listed in `vite.config.ts` inputs).
 - `tests/`: Node test runner tests for the pure data model (`src/lib/model.ts`).
 - `brand/`: logo, mascot, screenshots and portfolio images (see `brand/README.md`); not bundled into the app.
@@ -18,6 +18,7 @@ A tiny task manager for Windows, macOS and Linux: quick-add mini tasks (To do / 
 - Front-end tests: `pnpm test`
 - Type-check: `pnpm check`
 - Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml --lib`
+- Lint: `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets` and `pnpm exec tsc --noEmit --noUnusedLocals --noUnusedParameters` (both kept free of warnings)
 - Installer: `pnpm tauri build` → `src-tauri/target/release/bundle/nsis/Quicky_<version>_x64-setup.exe` on Windows (macOS and Linux builds come from CI; this PC can't link them). Needs `TAURI_SIGNING_PRIVATE_KEY` (the updater key, `%USERPROFILE%\.tauri\quicky.key`, never in the repo) and an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
 ## Releasing

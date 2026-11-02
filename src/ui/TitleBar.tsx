@@ -1,8 +1,8 @@
-import { Show } from "solid-js";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { SpacePicker } from "./SpacePicker";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { Blob, IClose, IGear, IMin, IPin, ISearch } from "./icons";
+import { Blob, IClose, IGear, IMax, IMin, IPin, ISearch, IUnmax } from "./icons";
 import { pinned, setPinned, setSheet } from "./state";
 import { data, flush, space } from "../lib/store";
 import { MOD_KEY, QUICK_KEY } from "../lib/platform";
@@ -18,6 +18,15 @@ export function TitleBar() {
     setPinned(next);
   };
   const spaces = () => Object.entries(data.spaces ?? {}).sort((a, b) => a[1].localeCompare(b[1]));
+  // The maximize button turns into "restore" while maximized (also by Win+Up or a double-click on the bar).
+  const [maxed, setMaxed] = createSignal(false);
+  const readMaxed = () => void win.isMaximized().then(setMaxed);
+  let unlisten: (() => void) | undefined;
+  onMount(() => {
+    readMaxed();
+    void win.onResized(readMaxed).then((u) => (unlisten = u));
+  });
+  onCleanup(() => unlisten?.());
   return (
     <header class="titlebar" data-tauri-drag-region>
       <div class="brand" classList={{ "has-picker": !!(spaces().length || space()) }} data-tauri-drag-region>
@@ -47,6 +56,16 @@ export function TitleBar() {
         </button>
         <button class="wb" aria-label="Minimize" onClick={() => win.minimize()}>
           <IMin size={12} />
+        </button>
+        <button
+          class="wb"
+          aria-label={maxed() ? "Restore" : "Maximize"}
+          title={maxed() ? "Restore" : space() ? "Maximize (fills the app it's in)" : "Maximize"}
+          onClick={() => void win.toggleMaximize()}
+        >
+          <Show when={maxed()} fallback={<IMax size={11} />}>
+            <IUnmax size={12} />
+          </Show>
         </button>
         <button
           class="wb close"

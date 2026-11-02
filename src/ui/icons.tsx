@@ -22,6 +22,9 @@ const Svg = (p: P & { children: JSX.Element; fill?: boolean; sw?: number }) => (
 export const IPlus = (p: P) => <Svg {...p} sw={3}><path d="M12 5v14M5 12h14" /></Svg>;
 export const IClose = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
 export const IMin = (p: P) => <Svg {...p}><path d="M5 12h14" /></Svg>;
+export const IMax = (p: P) => <Svg {...p}><rect x="5" y="5" width="14" height="14" rx="2" /></Svg>;
+/** Two overlapping squares: back from maximized. */
+export const IUnmax = (p: P) => <Svg {...p}><rect x="4" y="8" width="12" height="12" rx="2" /><path d="M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" /></Svg>;
 export const IPin = (p: P) => <Svg {...p}><path d="M12 17v5" /><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" /></Svg>;
 export const IClip = (p: P) => (
   <Svg {...p}><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7L10 17.3a1.7 1.7 0 0 1-2.3-2.3L15.5 7" /></Svg>

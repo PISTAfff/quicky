@@ -401,19 +401,22 @@ unsafe extern "system" fn host_walls(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
         WM_WINDOWPOSCHANGING if !PLACING.load(Ordering::Relaxed) => {
             let wp = unsafe { &mut *(lparam as *mut WINDOWPOS) };
             let moving = wp.flags & SWP_NOMOVE == 0 || wp.flags & SWP_NOSIZE == 0;
-            if moving && wp.flags & SWP_HIDEWINDOW == 0 && unsafe { IsIconic(hwnd) } == 0 && wp.x > -30000 {
-                if let Some(b) = host_bounds(hwnd) {
-                    let mut now = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                    unsafe { GetWindowRect(hwnd, &mut now) };
-                    let (x, y) = if wp.flags & SWP_NOMOVE != 0 { (now.left, now.top) } else { (wp.x, wp.y) };
-                    let (cw, ch) = if wp.flags & SWP_NOSIZE != 0 { (now.right - now.left, now.bottom - now.top) } else { (wp.cx, wp.cy) };
-                    let (min_w, min_h) = min_track(hwnd);
-                    let (cw, ch) = (cw.min(b.right - b.left).max(min_w), ch.min(b.bottom - b.top).max(min_h));
-                    let mut r = RECT { left: x, top: y, right: x + cw, bottom: y + ch };
-                    slide_inside(&mut r, &b);
-                    (wp.x, wp.y, wp.cx, wp.cy) = (r.left, r.top, r.right - r.left, r.bottom - r.top);
-                    wp.flags &= !(SWP_NOMOVE | SWP_NOSIZE);
-                }
+            if moving
+                && wp.flags & SWP_HIDEWINDOW == 0
+                && unsafe { IsIconic(hwnd) } == 0
+                && wp.x > -30000
+                && let Some(b) = host_bounds(hwnd)
+            {
+                let mut now = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                unsafe { GetWindowRect(hwnd, &mut now) };
+                let (x, y) = if wp.flags & SWP_NOMOVE != 0 { (now.left, now.top) } else { (wp.x, wp.y) };
+                let (cw, ch) = if wp.flags & SWP_NOSIZE != 0 { (now.right - now.left, now.bottom - now.top) } else { (wp.cx, wp.cy) };
+                let (min_w, min_h) = min_track(hwnd);
+                let (cw, ch) = (cw.min(b.right - b.left).max(min_w), ch.min(b.bottom - b.top).max(min_h));
+                let mut r = RECT { left: x, top: y, right: x + cw, bottom: y + ch };
+                slide_inside(&mut r, &b);
+                (wp.x, wp.y, wp.cx, wp.cy) = (r.left, r.top, r.right - r.left, r.bottom - r.top);
+                wp.flags &= !(SWP_NOMOVE | SWP_NOSIZE);
             }
             unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
         }

@@ -16,8 +16,10 @@ const LABEL: &str = "menu";
 static BUILDING: AtomicBool = AtomicBool::new(false);
 static OPEN: AtomicBool = AtomicBool::new(false);
 static SEQ: AtomicU32 = AtomicU32::new(0);
-/// The latest request: its number, the items, and the pointer (physical px) it opens from.
-static PENDING: Mutex<Option<(u32, Value, (i32, i32))>> = Mutex::new(None);
+/// A request to open: its number, the items, and the pointer (physical px) it opens from.
+type Request = (u32, Value, (i32, i32));
+/// The latest request.
+static PENDING: Mutex<Option<Request>> = Mutex::new(None);
 
 /// The pointer reached the bubble: get the window ready.
 #[tauri::command]
@@ -86,10 +88,8 @@ pub fn menu_hide(app: AppHandle) {
 }
 
 pub fn hide(app: &AppHandle) {
-    if OPEN.swap(false, Ordering::SeqCst) {
-        if let Some(w) = app.get_webview_window(LABEL) {
-            win::show(&w, false);
-        }
+    if OPEN.swap(false, Ordering::SeqCst) && let Some(w) = app.get_webview_window(LABEL) {
+        win::show(&w, false);
     }
     let _ = app.emit_to("bubble", "bubble-menu-closed", ());
 }

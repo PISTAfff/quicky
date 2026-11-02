@@ -18,7 +18,7 @@ import { dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, stage
 import { Blob } from "./ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { modDown } from "./lib/platform";
-import { byUrgency, dueLabel, isLater, type Attachment, type Task } from "./lib/model";
+import { byUrgency, isLater, shortDueLabel, type Attachment, type Task } from "./lib/model";
 
 type Mode = "mini" | "list" | "board";
 const modeFor = (w: number, h: number): Mode => (w < 330 || h < 340 ? "mini" : w >= 680 ? "board" : "list");
@@ -49,12 +49,6 @@ export default function App() {
 
   // The balloon over the bubble: the pinned task, and the top of every list for peeking.
   // Due dates are short there ("Overdue", "Today", "Fri") so titles keep the room.
-  const shortDue = (due: string) => {
-    const d = dueLabel(due, today());
-    if (d.tone === "late") return "Overdue";
-    const s = d.text.replace(/^Due /, "");
-    return s[0].toUpperCase() + s.slice(1);
-  };
   const balloon = createMemo(() => {
     const f = data.focus;
     const pinned = f && data.tasks.find((t) => t.id === f.id && t.status !== "done");
@@ -69,7 +63,7 @@ export default function App() {
       const list = [...(lists.get(k) ?? [])].sort(byUrgency);
       peek[k] = {
         name: spaceName(k || null),
-        items: list.slice(0, 3).map((t) => ({ title: t.title, status: t.status, due: t.due ? shortDue(t.due) : undefined })),
+        items: list.slice(0, 3).map((t) => ({ title: t.title, status: t.status, due: t.due ? shortDueLabel(t.due, today()) : undefined })),
         more: Math.max(0, list.length - 3),
       };
     }

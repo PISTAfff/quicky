@@ -1,6 +1,7 @@
 // Quicky's own right-click menu inside the main window, styled like the bubble's menu (the web
 // view's browser menu is turned off in App.tsx). Open it with `openMenu(event, items)`.
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { arrowFocus } from "../lib/menus";
 
 export type MenuItem = { label: string; run: () => void; danger?: boolean } | "sep";
 
@@ -34,12 +35,9 @@ function MenuBox(p: { x: number; y: number; items: MenuItem[] }) {
       e.preventDefault();
       e.stopPropagation();
       close();
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    } else if (arrowFocus(e.key, buttons())) {
       e.preventDefault();
       e.stopPropagation();
-      const list = buttons();
-      const i = list.indexOf(document.activeElement as HTMLButtonElement);
-      list[e.key === "ArrowDown" ? (i + 1) % list.length : i <= 0 ? list.length - 1 : i - 1]?.focus();
     }
   };
 
@@ -71,7 +69,7 @@ function MenuBox(p: { x: number; y: number; items: MenuItem[] }) {
   return (
     <div
       ref={box}
-      class="ctx-menu"
+      class="ctx-menu qmenu in"
       role="menu"
       tabindex="-1"
       style={{ left: `${at().left}px`, top: `${at().top}px`, "transform-origin": at().origin }}
@@ -85,7 +83,7 @@ function MenuBox(p: { x: number; y: number; items: MenuItem[] }) {
       <For each={p.items}>
         {(item) =>
           item === "sep" ? (
-            <div class="ctx-sep" role="separator" />
+            <div class="qmenu-sep" role="separator" />
           ) : (
             <button
               type="button"

@@ -2,7 +2,7 @@
 //! picks Doing, Done or Snooze. The window only exists while a reminder is showing.
 
 use crate::bubble::{self, OVERLAY_UP};
-use crate::show_main;
+use crate::main_window::show_main;
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;

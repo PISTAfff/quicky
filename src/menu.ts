@@ -4,8 +4,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { followTheme } from "./lib/theme-colors";
+import { arrowFocus, type MenuEntry } from "./lib/menus";
 
-export type MenuEntry = { id: string; text: string; checked?: boolean; disabled?: boolean } | "sep";
 interface Request { seq: number; items: MenuEntry[] }
 
 const menu = document.getElementById("menu") as HTMLDivElement;
@@ -21,7 +21,7 @@ function render(items: MenuEntry[]) {
     ...items.map((item) => {
       if (item === "sep") {
         const sep = document.createElement("div");
-        sep.className = "sep";
+        sep.className = "qmenu-sep";
         sep.setAttribute("role", "separator");
         return sep;
       }
@@ -79,12 +79,7 @@ menu.addEventListener("pointermove", (e) => {
 menu.addEventListener("pointerleave", () => menu.focus());
 addEventListener("keydown", (e) => {
   if (e.key === "Escape") return close();
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  e.preventDefault();
-  const list = enabled();
-  if (!list.length) return;
-  const i = list.indexOf(document.activeElement as HTMLButtonElement);
-  list[e.key === "ArrowDown" ? (i + 1) % list.length : i <= 0 ? list.length - 1 : i - 1].focus();
+  if (arrowFocus(e.key, enabled())) e.preventDefault();
 });
 // Clicked anywhere else (Rust also watches for that, for systems where focus doesn't move).
 addEventListener("blur", close);

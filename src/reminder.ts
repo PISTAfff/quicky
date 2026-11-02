@@ -1,7 +1,7 @@
 // Full-screen reminder: grows out of the bubble, stays until the user answers.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { THEME_KEY, onAccent, resolveAccent } from "./lib/theme-colors";
+import { paintAccent, storedAccent } from "./lib/theme-colors";
 import "./reminder.css";
 import { sfx } from "./lib/sfx";
 
@@ -14,17 +14,6 @@ let current: Payload | null = null;
 let closing = false;
 // Ignore keys for a moment so a keystroke meant for another app doesn't answer the reminder.
 let armedAt = Infinity;
-
-function theme() {
-  let stored: { accent?: string; custom?: string; mode?: string } = {};
-  try {
-    stored = JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}") ?? {};
-  } catch {}
-  const accent = resolveAccent(stored);
-  const root = document.documentElement.style;
-  root.setProperty("--accent", accent);
-  root.setProperty("--on-accent", onAccent(accent));
-}
 
 /** After quiet hours: the reminders that waited, as one list (no snoozing a list). */
 const isSummary = () => current?.id === "__held";
@@ -93,7 +82,7 @@ addEventListener("keydown", (e) => {
 void listen<Payload>("reminder", ({ payload }) => render(payload));
 
 async function start() {
-  theme();
+  paintAccent(storedAccent());
   const p = await invoke<Payload | null>("reminder_payload");
   if (!p) return void invoke("close_reminder", { action: { id: "", action: "snooze" } });
   render(p);

@@ -4,6 +4,7 @@
 //! - mini: when the focused app has its own mini Quicky (made by dropping the bubble on it), it
 //!   shrinks and sits on that app's window at the chosen spot, following the window around;
 //! - normal: everywhere else, at the spot the user dragged it to (or the bottom-left corner).
+//!
 //! It glides between spots rather than jumping, and only shows while the main window is off
 //! screen and no reminder is up.
 
@@ -11,7 +12,8 @@ use crate::balloon;
 use crate::fx::{self, Kind};
 use crate::menu;
 use crate::win::{self, AppWindow, Rect};
-use crate::{main_on_screen, read_config, show_main, update_config, StuckApp, MAIN_MIN};
+use crate::config::{read_config, update_config, StuckApp};
+use crate::main_window::{self, main_on_screen};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -40,12 +42,6 @@ struct State {
     /// What the bubble is showing as: None = not set yet, Some(None) = the normal bubble,
     /// Some(Some(key)) = the mini of the app with that space key.
     mode: Option<Option<String>>,
-    /// The main window is currently open as this app's Quicky (inside the app's window), and the
-    /// frame we gave it, so we only remember a size the user actually changed.
-    space: Option<(String, win::Hwnd)>,
-    placed_frame: Option<Rect>,
-    /// Size and spot of the general (non-app) window, to restore after an app's window.
-    general: Option<(i32, i32, u32, u32)>,
     /// A big moment (dividing, popping) is playing in the overlay: hold everything still.
     held: bool,
     /// A mini is being dragged around inside its app (the app's window is its walls).
@@ -80,9 +76,6 @@ static STATE: Mutex<State> = Mutex::new(State {
     at: None,
     goal: None,
     mode: None,
-    space: None,
-    placed_frame: None,
-    general: None,
     held: false,
     wall: None,
     tracking: false,
@@ -95,7 +88,7 @@ fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+pub(crate) fn window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.get_webview_window("bubble")
 }
 
@@ -116,7 +109,7 @@ pub fn work_area_at(app: &AppHandle, x: i32, y: i32) -> Option<(PhysicalPosition
     })
 }
 
-fn scale(app: &AppHandle) -> f64 {
+pub(crate) fn scale(app: &AppHandle) -> f64 {
     window(app)
         .and_then(|b| b.scale_factor().ok())
         .or_else(|| work_area(app).map(|w| w.2))
@@ -124,7 +117,7 @@ fn scale(app: &AppHandle) -> f64 {
 }
 
 /// The bubble window's current width in physical px (normal or mini).
-fn side(app: &AppHandle) -> i32 {
+pub(crate) fn side(app: &AppHandle) -> i32 {
     window(app)
         .and_then(|b| b.outer_size().ok())
         .map(|s| s.width as i32)
@@ -164,7 +157,7 @@ fn stuck_spot(entry: &StuckApp, rect: Rect) -> (i32, i32) {
 }
 
 /// The stuck app currently in focus, with its window frame.
-fn active_stuck(app: &AppHandle) -> Option<(StuckApp, AppWindow, Rect)> {
+pub(crate) fn active_stuck(app: &AppHandle) -> Option<(StuckApp, AppWindow, Rect)> {
     let focus = state().focus.clone()?;
     let entry = read_config(app).stuck_apps.into_iter().find(|s| s.exe.eq_ignore_ascii_case(&focus.exe))?;
     if !win::usable(focus.hwnd) {
@@ -414,31 +407,6 @@ pub fn housekeeping(app: &AppHandle) {
     });
 }
 
-/// Opens the main window next to the bubble: above it when there's room, otherwise below,
-/// lined up with the bubble's side of the screen and kept inside the work area.
-fn place_main_near(app: &AppHandle) {
-    let (Some(main), Some(b)) = (app.get_webview_window("main"), window(app)) else { return };
-    let (Ok(m), Ok(bp)) = (main.outer_size(), b.outer_position()) else { return };
-    // The screen the bubble is on, so the app opens next to it even on a second monitor.
-    let Some((wa, size, scale)) = work_area_at(app, bp.x + side(app) / 2, bp.y + side(app) / 2).or_else(|| work_area(app))
-    else {
-        return;
-    };
-    let s = (SIZE * scale) as i32;
-    let gap = (8.0 * scale) as i32;
-    let (mw, mh) = (m.width as i32, m.height as i32);
-    let (left, top) = (wa.x, wa.y);
-    let (right, bottom) = (wa.x + size.width as i32, wa.y + size.height as i32);
-
-    let on_right = bp.x + s / 2 > (left + right) / 2;
-    let x = if on_right { bp.x + s - mw } else { bp.x };
-    let y = if bp.y - gap - mh >= top { bp.y - gap - mh } else { bp.y + s + gap };
-    let _ = main.set_position(PhysicalPosition::new(
-        x.clamp(left, (right - mw).max(left)),
-        y.clamp(top, (bottom - mh).max(top)),
-    ));
-}
-
 /// Centre of the normal bubble's spot (physical px).
 fn home_center(app: &AppHandle) -> Option<(i32, i32)> {
     let (x, y) = normal_spot(app)?;
@@ -540,62 +508,7 @@ pub fn reset_bubble(app: AppHandle) -> Result<(), String> {
 /// from the normal bubble it's the general list, right next to the bubble.
 #[tauri::command]
 pub fn open_from_bubble(app: AppHandle) {
-    open_for_context(&app, true);
-}
-
-/// Opens Quicky for whatever the user is in: the focused app's own space if that app has a
-/// mini (inside the app when its window can hold Quicky, over it when not), otherwise the
-/// general list.
-pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
-    let Some(main) = app.get_webview_window("main") else { return };
-    remember_app_window(app);
-    let s = scale(app);
-    let margin = (14.0 * s) as i32;
-    let (min_w, min_h) = ((MAIN_MIN.0 * s) as i32, (MAIN_MIN.1 * s) as i32);
-    match active_stuck(app) {
-        Some((entry, focus, rect)) => {
-            // Leaving the general window: remember its size and spot to restore later.
-            if state().space.is_none() {
-                if let Some(f) = win::own_frame(&main) {
-                    state().general = Some((f.left, f.top, (f.right - f.left) as u32, (f.bottom - f.top) as u32));
-                }
-            }
-            if rect.right - rect.left >= min_w + 2 * margin && rect.bottom - rect.top >= min_h + 2 * margin {
-                // Inside the app, covering it with a small margin unless the user resized it there.
-                // From here on it can't be moved or resized past the app's edges.
-                win::HOST.store(focus.hwnd, Ordering::Relaxed);
-                let [l, t, r, b] = entry.area.unwrap_or([margin; 4]).map(|v| v.max(0));
-                let (x, y) = (rect.left + l, rect.top + t);
-                let w = (rect.right - r - x).max(min_w);
-                let h = (rect.bottom - b - y).max(min_h);
-                set_visible_frame(&main, x, y, w, h);
-            } else {
-                // The app's window is too small to hold Quicky: still that app's list, centred
-                // over the app (kept on its screen) and free to move.
-                win::HOST.store(0, Ordering::Relaxed);
-                let (cx, cy) = ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
-                let (mut x, mut y) = (cx - min_w / 2, cy - min_h / 2);
-                if let Some((wa, size, _)) = work_area_at(app, cx, cy) {
-                    x = x.clamp(wa.x, (wa.x + size.width as i32 - min_w).max(wa.x));
-                    y = y.clamp(wa.y, (wa.y + size.height as i32 - min_h).max(wa.y));
-                }
-                set_visible_frame(&main, x, y, min_w, min_h);
-            }
-            let mut st = state();
-            st.space = Some((entry.exe.clone(), focus.hwnd));
-            st.placed_frame = win::own_frame(&main);
-            drop(st);
-            let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": space_key(&entry.exe), "name": entry.name }));
-        }
-        None => {
-            leave_space(&main);
-            let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
-            if near_bubble {
-                place_main_near(app);
-            }
-        }
-    }
-    show_main(app);
+    main_window::open_for_context(&app, true);
 }
 
 /// Notes the app in front as the one Quicky is "for" (its mini, its list). Clicking the bubble or
@@ -604,131 +517,6 @@ pub fn note_focus() {
     if !win::foreground_is_ours() {
         state().focus = win::foreground_app();
     }
-}
-
-/// Back to the general list: no walls, and the general window's own size and spot.
-fn leave_space(main: &tauri::WebviewWindow) {
-    win::HOST.store(0, Ordering::Relaxed);
-    if state().space.take().is_some() {
-        if let Some((x, y, w, h)) = state().general {
-            set_visible_frame(main, x, y, w as i32, h as i32);
-        }
-    }
-}
-
-/// Tray click (or its menu's Show): the general list, just inside the work area next to the
-/// tray, brought to the front so the tray's hidden-icons popup closes.
-pub fn open_from_tray(app: &AppHandle, (x, y): (i32, i32)) {
-    let Some(main) = app.get_webview_window("main") else { return };
-    remember_app_window(app);
-    leave_space(&main);
-    let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
-    let monitor = app.available_monitors().ok().and_then(|ms| {
-        ms.into_iter().find(|m| {
-            let (p, s) = (m.position(), m.size());
-            x >= p.x && y >= p.y && x < p.x + s.width as i32 && y < p.y + s.height as i32
-        })
-    });
-    let frame = win::own_frame(&main);
-    if let (Some(m), Some(f)) = (monitor, frame) {
-        let (w, h) = (f.right - f.left, f.bottom - f.top);
-        let wa = m.work_area();
-        let (left, top) = (wa.position.x, wa.position.y);
-        let (right, bottom) = (left + wa.size.width as i32, top + wa.size.height as i32);
-        let (mp, ms) = (m.position(), m.size());
-        let gap = (12.0 * m.scale_factor()) as i32;
-        let along_x = (x - w / 2).clamp(left + gap, (right - w - gap).max(left + gap));
-        let along_y = (y - h / 2).clamp(top + gap, (bottom - h - gap).max(top + gap));
-        // Open against the taskbar, lined up with the tray icon. Ask Windows where the taskbar
-        // really is: when it auto-hides, the work area is the whole screen.
-        let on_this_screen = |r: &Rect| r.left < mp.x + ms.width as i32 && r.right > mp.x && r.top < mp.y + ms.height as i32 && r.bottom > mp.y;
-        let (nx, ny) = match win::taskbar().filter(|(r, _)| on_this_screen(r)) {
-            Some((r, 0)) => (r.right + gap, along_y),
-            Some((r, 1)) => (along_x, r.bottom + gap),
-            Some((r, 2)) => (r.left - w - gap, along_y),
-            Some((r, _)) => (along_x, r.top - h - gap),
-            None if top > mp.y => (along_x, top + gap),
-            None if left > mp.x => (left + gap, along_y),
-            None if right < mp.x + ms.width as i32 => (right - w - gap, along_y),
-            None => (along_x, bottom - h - gap),
-        };
-        set_visible_frame(&main, nx, ny, w, h);
-    }
-    show_main(app);
-    win::force_foreground(&main);
-}
-
-/// Places a window so its *visible* frame is exactly (x, y, w, h): Windows adds invisible resize
-/// borders around it, so measure them and compensate. Never smaller than the main window's minimum.
-fn set_visible_frame(w: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
-    let (Ok(outer), Ok(inner), Ok(size), Ok(s)) = (w.outer_position(), w.inner_size(), w.outer_size(), w.scale_factor()) else { return };
-    let (bl, bt, extra_w, extra_h) = match win::own_frame(w) {
-        Some(f) => (f.left - outer.x, f.top - outer.y, (f.right - f.left) - inner.width as i32, (f.bottom - f.top) - inner.height as i32),
-        None => (0, 0, 0, 0),
-    };
-    // The minimum counts the whole window, invisible borders too (as Tauri's own does).
-    let min = (
-        (MAIN_MIN.0 * s).round() as i32 - (size.width - inner.width) as i32,
-        (MAIN_MIN.1 * s).round() as i32 - (size.height - inner.height) as i32,
-    );
-    win::PLACING.store(true, Ordering::Relaxed);
-    let _ = w.set_size(PhysicalSize::new((width - extra_w).max(min.0) as u32, (height - extra_h).max(min.1) as u32));
-    let _ = w.set_position(PhysicalPosition::new(x - bl, y - bt));
-    win::PLACING.store(false, Ordering::Relaxed);
-}
-
-/// If the main window is open as an app's Quicky, remember where it sits inside that app.
-pub fn remember_app_window(app: &AppHandle) {
-    let Some((exe, app_hwnd)) = state().space.clone() else { return };
-    let Some(main) = app.get_webview_window("main") else { return };
-    if !main.is_visible().unwrap_or(false) {
-        return;
-    }
-    let (Some(q), Some(rect)) = (win::own_frame(&main), win::frame(app_hwnd)) else { return };
-    // Untouched since we placed it (keeps the cover-with-a-margin default), or opened over an app
-    // too small to hold it: nothing to remember.
-    if state().placed_frame == Some(q) || win::HOST.load(Ordering::Relaxed) == 0 {
-        return;
-    }
-    let insets = [
-        (q.left - rect.left).max(0),
-        (q.top - rect.top).max(0),
-        (rect.right - q.right).max(0),
-        (rect.bottom - q.bottom).max(0),
-    ];
-    let _ = update_config(app, |c| {
-        if let Some(s) = c.stuck_apps.iter_mut().find(|s| s.exe.eq_ignore_ascii_case(&exe)) {
-            s.area = Some(insets);
-        }
-    });
-}
-
-/// Pinned (📌) keeps the window open when it loses focus.
-pub static PINNED: AtomicBool = AtomicBool::new(false);
-
-#[tauri::command]
-pub fn set_pinned(pinned: bool) {
-    PINNED.store(pinned, Ordering::Relaxed);
-}
-
-/// Quicky is a popover: when the main window loses focus to another app, it tucks itself away
-/// and the bubble / the app's mini comes back. Its own dialogs and pickers don't count.
-pub fn on_main_blur(app: &AppHandle) {
-    let app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(180));
-        let Some(main) = app.get_webview_window("main") else { return };
-        if PINNED.load(Ordering::Relaxed) || main.is_focused().unwrap_or(true) || !main_on_screen(&app) {
-            return;
-        }
-        if win::foreground_is_related(&main) {
-            return;
-        }
-        let _ = app.emit_to("main", "flush", ());
-        remember_app_window(&app);
-        let _ = main.hide();
-        sync(&app);
-    });
 }
 
 /// Called by the bubble right before it starts a native drag.

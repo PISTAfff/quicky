@@ -3,7 +3,7 @@
 // the words. Plain TS, like the bubble.
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
+import { followAccent } from "./lib/theme-colors";
 
 interface Peek { name: string; items: { title: string; status: string; due?: string }[]; more: number }
 interface Data { focus: { title: string; since: number } | null; peek: Record<string, Peek> }
@@ -65,15 +65,7 @@ void listen<Mode>("balloon-mode", ({ payload }) => {
 void listen<{ below: boolean; tail: number }>("balloon-geom", ({ payload }) => geometry(payload));
 setInterval(() => !mode.peek && data.focus && render(), 30_000);
 
-const applyAccent = () => {
-  let stored = {};
-  try {
-    stored = JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}") ?? {};
-  } catch {}
-  document.documentElement.style.setProperty("--accent", resolveAccent(stored));
-};
-applyAccent();
-addEventListener("storage", (e) => e.key === THEME_KEY && applyAccent());
+followAccent();
 
 void invoke<{ mode: Mode; below: boolean; tail: number }>("balloon_state").then((s) => {
   mode = s.mode;

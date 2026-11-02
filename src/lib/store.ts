@@ -4,7 +4,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { sfx } from "./sfx";
 import {
-  rollover, emptyData, dayKey, uid, weekday,
+  rollover, emptyData, dayKey, plusDays, uid, weekday,
   type Data, type Task, type Status, type Attachment, type Repeat, type Reminder, type Step,
 } from "./model";
 
@@ -220,7 +220,7 @@ export function putOff(id: string, day: string) {
     if (d.focus?.id === id) delete d.focus;
   });
   sfx.snooze();
-  showToast(`“${title}” is back ${day === dayKey(new Date(Date.now() + 86_400_000)) ? "tomorrow" : "on its day"}`, {
+  showToast(`“${title}” is back ${day === plusDays(1) ? "tomorrow" : "on its day"}`, {
     label: "Undo",
     run: () => bringBack(id),
   });

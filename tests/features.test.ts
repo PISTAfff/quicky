@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  byUrgency, dueLabel, dueReminder, emptyData, inQuietHours, rollover, searchTasks, stepsDone, upcoming,
+  byUrgency, dueLabel, dueReminder, emptyData, inQuietHours, plusDays, rollover, searchTasks, shortDueLabel, stepsDone, upcoming,
   type Data, type Task,
 } from "../src/lib/model.ts";
 
@@ -70,4 +70,21 @@ test("quiet hours, including past midnight", () => {
   assert.equal(inQuietHours(at(13), "12:00", "14:00"), true);
   assert.equal(inQuietHours(at(14), "12:00", "14:00"), false);
   assert.equal(inQuietHours(at(14), "09:00", "09:00"), false);
+});
+
+test("days ahead go by the calendar, across months, years and clock changes", () => {
+  assert.equal(plusDays(1, new Date(2026, 0, 31, 23, 30)), "2026-02-01");
+  assert.equal(plusDays(1, new Date(2026, 11, 31)), "2027-01-01");
+  assert.equal(plusDays(0, new Date(2026, 10, 2, 9)), "2026-11-02");
+  // The night clocks go back (a 25-hour day in many places) still moves exactly one day.
+  assert.equal(plusDays(1, new Date(2026, 9, 25, 0, 30)), "2026-10-26");
+  assert.equal(plusDays(-1, new Date(2026, 2, 1)), "2026-02-28");
+});
+
+test("short due labels, for tight spots", () => {
+  assert.equal(shortDueLabel("2026-11-01", "2026-11-02"), "Overdue");
+  assert.equal(shortDueLabel("2026-11-02", "2026-11-02"), "Today");
+  assert.equal(shortDueLabel("2026-11-03", "2026-11-02"), "Tomorrow");
+  assert.equal(shortDueLabel("2026-11-06", "2026-11-02"), "Fri");
+  assert.equal(shortDueLabel("2026-11-20", "2026-11-02"), "20 Nov");
 });

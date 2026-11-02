@@ -8,7 +8,7 @@
 // the last frame here is drawn exactly where the bubble reappears. Plain TS, like the bubble.
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { THEME_KEY, resolveAccent } from "./lib/theme-colors";
+import { storedAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
 
 type Kind = "split" | "pop" | "hide";
@@ -79,13 +79,6 @@ function mix(a: string, b: string, t: number): string {
   return "#" + x.map((v, i) => Math.round(lerp(v, y[i], clamp(t, 0, 1))).toString(16).padStart(2, "0")).join("");
 }
 
-function accent(): string {
-  try {
-    return resolveAccent(JSON.parse(localStorage.getItem(THEME_KEY) ?? "{}") ?? {});
-  } catch {
-    return resolveAccent({});
-  }
-}
 
 const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, parent?: Element) => {
   const e = document.createElementNS(SVGNS, tag);
@@ -102,7 +95,7 @@ const crisp = el("g", {}, svg);
 const goo = el("g", { filter: "url(#goo)" }, svg);
 const faces = el("g", {}, svg);
 const bits = el("g", {}, svg);
-const ACCENT = accent();
+const ACCENT = storedAccent();
 
 /** One blob: drawn crisp (exactly like the bubble) or inside the goo layer while it merges. */
 class Body {

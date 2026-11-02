@@ -1,4 +1,4 @@
-**New:** right-click a task for Quicky's own menu (Edit, Start, Finish, Pin to the bubble, Not today, Delete); a task's title is clearly editable and no longer gets squeezed away; all-clear bubbles and minis keep your accent colour.
+**New:** a maximize button in the title bar; a calmer overdue label; light mode's softer greys and pinks are back (placeholders, danger buttons); and a big tidy-up inside.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 
