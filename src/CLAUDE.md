@@ -23,6 +23,7 @@ SolidJS 1.9 (stores + signals), TypeScript, Vite; `@tauri-apps/api` v2 plus the 
 - `lib/store.ts` `flush()` must run before hiding the window (title-bar close does it); Rust also emits `flush` on quit.
 - `bubble.ts` tells the two apart by its window label (`mini` or `bubble`). The mini's app (its `space`) and lock come from `bubble_mode` at load and `bubble-mini` events after; an event can arrive before the page listens, so never rely on events alone.
 - Commands the bubble pages call (open, lock, peek, menu, context) take the calling window in Rust; events back go to that window's label, never a hard-coded "bubble".
+- `listen` from `@tauri-apps/api/event` hears events sent to *any* window. A page that shares its event names with another window (the bubble and the mini) listens with `getCurrentWindow().listen` instead.
 - Native `<input type="time">` shows the OS locale (AM/PM here); values are still 24-hour strings.
 - Reminder/bubble pages can't rely on a user gesture for audio; WebView2 is started with `--autoplay-policy=no-user-gesture-required` (see `src-tauri/CLAUDE.md`).
 - The bubble window has `dragDropEnabled: false`, so its page gets the browser's own drop events (text, links and `File`s, no paths); the main window keeps Tauri's file drop (paths).

@@ -1,4 +1,4 @@
-**New:** Quicky's own bubble now stays at its spot when an app gets a mini: each app's mini pops up in its own little window while that app is in front, the bubble keeps the general list, and a popped or hidden mini flies back into the bubble.
+**New:** hiding or popping a mini no longer makes the bubble vanish for a moment, and the bubble no longer picks up the mini's count, lock or menu choices. Still new from 0.1.25: Quicky's own bubble stays at its spot when an app gets a mini.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

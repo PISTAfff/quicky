@@ -1,7 +1,7 @@
 // The always-on-screen bubble, and the focused app's mini (the same page in a smaller window,
 // labelled "mini"). Plain TS, no framework, so it costs almost nothing to keep open.
 import { invoke } from "@tauri-apps/api/core";
-import { emitTo, listen } from "@tauri-apps/api/event";
+import { emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { followAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
@@ -9,6 +9,8 @@ import { saveBlob } from "./lib/media";
 import type { Attachment } from "./lib/model";
 import type { MenuEntry } from "./lib/menus";
 
+// Events are heard with `win.listen` (only those sent to this window), never the global `listen`,
+// which hears events sent to any window: the bubble would act on the mini's veil, menu picks, etc.
 const win = getCurrentWindow();
 const button = document.getElementById("b") as HTMLButtonElement;
 const badge = document.getElementById("n") as HTMLSpanElement;
@@ -159,11 +161,11 @@ function squash(px: number, py: number) {
 
 // Rust follows the real cursor during a walled drag (it keeps working after the pointer leaves
 // this little window) and reports the push against the wall, and when it's enough to pop.
-listen<{ x: number; y: number }>("wall-push", ({ payload }) => walled && squash(payload.x, payload.y));
-listen("bubble-pop", () => walled && pop());
+win.listen<{ x: number; y: number }>("wall-push", ({ payload }) => walled && squash(payload.x, payload.y));
+win.listen("bubble-pop", () => walled && pop());
 
 // Same for tugging a locked bubble: Rust streams the cursor while the button is held.
-listen<{ x: number; y: number }>("pointer-at", ({ payload }) => {
+win.listen<{ x: number; y: number }>("pointer-at", ({ payload }) => {
   if (!press || !locked) return;
   const dx = payload.x - press.x;
   const dy = payload.y - press.y;
@@ -175,7 +177,7 @@ listen<{ x: number; y: number }>("pointer-at", ({ payload }) => {
   }
   pull(dx, dy);
 });
-listen("pointer-up", () => {
+win.listen("pointer-up", () => {
   if (!tugging) return;
   press = null;
   if (Math.hypot(jelly.x, jelly.y) > 3) sfx.boing();
@@ -212,7 +214,7 @@ function endWall() {
 // replays its entrance). Rust moves it unseen, then it shows again where the overlay left it.
 /** Until when (ms, performance.now) a just-handed-back blob skips its entrance hop. */
 let settledUntil = 0;
-listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
+win.listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
   if (on) {
     veiled = true;
     button.style.visibility = "hidden";
@@ -234,7 +236,7 @@ listen<{ on: boolean }>("bubble-veil", ({ payload: { on } }) => {
   );
 });
 // A little wind-up while the overlay loads.
-listen("bubble-prep", () => !veiled && button.classList.add("prep"));
+win.listen("bubble-prep", () => !veiled && button.classList.add("prep"));
 
 // Whose list this one counts (null: the general list) and its lock. The bubble's never changes;
 // the mini hears from Rust whenever another app's mini takes its place.
@@ -248,7 +250,7 @@ const setMode = (space: string | null, l?: boolean) => {
 invoke<{ space: string | null; locked: boolean }>("bubble_mode")
   .then(({ space, locked: l }) => !told && setMode(space, l))
   .catch(() => {});
-listen<{ space: string | null; locked?: boolean }>("bubble-mini", ({ payload: { space, locked: l } }) => {
+win.listen<{ space: string | null; locked?: boolean }>("bubble-mini", ({ payload: { space, locked: l } }) => {
   told = true;
   setMode(space, l);
 });
@@ -321,7 +323,7 @@ button.addEventListener("lostpointercapture", () => {
   press = null;
   calm();
 });
-listen("bubble-calm", () => {
+win.listen("bubble-calm", () => {
   if (popping) return;
   const was = walled;
   walled = false;
@@ -382,15 +384,15 @@ button.addEventListener("contextmenu", async (e) => {
   menuOpen = true;
   void invoke("bubble_menu_open", { items });
 });
-listen<string>("bubble-menu-pick", ({ payload }) => void menuActions.get(payload)?.());
-listen("bubble-menu-closed", () => (menuOpen = false));
+win.listen<string>("bubble-menu-pick", ({ payload }) => void menuActions.get(payload)?.());
+win.listen("bubble-menu-closed", () => (menuOpen = false));
 // Get the menu window ready the first time the pointer comes by, so the first right-click opens at once.
 button.addEventListener("pointerenter", () => void invoke("menu_prewarm").catch(() => {}), { once: true });
 // ---- badge -----------------------------------------------------------------------
 // The normal bubble counts the general list; an app's mini counts that app's list.
 let lastOpen = -1;
 let counts: { open: number; spaces: Record<string, number> } = { open: 0, spaces: {} };
-listen<{ open: number; spaces?: Record<string, number> }>("counts", ({ payload }) => {
+win.listen<{ open: number; spaces?: Record<string, number> }>("counts", ({ payload }) => {
   counts = { open: payload.open, spaces: payload.spaces ?? {} };
   showCount();
 });
@@ -497,18 +499,18 @@ const cheer = () => {
   replay(button, "cheer");
   sfx.cheer();
 };
-listen("bubble-cheer", async () => {
+win.listen("bubble-cheer", async () => {
   cheerPending = true;
   if (await invoke<boolean>("bubble_on_screen").catch(() => false)) cheer();
 });
-listen("bubble-shown", () => {
+win.listen("bubble-shown", () => {
   // Hop in whenever it comes back on screen (a mini: whenever its app comes to the front), but
   // not when the overlay just handed it back in place.
   if (!veiled && performance.now() > settledUntil) replay(button, "appear");
   if (cheerPending) setTimeout(cheer, 450);
 });
 // A popped or hidden mini's droplets have flown home into the bubble.
-listen("bubble-gulp", () => replay(button, "gulp"));
+win.listen("bubble-gulp", () => replay(button, "gulp"));
 
 // ---- animations ------------------------------------------------------------------
 const replay = (el: Element, cls: string) => {
