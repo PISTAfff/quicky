@@ -1,4 +1,4 @@
-**New:** a maximize button in the title bar; a calmer overdue label; light mode's softer greys and pinks are back (placeholders, danger buttons); and a big tidy-up inside.
+**New:** Quicky's own bubble now stays at its spot when an app gets a mini: each app's mini pops up in its own little window while that app is in front, the bubble keeps the general list, and a popped or hidden mini flies back into the bubble.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 
