@@ -8,7 +8,8 @@
 //!   around and counting that app's list.
 //!
 //! Both glide to their spots rather than jumping, and only show while the main window is off
-//! screen and no reminder is up.
+//! screen and no reminder is up. Dragged with the left button, the bubble gives the app it's
+//! dropped on a mini; dragged with the right button it just moves, wherever it's let go.
 
 use crate::balloon;
 use crate::fx::{self, Kind};
@@ -51,6 +52,8 @@ struct Glide {
 struct State {
     /// The user is dragging the bubble; don't move it, save where it lands.
     dragging: bool,
+    /// The bubble is being moved with the right button (it follows the real cursor).
+    moving: Option<Move>,
     /// The last app (not Quicky) that had focus.
     focus: Option<AppWindow>,
     bubble: Glide,
@@ -83,11 +86,21 @@ struct WallDrag {
     last: Instant,
 }
 
+/// A move of the bubble with the right button: where the pointer and the window started
+/// (physical px). It follows the real cursor, which keeps working after the pointer leaves the
+/// little bubble window.
+#[derive(Clone, Copy)]
+struct Move {
+    cursor0: (i32, i32),
+    start: (i32, i32),
+}
+
 /// How far past a wall (logical px) a mini must be pushed to pop out of its app.
 const POP_AT: f64 = 90.0;
 
 static STATE: Mutex<State> = Mutex::new(State {
     dragging: false,
+    moving: None,
     focus: None,
     bubble: Glide { at: None, goal: None },
     mini: Glide { at: None, goal: None },
@@ -386,12 +399,38 @@ fn save_drop(app: &AppHandle) {
                 fx::play(app, Kind::Split, center, spot, home, Some(space_key(&under.exe)), (0.0, 0.0));
             }
         }
-        None => {
-            let normal = (SIZE * scale(app)) as i32;
-            let spot = (center.0 - normal / 2, center.1 - normal / 2);
-            let _ = update_config(app, |c| c.bubble_pos = Some(spot));
-        }
+        None => set_home(app, center),
     }
+}
+
+/// Makes the spot centred at `center` (physical px) the bubble's own.
+fn set_home(app: &AppHandle, center: (i32, i32)) {
+    let normal = (SIZE * scale(app)) as i32;
+    let spot = (center.0 - normal / 2, center.1 - normal / 2);
+    let _ = update_config(app, |c| c.bubble_pos = Some(spot));
+}
+
+/// One step of a right-button move: the bubble keeps the same offset from the real cursor.
+fn move_step(app: &AppHandle, m: Move) {
+    let Some(b) = window(app) else { return };
+    let (cx, cy) = win::cursor();
+    let at = (m.start.0 + cx - m.cursor0.0, m.start.1 + cy - m.cursor0.1);
+    win::move_to(&b, at.0, at.1);
+    state().bubble.at = Some((at.0 as f64, at.1 as f64));
+}
+
+/// The right button came up: wherever the bubble is now is its own spot, even over an app.
+fn end_move(app: &AppHandle) {
+    state().moving = None;
+    let Some(b) = window(app) else { return };
+    let (Some(center), Ok(pos)) = (center_of(&b), b.outer_position()) else { return };
+    {
+        let mut st = state();
+        st.bubble.at = Some((pos.x as f64, pos.y as f64));
+        st.bubble.goal = None;
+    }
+    set_home(app, center);
+    let _ = app.emit_to(BUBBLE_LABEL, "bubble-moved", ());
 }
 
 /// Gives an app its mini centred at `spot` (or moves its mini there, keeping its window size and
@@ -459,6 +498,18 @@ pub fn housekeeping(app: &AppHandle) {
                 let _ = app.emit_to(label, "pointer-up", ());
             }
 
+            // Moved with the right button: follow the real cursor until the button comes up.
+            let moving = state().moving;
+            if let Some(m) = moving {
+                if win::right_button_down() {
+                    move_step(&app, m);
+                    gliding = true;
+                    continue;
+                }
+                end_move(&app);
+                continue;
+            }
+
             let dragging = state().dragging;
             if dragging {
                 if win::left_button_down() {
@@ -499,10 +550,10 @@ pub fn hold(on: bool) {
     state().held = on;
 }
 
-/// Not being dragged, tugged around inside an app, or held for a big moment.
+/// Not being dragged, moved, tugged around inside an app, or held for a big moment.
 pub fn settled() -> bool {
     let st = state();
-    !st.dragging && st.wall.is_none() && !st.held
+    !st.dragging && st.moving.is_none() && st.wall.is_none() && !st.held
 }
 
 /// The task space of the mini the mini window shows (None when no app's mini is up).
@@ -610,6 +661,14 @@ pub fn note_focus() {
 #[tauri::command]
 pub fn bubble_drag_start() {
     state().dragging = true;
+}
+
+/// The bubble is being dragged with the right button: it just moves, and lands where it's let go
+/// as its own new spot, even over an app (a left-button drag onto an app gives the app a mini).
+#[tauri::command]
+pub fn bubble_move_start(app: AppHandle) {
+    let Some(p) = window(&app).and_then(|b| b.outer_position().ok()) else { return };
+    state().moving = Some(Move { cursor0: win::cursor(), start: (p.x, p.y) });
 }
 
 // ---- dragging a mini inside its app ---------------------------------------------------------

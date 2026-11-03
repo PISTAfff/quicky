@@ -12,7 +12,7 @@ use windows_sys::Win32::System::Threading::{
     PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_LBUTTON, VK_MENU};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_LBUTTON, VK_MENU, VK_RBUTTON};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowRect,
     GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SendMessageW, SetForegroundWindow,
@@ -264,6 +264,10 @@ pub fn cursor() -> (i32, i32) {
 
 pub fn left_button_down() -> bool {
     (unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } as u16 & 0x8000) != 0
+}
+
+pub fn right_button_down() -> bool {
+    (unsafe { GetAsyncKeyState(VK_RBUTTON as i32) } as u16 & 0x8000) != 0
 }
 
 pub fn keep_topmost(w: &tauri::WebviewWindow) {

@@ -1,4 +1,4 @@
-**New:** hiding or popping a mini no longer makes the bubble vanish for a moment, and the bubble no longer picks up the mini's count, lock or menu choices. Still new from 0.1.25: Quicky's own bubble stays at its spot when an app gets a mini.
+**New:** drag the bubble with the right mouse button to just move it, even over an app, without giving that app a mini (a right-click that doesn't move still opens the menu). Also recent: the bubble stays at its spot when an app gets a mini, and hiding a mini no longer makes it vanish for a moment.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

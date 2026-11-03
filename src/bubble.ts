@@ -347,8 +347,7 @@ button.addEventListener("keydown", (e) => {
 // one picked, so its own state (like `locked`) stays right.
 let menuActions = new Map<string, () => unknown>();
 let menuOpen = false;
-button.addEventListener("contextmenu", async (e) => {
-  e.preventDefault();
+async function openContextMenu() {
   press = null;
   peek(false);
   const ctx = await invoke<{ exe: string; name: string; stuck: boolean } | null>("bubble_context").catch(() => null);
@@ -383,6 +382,46 @@ button.addEventListener("contextmenu", async (e) => {
   menuActions = actions;
   menuOpen = true;
   void invoke("bubble_menu_open", { items });
+}
+
+// Held with the right button and moved, the bubble (not a mini, and not while locked) just moves:
+// Rust follows the real cursor and makes wherever it's let go its new spot, even over an app, so
+// no mini is made. A right-click that doesn't move still opens the menu, which Windows asks for
+// on release and macOS and Linux on press (then it waits for the release).
+let rpress: { x: number; y: number } | null = null;
+let rmoved = false;
+let menuWaiting = false;
+button.addEventListener("pointerdown", (e) => {
+  if (e.button !== 2 || isMini || locked || popping) return;
+  rpress = { x: e.screenX, y: e.screenY };
+  rmoved = false;
+  button.setPointerCapture(e.pointerId);
+});
+button.addEventListener("pointermove", (e) => {
+  if (!rpress || rmoved || Math.hypot(e.screenX - rpress.x, e.screenY - rpress.y) <= 4) return;
+  rmoved = true;
+  menuWaiting = false;
+  peek(false);
+  void invoke("bubble_move_start");
+});
+button.addEventListener("pointerup", (e) => {
+  if (e.button !== 2 || !rpress) return;
+  rpress = null;
+  if (menuWaiting && !rmoved) void openContextMenu();
+  menuWaiting = false;
+});
+button.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  // The release that ends a move (Windows sends the menu request then): not a click.
+  if (rmoved) return void (rmoved = false);
+  if (rpress) return void (menuWaiting = true);
+  void openContextMenu();
+});
+win.listen("bubble-moved", () => {
+  rpress = null;
+  menuWaiting = false;
+  // The menu request for that release may still be on its way; after that, right-clicks are clicks again.
+  setTimeout(() => (rmoved = false), 300);
 });
 win.listen<string>("bubble-menu-pick", ({ payload }) => void menuActions.get(payload)?.());
 win.listen("bubble-menu-closed", () => (menuOpen = false));

@@ -307,6 +307,10 @@ pub fn left_button_down() -> bool {
     unsafe { CGEventSourceButtonState(0, 0) }
 }
 
+pub fn right_button_down() -> bool {
+    unsafe { CGEventSourceButtonState(0, 1) }
+}
+
 // ---- Quicky's own windows -------------------------------------------------------------------
 
 /// The Dock icon, from RGBA pixels (Tauri's `set_icon` doesn't touch it).

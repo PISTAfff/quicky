@@ -206,15 +206,19 @@ pub fn cursor() -> (i32, i32) {
 }
 
 pub fn left_button_down() -> bool {
-    pointer().is_some_and(|(_, _, down)| down)
+    pointer().is_some_and(|(_, _, mask)| mask & u16::from(KeyButMask::BUTTON1) != 0)
 }
 
-fn pointer() -> Option<(i32, i32, bool)> {
+pub fn right_button_down() -> bool {
+    pointer().is_some_and(|(_, _, mask)| mask & u16::from(KeyButMask::BUTTON3) != 0)
+}
+
+/// The pointer's position (physical px) and which buttons and modifiers are down.
+fn pointer() -> Option<(i32, i32, u16)> {
     let x = x()?;
     let conn = x.conn.lock().unwrap_or_else(|e| e.into_inner());
     let p = conn.query_pointer(x.root).ok()?.reply().ok()?;
-    let down = u16::from(p.mask) & u16::from(KeyButMask::BUTTON1) != 0;
-    Some((p.root_x as i32, p.root_y as i32, down))
+    Some((p.root_x as i32, p.root_y as i32, u16::from(p.mask)))
 }
 
 /// The window icon set with `set_icon` is the one taskbars and docks show on Linux.

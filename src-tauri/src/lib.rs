@@ -169,6 +169,7 @@ pub fn run() {
             bubble::reset_bubble,
             bubble::open_from_bubble,
             bubble::bubble_drag_start,
+            bubble::bubble_move_start,
             bubble::bubble_context,
             bubble::stick_bubble,
             bubble::unstick_bubble,
