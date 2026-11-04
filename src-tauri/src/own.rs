@@ -19,6 +19,22 @@ pub fn move_to(w: &WebviewWindow, x: i32, y: i32) {
     let _ = w.set_position(PhysicalPosition::new(x, y));
 }
 
+/// Moves one of Quicky's own windows again and again, for a drag that follows the pointer.
+/// AppKit and GTK only move windows on the main thread, so each move goes through Tauri, which
+/// hands it over without waiting.
+#[derive(Clone)]
+pub struct Mover(WebviewWindow);
+
+impl Mover {
+    pub fn new(w: &WebviewWindow) -> Option<Self> {
+        Some(Mover(w.clone()))
+    }
+
+    pub fn move_to(&self, x: i32, y: i32) {
+        move_to(&self.0, x, y);
+    }
+}
+
 pub fn show(w: &WebviewWindow, visible: bool) {
     let _ = if visible { w.show() } else { w.hide() };
 }

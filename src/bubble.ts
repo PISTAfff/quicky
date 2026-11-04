@@ -373,7 +373,7 @@ async function openContextMenu() {
     add(`Hide this mini Quicky (${ctx.name})`, () => invoke("unstick_bubble", { exe: ctx.exe }));
   } else {
     if (ctx && !ctx.stuck) add(`Make a mini Quicky here on ${ctx.name}`, () => invoke("stick_bubble").catch(() => {}));
-    else add("Drop me on an app to give it a mini Quicky");
+    else add("Right-drag me onto an app to give it a mini Quicky");
     add("Lock in place", lock, locked);
     add("Move back to corner", () => invoke("reset_bubble"));
     items.push("sep");
@@ -384,15 +384,17 @@ async function openContextMenu() {
   void invoke("bubble_menu_open", { items });
 }
 
-// Held with the right button and moved, the bubble (not a mini, and not while locked) just moves:
-// Rust follows the real cursor and makes wherever it's let go its new spot, even over an app, so
-// no mini is made. A right-click that doesn't move still opens the menu, which Windows asks for
-// on release and macOS and Linux on press (then it waits for the release).
+// The right button is for minis (the left one just moves the bubble). Held and moved on the
+// bubble, it carries it: dropped on an app's window, that app gets a mini; anywhere else it goes
+// back home. On a mini it moves the mini around inside its app, like the left button does. Rust
+// follows the real cursor either way. Not while locked. A right-click that doesn't move still
+// opens the menu, which Windows asks for on release and macOS and Linux on press (then it waits
+// for the release).
 let rpress: { x: number; y: number } | null = null;
 let rmoved = false;
 let menuWaiting = false;
 button.addEventListener("pointerdown", (e) => {
-  if (e.button !== 2 || isMini || locked || popping) return;
+  if (e.button !== 2 || locked || popping) return;
   rpress = { x: e.screenX, y: e.screenY };
   rmoved = false;
   button.setPointerCapture(e.pointerId);
@@ -402,13 +404,16 @@ button.addEventListener("pointermove", (e) => {
   rmoved = true;
   menuWaiting = false;
   peek(false);
-  void invoke("bubble_move_start");
+  if (!isMini) return void invoke("bubble_carry_start");
+  walled = true;
+  void invoke<boolean>("mini_drag_start", { right: true }).then((ok) => !ok && (walled = false));
 });
 button.addEventListener("pointerup", (e) => {
   if (e.button !== 2 || !rpress) return;
   rpress = null;
   if (menuWaiting && !rmoved) void openContextMenu();
   menuWaiting = false;
+  if (rmoved && walled) endWall();
 });
 button.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -417,7 +422,7 @@ button.addEventListener("contextmenu", (e) => {
   if (rpress) return void (menuWaiting = true);
   void openContextMenu();
 });
-win.listen("bubble-moved", () => {
+win.listen("bubble-carried", () => {
   rpress = null;
   menuWaiting = false;
   // The menu request for that release may still be on its way; after that, right-clicks are clicks again.

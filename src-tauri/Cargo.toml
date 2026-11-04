@@ -1,6 +1,6 @@
 [package]
 name = "quicky"
-version = "0.1.27"
+version = "0.1.28"
 description = "Quicky: tiny daily task manager"
 authors = ["PISTA"]
 license = "MIT"

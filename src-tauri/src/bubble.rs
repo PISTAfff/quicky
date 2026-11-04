@@ -8,8 +8,8 @@
 //!   around and counting that app's list.
 //!
 //! Both glide to their spots rather than jumping, and only show while the main window is off
-//! screen and no reminder is up. Dragged with the left button, the bubble gives the app it's
-//! dropped on a mini; dragged with the right button it just moves, wherever it's let go.
+//! screen and no reminder is up. Dragged with the left button the bubble just moves, wherever
+//! it's let go; dragged with the right button it gives the app it's dropped on a mini.
 
 use crate::balloon;
 use crate::fx::{self, Kind};
@@ -52,8 +52,8 @@ struct Glide {
 struct State {
     /// The user is dragging the bubble; don't move it, save where it lands.
     dragging: bool,
-    /// The bubble is being moved with the right button (it follows the real cursor).
-    moving: Option<Move>,
+    /// The bubble is being carried with the right button, to give an app a mini.
+    carry: Option<Carry>,
     /// The last app (not Quicky) that had focus.
     focus: Option<AppWindow>,
     bubble: Glide,
@@ -83,16 +83,24 @@ struct WallDrag {
     strain: f64,
     /// Which way it's being pushed (unit length), for the burst.
     push: (f64, f64),
+    /// The push last told to the page (logical px), so it only hears about changes.
+    sent: (f64, f64),
     last: Instant,
+    /// The mini window's width (physical px), the screen's scale and a way to move it: read once,
+    /// since asking Tauri for them waits on the main thread.
+    side: i32,
+    scale: f64,
+    mover: win::Mover,
 }
 
-/// A move of the bubble with the right button: where the pointer and the window started
-/// (physical px). It follows the real cursor, which keeps working after the pointer leaves the
-/// little bubble window.
-#[derive(Clone, Copy)]
-struct Move {
+/// The bubble carried with the right button to give the app it's dropped on a mini: where the
+/// pointer and the window started and where the window is now (physical px). It follows the real
+/// cursor, which keeps working after the pointer leaves the little bubble window.
+struct Carry {
     cursor0: (i32, i32),
     start: (i32, i32),
+    at: (i32, i32),
+    mover: win::Mover,
 }
 
 /// How far past a wall (logical px) a mini must be pushed to pop out of its app.
@@ -100,7 +108,7 @@ const POP_AT: f64 = 90.0;
 
 static STATE: Mutex<State> = Mutex::new(State {
     dragging: false,
-    moving: None,
+    carry: None,
     focus: None,
     bubble: Glide { at: None, goal: None },
     mini: Glide { at: None, goal: None },
@@ -378,29 +386,17 @@ pub fn bubble_on_screen(window: WebviewWindow) -> bool {
     window.is_visible().unwrap_or(false)
 }
 
-/// Where a drag of the bubble ended decides what happens:
-/// - dropped on an app's window: that app gets its mini Quicky there (or its mini moves there),
-///   and the bubble goes back to its own spot;
-/// - dropped on the desktop: that's the bubble's new spot.
+/// A left drag of the bubble ended: wherever it is now is its own spot, over an app or not (the
+/// right button carries it to an app to give that app a mini).
 fn save_drop(app: &AppHandle) {
     let Some(b) = window(app) else { return };
     let (Some(center), Ok(pos)) = (center_of(&b), b.outer_position()) else { return };
     {
-        // Glides on from where it was let go.
         let mut st = state();
         st.bubble.at = Some((pos.x as f64, pos.y as f64));
         st.bubble.goal = None;
     }
-    match win::app_under(center.0, center.1).and_then(|w| win::frame(w.hwnd).map(|r| (w, r))) {
-        Some((under, rect)) => {
-            let spot = clear_of_home(app, rect, center);
-            if stick(app, &under, rect, spot).unwrap_or(false) && let Some(home) = home_center(app) {
-                // A new mini is born: Quicky divides, one half stays as the mini, the other heads home.
-                fx::play(app, Kind::Split, center, spot, home, Some(space_key(&under.exe)), (0.0, 0.0));
-            }
-        }
-        None => set_home(app, center),
-    }
+    set_home(app, center);
 }
 
 /// Makes the spot centred at `center` (physical px) the bubble's own.
@@ -410,27 +406,60 @@ fn set_home(app: &AppHandle, center: (i32, i32)) {
     let _ = update_config(app, |c| c.bubble_pos = Some(spot));
 }
 
-/// One step of a right-button move: the bubble keeps the same offset from the real cursor.
-fn move_step(app: &AppHandle, m: Move) {
-    let Some(b) = window(app) else { return };
-    let (cx, cy) = win::cursor();
-    let at = (m.start.0 + cx - m.cursor0.0, m.start.1 + cy - m.cursor0.1);
-    win::move_to(&b, at.0, at.1);
-    state().bubble.at = Some((at.0 as f64, at.1 as f64));
+/// Runs a drag that follows the real cursor on a thread of its own, every few ms (the
+/// housekeeping loop is too slow and busy for that): `step` while the button is held and it
+/// returns true, then `end` once.
+fn follow(app: &AppHandle, right: bool, step: fn(&AppHandle) -> bool, end: fn(&AppHandle)) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let held: fn() -> bool = if right { win::right_button_down } else { win::left_button_down };
+        while held() && step(&app) {
+            std::thread::sleep(Duration::from_millis(4));
+        }
+        end(&app);
+    });
 }
 
-/// The right button came up: wherever the bubble is now is its own spot, even over an app.
-fn end_move(app: &AppHandle) {
-    state().moving = None;
-    let Some(b) = window(app) else { return };
-    let (Some(center), Ok(pos)) = (center_of(&b), b.outer_position()) else { return };
+/// One step of carrying the bubble: it keeps the same offset from the real cursor.
+fn carry_step(_app: &AppHandle) -> bool {
+    let (cx, cy) = win::cursor();
+    let (mover, at) = {
+        let mut st = state();
+        let Some(c) = st.carry.as_mut() else { return false };
+        let at = (c.start.0 + cx - c.cursor0.0, c.start.1 + cy - c.cursor0.1);
+        if at == c.at {
+            return true;
+        }
+        c.at = at;
+        let mover = c.mover.clone();
+        st.bubble.at = Some((at.0 as f64, at.1 as f64));
+        (mover, at)
+    };
+    mover.move_to(at.0, at.1);
+    true
+}
+
+/// The right button came up: dropped on an app's window, that app gets its mini there (or its
+/// mini moves there); anywhere else nothing changes. Either way the bubble goes back to its spot.
+fn carry_end(app: &AppHandle) {
+    let Some(at) = state().carry.as_ref().map(|c| c.at) else { return };
+    let _ = app.emit_to(BUBBLE_LABEL, "bubble-carried", ());
+    let half = side(app) / 2;
+    let center = (at.0 + half, at.1 + half);
     {
         let mut st = state();
-        st.bubble.at = Some((pos.x as f64, pos.y as f64));
+        st.bubble.at = Some((at.0 as f64, at.1 as f64));
         st.bubble.goal = None;
     }
-    set_home(app, center);
-    let _ = app.emit_to(BUBBLE_LABEL, "bubble-moved", ());
+    if let Some((under, rect)) = win::app_under(center.0, center.1).and_then(|w| win::frame(w.hwnd).map(|r| (w, r))) {
+        let spot = clear_of_home(app, rect, center);
+        if stick(app, &under, rect, spot).unwrap_or(false) && let Some(home) = home_center(app) {
+            // A new mini is born: Quicky divides, one half stays as the mini, the other heads home.
+            // (The overlay holds the bubble still before the carry ends, so it can't glide off first.)
+            fx::play(app, Kind::Split, center, spot, home, Some(space_key(&under.exe)), (0.0, 0.0));
+        }
+    }
+    state().carry = None;
 }
 
 /// Gives an app its mini centred at `spot` (or moves its mini there, keeping its window size and
@@ -474,16 +503,6 @@ pub fn housekeeping(app: &AppHandle) {
             balloon::sync(&app);
             menu::watch(&app);
 
-            // Walled drag of a mini: follow the real cursor until the button comes up.
-            if state().wall.is_some() {
-                if win::left_button_down() {
-                    wall_step(&app);
-                    gliding = true; // keep the loop at ~60 fps
-                    continue;
-                }
-                mini_drag_end(app.clone());
-                let _ = app.emit_to(MINI_LABEL, "bubble-calm", ());
-            }
             // Tug on a locked bubble: stream the cursor to its page until the button comes up.
             let tracking = state().tracking;
             if let Some(label) = tracking {
@@ -496,18 +515,6 @@ pub fn housekeeping(app: &AppHandle) {
                 }
                 state().tracking = None;
                 let _ = app.emit_to(label, "pointer-up", ());
-            }
-
-            // Moved with the right button: follow the real cursor until the button comes up.
-            let moving = state().moving;
-            if let Some(m) = moving {
-                if win::right_button_down() {
-                    move_step(&app, m);
-                    gliding = true;
-                    continue;
-                }
-                end_move(&app);
-                continue;
             }
 
             let dragging = state().dragging;
@@ -553,7 +560,7 @@ pub fn hold(on: bool) {
 /// Not being dragged, moved, tugged around inside an app, or held for a big moment.
 pub fn settled() -> bool {
     let st = state();
-    !st.dragging && st.moving.is_none() && st.wall.is_none() && !st.held
+    !st.dragging && st.carry.is_none() && st.wall.is_none() && !st.held
 }
 
 /// The task space of the mini the mini window shows (None when no app's mini is up).
@@ -663,46 +670,71 @@ pub fn bubble_drag_start() {
     state().dragging = true;
 }
 
-/// The bubble is being dragged with the right button: it just moves, and lands where it's let go
-/// as its own new spot, even over an app (a left-button drag onto an app gives the app a mini).
+/// The bubble is being dragged with the right button: it follows the pointer, and dropped on an
+/// app's window it gives that app a mini (a left drag just moves it).
 #[tauri::command]
-pub fn bubble_move_start(app: AppHandle) {
-    let Some(p) = window(&app).and_then(|b| b.outer_position().ok()) else { return };
-    state().moving = Some(Move { cursor0: win::cursor(), start: (p.x, p.y) });
+pub fn bubble_carry_start(app: AppHandle) {
+    let Some(b) = window(&app) else { return };
+    let (Ok(p), Some(mover)) = (b.outer_position(), win::Mover::new(&b)) else { return };
+    state().carry = Some(Carry { cursor0: win::cursor(), start: (p.x, p.y), at: (p.x, p.y), mover });
+    follow(&app, true, carry_step, carry_end);
 }
 
 // ---- dragging a mini inside its app ---------------------------------------------------------
 
-/// Starts dragging the mini of the app in focus. Returns false if that app has none now.
+/// Starts dragging the mini of the app in focus, with the left or the `right` button. Returns
+/// false if that app has none now.
 #[tauri::command]
-pub fn mini_drag_start(app: AppHandle) -> bool {
+pub fn mini_drag_start(app: AppHandle, right: Option<bool>) -> bool {
     let Some((entry, _, rect)) = active_stuck(&app) else { return false };
-    let Some(p) = mini_window(&app).and_then(|m| m.outer_position().ok()) else { return false };
-    state().wall = Some(WallDrag { exe: entry.exe, rect, start: (p.x, p.y), at: (p.x, p.y), cursor0: win::cursor(), popped: false, strain: 0.0, push: (0.0, 0.0), last: Instant::now() });
+    let Some(m) = mini_window(&app) else { return false };
+    let (Ok(p), Some(mover)) = (m.outer_position(), win::Mover::new(&m)) else { return false };
+    let (side, scale) = (mini_side(&app), scale(&app));
+    let right = right.unwrap_or(false);
+    state().wall = Some(WallDrag {
+        exe: entry.exe,
+        rect,
+        start: (p.x, p.y),
+        at: (p.x, p.y),
+        cursor0: win::cursor(),
+        popped: false,
+        strain: 0.0,
+        push: (0.0, 0.0),
+        sent: (0.0, 0.0),
+        last: Instant::now(),
+        side,
+        scale,
+        mover,
+    });
+    follow(&app, right, wall_step, wall_end);
     true
+}
+
+/// The button came up: that's the mini's new spot (unless it popped: `mini_pop` takes over).
+fn wall_end(app: &AppHandle) {
+    if state().wall.as_ref().is_some_and(|w| !w.popped) {
+        mini_drag_end(app.clone());
+        let _ = app.emit_to(MINI_LABEL, "bubble-calm", ());
+    }
 }
 
 /// One step of a walled drag, from the real cursor: move inside the app's window, tell the page
 /// how hard it's pushing against the wall (for the squash), and pop it when pushed hard enough.
-fn wall_step(app: &AppHandle) {
-    let s = scale(app);
-    let side = mini_side(app);
-    let Some(mini) = mini_window(app) else { return };
+fn wall_step(app: &AppHandle) -> bool {
     let (cx, cy) = win::cursor();
     let mut st = state();
-    let Some(w) = st.wall.as_mut() else { return };
+    let Some(w) = st.wall.as_mut() else { return false };
     if w.popped {
-        return;
+        return true;
     }
+    let (s, side) = (w.scale, w.side);
     let (wx, wy) = ((w.start.0 + cx - w.cursor0.0) as f64, (w.start.1 + cy - w.cursor0.1) as f64);
     let (l, t) = (w.rect.left as f64, w.rect.top as f64);
     let (r, b) = ((w.rect.right - side) as f64, (w.rect.bottom - side) as f64);
     let (x, y) = (wx.clamp(l, r.max(l)), wy.clamp(t, b.max(t)));
     let at = (x.round() as i32, y.round() as i32);
-    if at != w.at {
-        win::move_to(&mini, at.0, at.1);
-        w.at = at;
-    }
+    let mover = (at != w.at).then(|| w.mover.clone());
+    w.at = at;
     // How hard it's being pushed: how far the pointer is past the mini's middle on each axis it's
     // pinned against a wall. Held there, strain builds up; let go of the wall and it relaxes.
     let now = Instant::now();
@@ -727,14 +759,25 @@ fn wall_step(app: &AppHandle) {
     if reach > 0.5 {
         w.push = (dx, dy);
     }
+    let (px, py) = (dx * strain * POP_AT, dy * strain * POP_AT);
+    // At this rate only changes are worth telling the page.
+    let tell = (px - w.sent.0).abs() > 0.5 || (py - w.sent.1).abs() > 0.5;
+    if tell {
+        w.sent = (px, py);
+    }
     st.mini.at = Some((x, y));
     st.mini.goal = Some(at);
     drop(st);
-    let (px, py) = (dx * strain * POP_AT, dy * strain * POP_AT);
-    let _ = app.emit_to(MINI_LABEL, "wall-push", json!({ "x": px, "y": py }));
+    if let Some(m) = mover {
+        m.move_to(at.0, at.1);
+    }
+    if tell {
+        let _ = app.emit_to(MINI_LABEL, "wall-push", json!({ "x": px, "y": py }));
+    }
     if popped {
         let _ = app.emit_to(MINI_LABEL, "bubble-pop", ());
     }
+    true
 }
 
 /// While the button is held on a locked bubble, stream the real cursor position to its page so
@@ -748,7 +791,7 @@ pub fn pointer_track_start(window: WebviewWindow) {
 #[tauri::command]
 pub fn mini_drag_end(app: AppHandle) {
     let Some(w) = state().wall.take() else { return };
-    let half = mini_side(&app) / 2;
+    let half = w.side / 2;
     let (right, bottom, dx, dy) = anchor(w.rect, (w.at.0 + half, w.at.1 + half));
     let _ = update_config(&app, |c| {
         if let Some(s) = c.stuck_apps.iter_mut().find(|s| s.exe.eq_ignore_ascii_case(&w.exe)) {

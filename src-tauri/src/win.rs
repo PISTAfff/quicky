@@ -17,7 +17,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowRect,
     GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, SendMessageW, SetForegroundWindow,
     SetWindowPos, ShowWindow, GA_ROOT, GA_ROOTOWNER, GWL_EXSTYLE, HWND_TOPMOST, MINMAXINFO, SWP_HIDEWINDOW, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_GETMINMAXINFO, WM_MOVING,
+    SWP_ASYNCWINDOWPOS, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOWPOS, WM_GETMINMAXINFO, WM_MOVING,
     WM_SIZING, WM_WINDOWPOSCHANGING, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
 };
 
@@ -280,6 +280,22 @@ pub fn keep_topmost(w: &tauri::WebviewWindow) {
 pub fn move_to(w: &tauri::WebviewWindow, x: i32, y: i32) {
     let Some(hwnd) = own(w) else { return };
     unsafe { SetWindowPos(h(hwnd), std::ptr::null_mut(), x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
+}
+
+/// Moves one of Quicky's own windows again and again, for a drag that follows the pointer. It
+/// keeps the window's handle instead of asking Tauri for it each time (which waits on the main
+/// thread) and doesn't wait for the window to finish moving, so the drag keeps up.
+#[derive(Clone)]
+pub struct Mover(Hwnd);
+
+impl Mover {
+    pub fn new(w: &tauri::WebviewWindow) -> Option<Self> {
+        own(w).map(Mover)
+    }
+
+    pub fn move_to(&self, x: i32, y: i32) {
+        unsafe { SetWindowPos(h(self.0), std::ptr::null_mut(), x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS) };
+    }
 }
 
 pub fn show(w: &tauri::WebviewWindow, visible: bool) {

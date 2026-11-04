@@ -1,4 +1,4 @@
-**New:** drag the bubble with the right mouse button to just move it, even over an app, without giving that app a mini (a right-click that doesn't move still opens the menu). Also recent: the bubble stays at its spot when an app gets a mini, and hiding a mini no longer makes it vanish for a moment.
+**New:** a left drag now just moves the bubble, anywhere, even over an app. To give an app a mini, drag the bubble onto it with the right mouse button; right-drag a mini to move it inside its app. Right-button and mini drags are smoother too.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

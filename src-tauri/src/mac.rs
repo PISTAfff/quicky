@@ -15,7 +15,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use tauri::WebviewWindow;
 
-pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, HOST, PLACING};
+pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, Mover, HOST, PLACING};
 
 pub type Hwnd = isize;
 

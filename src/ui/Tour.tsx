@@ -20,7 +20,7 @@ export const showTour = () => setOpen(true);
 const STEPS = [
   {
     title: "Give any app its own Quicky",
-    text: "Drag the bubble onto an app's window. It divides, and that app gets a mini Quicky with a list of its own.",
+    text: "Drag the bubble onto an app's window with the right mouse button. It divides, and that app gets a mini Quicky with a list of its own. A left drag just moves it.",
     art: "drag",
   },
   {

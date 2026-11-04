@@ -9,7 +9,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, KeyButMask, MapState, Window};
 use x11rb::rust_connection::RustConnection;
 
-pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, HOST, PLACING};
+pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, Mover, HOST, PLACING};
 
 pub type Hwnd = isize;
 
