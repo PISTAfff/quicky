@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dueReminder, nextReminder, upcoming, describeReminder, rollover, emptyData, type Task, type Data, type Reminder } from "../src/lib/model.ts";
+import { dueReminder, nextReminder, nextReminderAt, upcoming, describeReminder, rollover, emptyData, type Task, type Data, type Reminder } from "../src/lib/model.ts";
 
 const at = (h: number, m = 0) => new Date(2026, 10, 1, h, m);
 const task = (over: Partial<Task>): Task => ({
@@ -91,4 +91,15 @@ test("summaries read naturally", () => {
   assert.equal(describeReminder(rem({ mode: "every", every: 120 }), now), "Every 2 h, 9:00 AM–6:00 PM");
   assert.equal(describeReminder(rem({ times: ["00:05", "12:00"] }), now), "Every day at 12:05 AM, 12:00 PM");
   assert.equal(describeReminder({ ...rem({}), on: false }, now), "Off");
+});
+test("the next reminder across tasks: the soonest one still to come", () => {
+  const a = task({ id: "a", remind: ["09:00", "15:00"] });
+  const b = task({ id: "b", remind: ["12:30"] });
+  const done = task({ id: "c", remind: ["10:00"], status: "done" });
+  assert.equal(nextReminderAt([a, b, done], at(9, 30)), at(12, 30).getTime());
+  assert.equal(nextReminderAt([a, b], at(13)), at(15).getTime());
+  // A snooze comes first when it's sooner.
+  const snoozed = task({ id: "s", remind: ["18:00"], snoozeUntil: at(13, 10).getTime() });
+  assert.equal(nextReminderAt([a, snoozed], at(13)), at(13, 10).getTime());
+  assert.equal(nextReminderAt([done], at(9)), null);
 });

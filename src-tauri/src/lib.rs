@@ -193,6 +193,7 @@ pub fn run() {
             fx::fx_done,
             reminder::show_reminder,
             reminder::reminder_payload,
+            reminder::reminder_wake_at,
             reminder::reminder_ready,
             reminder::close_reminder
         ])

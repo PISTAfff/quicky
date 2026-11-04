@@ -86,16 +86,18 @@ async function start() {
   const p = await invoke<Payload | null>("reminder_payload");
   if (!p) return void invoke("close_reminder", { action: { id: "", action: "snooze" } });
   render(p);
-  // Paint once (fully transparent), then show the window and grow.
-  requestAnimationFrame(() =>
-    requestAnimationFrame(async () => {
-      await invoke("reminder_ready");
-      flood.classList.add("in");
-      sfx.remind();
-      armedAt = performance.now() + 700;
-      ($(isSummary() ? "done" : "doing") as HTMLButtonElement).focus({ preventScroll: true });
-    }),
-  );
+  // Paint once (fully transparent), then show the window and grow. The window starts hidden, and
+  // a hidden web view gets animation frames late or not at all (that held reminders back by up
+  // to a minute), so a short timeout shows it if they don't come.
+  await new Promise<void>((painted) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => painted()));
+    setTimeout(painted, 150);
+  });
+  await invoke("reminder_ready");
+  flood.classList.add("in");
+  sfx.remind();
+  armedAt = performance.now() + 700;
+  ($(isSummary() ? "done" : "doing") as HTMLButtonElement).focus({ preventScroll: true });
 }
 void start();
 addEventListener("contextmenu", (e) => e.preventDefault()); // no browser menu (Back, Refresh, Print)

@@ -1,8 +1,10 @@
 // Decides when to show a reminder and applies what the user picked on it.
-// Checks are driven by a tick from Rust (reliable even while this window is hidden) plus a timer.
+// Checks are driven by a tick from Rust (reliable even while this window is hidden, when its own
+// timers only run about once a minute): every 15 s, and right when the next reminder is due.
+import { createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { dueReminder, inQuietHours, time12 } from "./model";
+import { dueReminder, inQuietHours, nextReminderAt, time12 } from "./model";
 import { data, markReminderShown, setStatus, snoozeTask } from "./store";
 import { setSheet } from "../ui/state";
 
@@ -69,8 +71,14 @@ async function quietNow(now: Date): Promise<boolean> {
 
 // ---- showing them -----------------------------------------------------------------------
 
+/** Tells Rust when the next reminder is due, so its tick wakes the check right then. */
+function wakeForNext() {
+  void invoke("reminder_wake_at", { at: nextReminderAt(data.tasks, new Date()) }).catch(() => {});
+}
+
 /** Shows the first reminder that's due (one at a time; the rest follow after an answer). */
 export async function checkReminders() {
+  wakeForNext();
   if (showing) return;
   const now = new Date();
   const quiet = await quietNow(now);
@@ -145,5 +153,13 @@ export async function startReminders() {
   await listen("reminder-tick", () => void checkReminders());
   await listen("preview-reminder", previewReminder);
   setInterval(checkReminders, 30_000);
+  // Any change to the tasks can move the next reminder (a new time, a snooze, ticked off). Its own
+  // root: this runs after awaits, outside any component, and lives as long as the app.
+  createRoot(() =>
+    createEffect(() => {
+      JSON.stringify(data.tasks);
+      wakeForNext();
+    }),
+  );
   void checkReminders();
 }

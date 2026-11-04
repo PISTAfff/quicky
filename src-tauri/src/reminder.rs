@@ -4,11 +4,33 @@
 use crate::bubble::{self, OVERLAY_UP};
 use crate::main_window::show_main;
 use serde_json::{json, Value};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 static PAYLOAD: Mutex<Option<Value>> = Mutex::new(None);
+/// When the next reminder is due (ms since the epoch, 0 = none), as the main page last said.
+static WAKE: AtomicU64 = AtomicU64::new(0);
+
+/// The main page: wake me when the next reminder is due (`at` in ms since the epoch, or none).
+#[tauri::command]
+pub fn reminder_wake_at(at: Option<f64>) {
+    WAKE.store(at.map_or(0, |a| a.max(1.0) as u64), Ordering::Relaxed);
+}
+
+/// From the housekeeping loop: tells the main page to check for due reminders every 15 s, and
+/// right when the next one is due. Its own timers can't do this: while it's hidden they only run
+/// about once a minute.
+pub fn tick(app: &AppHandle, last: &mut Instant) {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let wake = WAKE.load(Ordering::Relaxed);
+    let due = wake != 0 && now >= wake && WAKE.compare_exchange(wake, 0, Ordering::Relaxed, Ordering::Relaxed).is_ok();
+    if due || last.elapsed() >= Duration::from_secs(15) {
+        *last = Instant::now();
+        let _ = app.emit_to("main", "reminder-tick", ());
+    }
+}
 /// Same as `additionalBrowserArgs` in tauri.conf.json (Tauri's defaults + sound without a click).
 pub const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
 

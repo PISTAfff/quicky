@@ -1,4 +1,4 @@
-**New:** a left drag now just moves the bubble, anywhere, even over an app. To give an app a mini, drag the bubble onto it with the right mouse button; right-drag a mini to move it inside its app. Right-button and mini drags are smoother too.
+**New:** reminders show right on time (they could come up to a minute late). Also recent: a left drag just moves the bubble; drag it onto an app with the right mouse button to give that app a mini.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

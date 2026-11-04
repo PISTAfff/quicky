@@ -14,6 +14,7 @@
 use crate::balloon;
 use crate::fx::{self, Kind};
 use crate::menu;
+use crate::reminder;
 use crate::win::{self, AppWindow, Rect};
 use crate::config::{read_config, update_config, StuckApp};
 use crate::main_window::{self, main_on_screen};
@@ -494,10 +495,7 @@ pub fn housekeeping(app: &AppHandle) {
             let fast = !read_config(&app).stuck_apps.is_empty() || menu::is_open();
             std::thread::sleep(Duration::from_millis(if gliding { 16 } else if fast { 50 } else { 400 }));
 
-            if last_tick.elapsed() >= Duration::from_secs(15) {
-                last_tick = Instant::now();
-                let _ = app.emit_to("main", "reminder-tick", ());
-            }
+            reminder::tick(&app, &mut last_tick);
 
             sync(&app);
             balloon::sync(&app);

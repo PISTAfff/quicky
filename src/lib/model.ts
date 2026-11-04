@@ -263,6 +263,16 @@ export function whenLabel(at: number, now: Date): string {
   return `${d.getDate()} ${d.toLocaleString("en", { month: "short" })} ${time12(d)}`;
 }
 
+/** The soonest moment (ms) any of these tasks will remind, or null if none will this week. */
+export function nextReminderAt(tasks: Task[], now: Date): number | null {
+  let next: number | null = null;
+  for (const t of tasks) {
+    const at = upcoming(t, now, 1)[0];
+    if (at !== undefined && (next === null || at < next)) next = at;
+  }
+  return next;
+}
+
 /** The next reminder, as a short label (for the little bell on cards). */
 export function nextReminder(t: Task, now: Date): string | null {
   const next = upcoming(t, now, 1)[0];
