@@ -16,6 +16,7 @@ import { readSfx, sfx, writeSfx } from "../../lib/sfx";
 import { IBell, IClose, IPin2, IFolder } from "../icons";
 import { setSheet } from "../state";
 import { Panel } from "./Panel";
+import { TimeField } from "../TimeField";
 
 export function SettingsSheet() {
   const change = async () => {
@@ -246,8 +247,8 @@ function QuietHours() {
       </label>
       <Show when={q().on}>
         <div class="quiet-times">
-          <label>From <input type="time" value={q().from} onChange={(e) => e.currentTarget.value && set({ from: e.currentTarget.value })} /></label>
-          <label>to <input type="time" value={q().to} onChange={(e) => e.currentTarget.value && set({ to: e.currentTarget.value })} /></label>
+          <span>From <TimeField label="Quiet hours from" value={q().from} onChange={(hm) => set({ from: hm })} /></span>
+          <span>to <TimeField label="Quiet hours to" value={q().to} onChange={(hm) => set({ to: hm })} /></span>
         </div>
       </Show>
       <label class="switch-row">

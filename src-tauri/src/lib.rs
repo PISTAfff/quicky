@@ -59,11 +59,13 @@ pub fn run() {
             unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
         }
     }
-    // Ctrl+Space, except on macOS where that switches keyboard input sources: Option+Space there.
+    // Ctrl+Space. macOS also gets Option+Space: Ctrl+Space switches keyboard input sources there,
+    // and when that's turned on macOS keeps the key for itself (its own shortcuts come first).
+    let ctrl_space = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
     #[cfg(target_os = "macos")]
-    let quick_key = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    let quick_keys = [Shortcut::new(Some(Modifiers::ALT), Code::Space), ctrl_space];
     #[cfg(not(target_os = "macos"))]
-    let quick_key = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
+    let quick_keys = [ctrl_space];
 
     tauri::Builder::default()
         // Launched by Windows at sign-in: start tucked away (tray + bubble only).
@@ -80,7 +82,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if shortcut == &quick_key && event.state() == ShortcutState::Pressed {
+                    if quick_keys.contains(shortcut) && event.state() == ShortcutState::Pressed {
                         main_window::quick_add(app);
                     }
                 })
@@ -92,8 +94,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            if let Err(e) = app.global_shortcut().register(quick_key) {
-                eprintln!("The quick-add shortcut is taken by another app: {e}");
+            for key in quick_keys {
+                if let Err(e) = app.global_shortcut().register(key) {
+                    eprintln!("The quick-add shortcut {key:?} is taken by another app: {e}");
+                }
             }
 
             let handle = app.handle().clone();

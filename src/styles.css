@@ -341,10 +341,22 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-w
 .time-chip button { width: 20px; height: 20px; border: 0; border-radius: 50%; background: transparent; color: inherit; display: grid; place-items: center; padding: 0; }
 .time-chip button:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .time-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.time-row input[type="time"] {
-  height: 34px; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 8px; font-weight: 800; outline: 0;
+/* Quicky's own time picker (ui/TimeField.tsx): hour, minute and an AM/PM switch. */
+.tf { display: inline-flex; align-items: center; font: 800 13px "Nunito", sans-serif; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tf select {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; font: inherit; color: inherit;
+  padding: 0 1px; outline: 0; cursor: pointer; text-align: center; border-radius: 6px;
 }
-.time-row input[type="time"]:focus { border-color: var(--accent); }
+.tf select option { color: var(--ink); background: var(--bg); }
+.tf-colon { padding: 0 1px; opacity: 0.6; }
+.tf-ampm {
+  margin-left: 5px; height: 22px; padding: 0 7px; border: 0; border-radius: 8px; cursor: pointer;
+  background: var(--accent-soft); color: var(--accent-ink); font: 800 11px "Nunito", sans-serif;
+}
+.tf-ampm:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.tf select:focus-visible, .tf-ampm:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.time-row .tf, .quiet-times .tf { height: 34px; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 4px 0 8px; }
+.time-row .tf:focus-within, .quiet-times .tf:focus-within { border-color: var(--accent); }
 .btn.small { height: 34px; padding: 0 12px; font-size: 13px; border-radius: 10px; }
 .btn.ghost-soft { border-color: transparent; background: var(--soft); }
 .time-or { font-size: 12px; color: var(--muted); font-weight: 700; margin-left: 4px; }
@@ -456,15 +468,16 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .segment.remind-modes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .segment.remind-modes button { height: 32px; font-size: 12px; }
 .time-edit { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0 4px 0 2px; border-radius: 16px; background: var(--accent-soft); }
-.time-edit input[type="time"] { border: 0; background: transparent; font: 800 13px "Nunito", sans-serif; color: var(--accent-ink); outline: 0; padding: 0 4px; width: 112px; }
+.time-edit .tf { color: var(--accent-ink); padding: 0 2px 0 8px; }
+.time-edit .tf-ampm { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .time-edit button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: var(--accent-ink); display: grid; place-items: center; padding: 0; }
 .time-edit button:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .time-edit button:disabled { opacity: 0.3; }
-.time-row input[type="date"], .every-row select {
+.time-row input[type="date"], .every-row > select {
   height: 34px; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 8px; font: 800 13px "Nunito", sans-serif; color: var(--ink); outline: 0;
 }
-.time-row input[type="date"]:focus, .every-row select:focus { border-color: var(--accent); }
-.every-row span { font-size: 13px; font-weight: 800; color: var(--sub); }
+.time-row input[type="date"]:focus, .every-row > select:focus { border-color: var(--accent); }
+.every-row > span:not(.tf) { font-size: 13px; font-weight: 800; color: var(--sub); }
 .up-chip { font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 10px; background: var(--soft); color: var(--sub); }
 .remind-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1.5px dashed var(--line); padding-top: 6px; }
 .link.danger-link { color: var(--danger); }
@@ -540,10 +553,7 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 
 /* ---- quiet hours ---- */
 .quiet-times { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; font-weight: 800; color: var(--sub); }
-.quiet-times input[type="time"] {
-  height: 32px; border: 2px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 6px; margin-left: 4px;
-  font: 800 13px "Nunito", sans-serif; color: var(--ink); outline: 0;
-}
+.quiet-times > span { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---- first-run tour ---- */
 .tour-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--ink) 35%, transparent); animation: fade 0.2s ease; }

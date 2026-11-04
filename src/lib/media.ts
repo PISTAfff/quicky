@@ -73,7 +73,10 @@ export async function startRecording(): Promise<Recording> {
       await end();
       if (!chunks.length) return null;
       const stamp = new Date().toTimeString().slice(0, 5).replace(":", "");
-      return saveBlob(new Blob(chunks, { type: "audio/webm" }), `voice-${stamp}.webm`, "audio");
+      // WebView2 records WebM; macOS's WebKit records MP4 audio (saved as .m4a so it plays back).
+      const mime = (rec.mimeType || type || "audio/webm").split(";")[0];
+      const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+      return saveBlob(new Blob(chunks, { type: mime }), `voice-${stamp}.${ext}`, "audio");
     },
     cancel() {
       void end();

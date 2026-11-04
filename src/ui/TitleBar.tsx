@@ -2,7 +2,7 @@ import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { SpacePicker } from "./SpacePicker";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { Blob, IClose, IGear, IMax, IMin, IPin, ISearch, IUnmax } from "./icons";
+import { Blob, IClose, IGear, IMax, IPin, ISearch, IUnmax } from "./icons";
 import { pinned, setPinned, setSheet } from "./state";
 import { data, flush, space } from "../lib/store";
 import { MOD_KEY, QUICK_KEY } from "../lib/platform";
@@ -53,9 +53,6 @@ export function TitleBar() {
           onClick={togglePin}
         >
           <IPin size={14} />
-        </button>
-        <button class="wb" aria-label="Minimize" onClick={() => win.minimize()}>
-          <IMin size={12} />
         </button>
         <button
           class="wb"

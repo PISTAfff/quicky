@@ -102,6 +102,9 @@ struct Carry {
     start: (i32, i32),
     at: (i32, i32),
     mover: win::Mover,
+    /// Carried with the right button to give an app a mini; false: a left drag that just moves
+    /// it (macOS and Linux, see `bubble_drag_start`).
+    mini: bool,
 }
 
 /// How far past a wall (logical px) a mini must be pushed to pop out of its app.
@@ -443,8 +446,7 @@ fn carry_step(_app: &AppHandle) -> bool {
 /// The right button came up: dropped on an app's window, that app gets its mini there (or its
 /// mini moves there); anywhere else nothing changes. Either way the bubble goes back to its spot.
 fn carry_end(app: &AppHandle) {
-    let Some(at) = state().carry.as_ref().map(|c| c.at) else { return };
-    let _ = app.emit_to(BUBBLE_LABEL, "bubble-carried", ());
+    let Some((at, mini)) = state().carry.as_ref().map(|c| (c.at, c.mini)) else { return };
     let half = side(app) / 2;
     let center = (at.0 + half, at.1 + half);
     {
@@ -452,6 +454,13 @@ fn carry_end(app: &AppHandle) {
         st.bubble.at = Some((at.0 as f64, at.1 as f64));
         st.bubble.goal = None;
     }
+    if !mini {
+        // A left drag: wherever it is now is its own spot.
+        set_home(app, center);
+        state().carry = None;
+        return;
+    }
+    let _ = app.emit_to(BUBBLE_LABEL, "bubble-carried", ());
     if let Some((under, rect)) = win::app_under(center.0, center.1).and_then(|w| win::frame(w.hwnd).map(|r| (w, r))) {
         let spot = clear_of_home(app, rect, center);
         if stick(app, &under, rect, spot).unwrap_or(false) && let Some(home) = home_center(app) {
@@ -662,20 +671,33 @@ pub fn note_focus() {
     }
 }
 
-/// Called by the bubble right before it starts a native drag.
+/// A left drag of the bubble starts. On Windows the page hands it to the system's own move
+/// (returns true). On macOS and Linux that move treats the bubble like a normal app window and
+/// offers to tile it at the screen's edges, so the bubble follows the cursor from here instead
+/// (returns false).
 #[tauri::command]
-pub fn bubble_drag_start() {
-    state().dragging = true;
+pub fn bubble_drag_start(app: AppHandle) -> bool {
+    if cfg!(windows) {
+        state().dragging = true;
+        return true;
+    }
+    carry(&app, false);
+    false
 }
 
 /// The bubble is being dragged with the right button: it follows the pointer, and dropped on an
 /// app's window it gives that app a mini (a left drag just moves it).
 #[tauri::command]
 pub fn bubble_carry_start(app: AppHandle) {
-    let Some(b) = window(&app) else { return };
+    carry(&app, true);
+}
+
+/// Makes the bubble follow the cursor until the button comes up (the right one for a `mini`).
+fn carry(app: &AppHandle, mini: bool) {
+    let Some(b) = window(app) else { return };
     let (Ok(p), Some(mover)) = (b.outer_position(), win::Mover::new(&b)) else { return };
-    state().carry = Some(Carry { cursor0: win::cursor(), start: (p.x, p.y), at: (p.x, p.y), mover });
-    follow(&app, true, carry_step, carry_end);
+    state().carry = Some(Carry { cursor0: win::cursor(), start: (p.x, p.y), at: (p.x, p.y), mover, mini });
+    follow(app, mini, carry_step, carry_end);
 }
 
 // ---- dragging a mini inside its app ---------------------------------------------------------

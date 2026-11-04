@@ -293,8 +293,11 @@ button.addEventListener("pointermove", (e) => {
     return;
   }
   press = null;
-  // Tell Rust first: it pauses repositioning and saves the spot when the button comes up.
-  void invoke("bubble_drag_start").then(() => win.startDragging());
+  // Tell Rust first: it pauses repositioning and saves the spot when the button comes up. On
+  // Windows the system's own move takes it from there; on macOS and Linux Rust moves it.
+  void invoke<boolean>("bubble_drag_start").then((system) => {
+    if (system) void win.startDragging();
+  });
 });
 button.addEventListener("pointerup", () => {
   button.classList.remove("pressed");

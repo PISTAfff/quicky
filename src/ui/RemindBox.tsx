@@ -3,6 +3,7 @@ import { clearSnooze, clock, setReminder, snoozeTask } from "../lib/store";
 import { dayKey, describeReminder, hhmm, reminderOf, time12, upcoming, whenLabel, type RemindMode, type Reminder, type Task } from "../lib/model";
 import { IBell, IClose, IPlus } from "./icons";
 import { WeekPicker } from "./WeekPicker";
+import { TimeField } from "./TimeField";
 
 const MODES: [RemindMode, string][] = [
   ["once", "Once"],
@@ -122,8 +123,7 @@ export function RemindBox(p: { task: Task }) {
           <div class="time-row">
             <label class="sr" for="once-date">Date</label>
             <input id="once-date" type="date" value={dateInput(r()!.at ?? Date.now())} onChange={(e) => e.currentTarget.value && save({ at: atDay(new Date(`${e.currentTarget.value}T00:00`).getTime(), hhmm(new Date(r()!.at ?? Date.now()))) })} />
-            <label class="sr" for="once-time">Time</label>
-            <input id="once-time" type="time" value={hhmm(new Date(r()!.at ?? Date.now()))} onChange={(e) => e.currentTarget.value && save({ at: atDay(r()!.at ?? Date.now(), e.currentTarget.value) })} />
+            <TimeField id="once-time" label="Time" value={hhmm(new Date(r()!.at ?? Date.now()))} onChange={(hm) => save({ at: atDay(r()!.at ?? Date.now(), hm) })} />
           </div>
           <div class="quick-remind">
             <button class="chip-btn" onClick={() => save({ at: fromNow(30) })}>In 30 min</button>
@@ -142,12 +142,11 @@ export function RemindBox(p: { task: Task }) {
             <For each={times()}>
               {(hm, i) => (
                 <span class="time-edit">
-                  <label class="sr" for={`t-${i()}`}>Reminder time {i() + 1}</label>
-                  <input
+                  <TimeField
                     id={`t-${i()}`}
-                    type="time"
+                    label={`Reminder time ${i() + 1}`}
                     value={hm}
-                    onChange={(e) => setTimes(times().map((x, j) => (j === i() ? e.currentTarget.value : x)))}
+                    onChange={(v) => setTimes(times().map((x, j) => (j === i() ? v : x)))}
                   />
                   <button aria-label={`Remove ${time12(hm)}`} disabled={times().length < 2} onClick={() => setTimes(times().filter((_, j) => j !== i()))}>
                     <IClose size={10} />
@@ -184,11 +183,9 @@ export function RemindBox(p: { task: Task }) {
               <For each={EVERY}>{([n, label]) => <option value={n}>{label}</option>}</For>
             </select>
             <span>from</span>
-            <label class="sr" for="every-from">From</label>
-            <input id="every-from" type="time" value={r()!.from ?? "09:00"} onChange={(e) => e.currentTarget.value && save({ from: e.currentTarget.value })} />
+            <TimeField id="every-from" label="From" value={r()!.from ?? "09:00"} onChange={(hm) => save({ from: hm })} />
             <span>to</span>
-            <label class="sr" for="every-to">To</label>
-            <input id="every-to" type="time" value={r()!.to ?? "18:00"} onChange={(e) => e.currentTarget.value && save({ to: e.currentTarget.value })} />
+            <TimeField id="every-to" label="To" value={r()!.to ?? "18:00"} onChange={(hm) => save({ to: hm })} />
           </div>
         </Show>
 

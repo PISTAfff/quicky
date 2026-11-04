@@ -1,4 +1,4 @@
-**New:** reminders show right on time (they could come up to a minute late). Also recent: a left drag just moves the bubble; drag it onto an app with the right mouse button to give that app a mini.
+**New:** times are picked with AM/PM everywhere (no more 24-hour boxes on some Macs), and the minimize button is gone (close tucks Quicky away). On macOS: the mic asks for permission and voice notes play back, dragging the bubble no longer offers to tile it at the screen edge, and Ctrl+Space works as well as Option+Space.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

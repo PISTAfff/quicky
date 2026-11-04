@@ -24,7 +24,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 
 | | |
 |---|---|
-| **Ctrl+Space** (**⌥ Space** on macOS) | Open Quicky from anywhere and jump to the add box (in an app with a mini, that app's list) |
+| **Ctrl+Space** (also **⌥ Space** on macOS) | Open Quicky from anywhere and jump to the add box (in an app with a mini, that app's list) |
 | **Enter** | Add the task |
 | **Click the circle** | To do → Doing → Done |
 | **Right-click the circle** | Step back |
@@ -38,7 +38,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 - **Done drawer:** finished tasks hide in the drawer, grouped by day. Restore any of them to today. Ticking a task off shows a quick Undo.
 - **Media:** attach files with the paperclip, record a voice note with the mic (a live wave shows your voice while it records; ✕ discards, ■ saves), paste images into the add box, or drop files anywhere on the window. If a task is open, dropped files attach to it.
 - **Any size:** drag the window to any shape, or maximize it with the square in the title bar. It becomes a mini "next up" panel when small, a list by default, and a board with To do / Doing / Done columns when wide (drag cards between columns). The pin button keeps it on top.
-- **Bubble:** while the app is closed or minimized, a little Quicky waits on screen (bottom-left at first), always on top, even over the taskbar, with a badge showing how many tasks are left. Click it to open the app right next to it. Drag it anywhere, on any screen, even over an app (to give an app a mini, drag the bubble onto it with the right mouse button instead); right-click to lock it in place, send it back to the corner, or hide it. Locked, it won't move: tug it and it behaves like jelly: the side you pull stretches after your pointer, it gets angrier the harder you pull, and it snaps back and wobbles to a stop when you let go. Bring a hidden bubble back from Settings or the tray menu.
+- **Bubble:** while the app is closed, a little Quicky waits on screen (bottom-left at first), always on top, even over the taskbar, with a badge showing how many tasks are left. Click it to open the app right next to it. Drag it anywhere, on any screen, even over an app (to give an app a mini, drag the bubble onto it with the right mouse button instead); right-click to lock it in place, send it back to the corner, or hide it. Locked, it won't move: tug it and it behaves like jelly: the side you pull stretches after your pointer, it gets angrier the harder you pull, and it snaps back and wobbles to a stop when you let go. Bring a hidden bubble back from Settings or the tray menu.
 - **Starts at sign-in:** on by default. Quicky starts quietly at sign-in (tray icon and bubble only). Turn it off, or hide the bubble, in Settings (the gear in the title bar).
 - **Reminders:** in a task, *Remind me* has a switch and four ways to schedule: **Once** (a date and time, or quick picks like "In 30 min" / "Tomorrow 9 AM"), **Daily** (any number of editable times, with Morning/Noon/Afternoon/Evening presets), **Some days** (pick the weekdays), and **Repeat** (every 15 min to 3 hours between two times). It shows a plain summary and the next few times; *Not today* skips today, *Stop reminders* clears it, and "Nudge me once in 15m/30m/1h/2h" adds a one-off. The bell pill (or Settings → Reminders → *See all*) lists every reminder across all lists to pause, resume or stop. Times show as AM/PM. Only tasks still to do remind you. When it's time, Quicky pours out of the bubble and fills every screen (the task shows on the bubble's screen) until you answer: **D** I'm on it, **Enter** Done, **O** open the task, **S**/**Esc** snooze 10 min, **1/3/4** snooze 5/30/60 min.
 - **Search:** the magnifier in the title bar (or Ctrl+F) searches every list at once, done tasks too: titles, notes, steps and file names, ignoring case and accents.
@@ -63,7 +63,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 
 Everything works the same, with a few differences:
 
-- **macOS:** the quick-add shortcut is **⌥ Space** (Ctrl+Space switches keyboard input sources there). Quicky lives in the menu bar and the Dock; clicking the Dock icon opens it. Minis work with any app.
+- **macOS:** the quick-add shortcut is **⌥ Space**, and **Ctrl+Space** too unless macOS uses it to switch keyboard input sources (then macOS keeps it). The first voice note asks for the microphone. Quicky lives in the menu bar and the Dock; clicking the Dock icon opens it. Minis work with any app.
 - **Linux:** Quicky runs on X11 (through XWayland in a Wayland session), because Wayland doesn't let an app place its own windows. Minis work with apps that run on X11 too; apps running natively on Wayland get the normal bubble. The tray icon opens a menu (*Show Quicky*, *Show bubble*, *Quit*) rather than toggling Quicky with a click.
 
 ## Your data
@@ -101,7 +101,7 @@ The installer lands in `src-tauri/target/release/bundle/` (`nsis/` on Windows, `
 **Releasing:** bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a tag. GitHub Actions builds Windows, macOS and Linux into one release, signs the update files with the `TAURI_SIGNING_PRIVATE_KEY` repository secret (its password secret is empty), and publishes the release with `latest.json`, which installed copies read to update themselves. Keep the private key safe: without it, existing installs can't trust new versions.
 
 ```bash
-git tag v0.1.29 && git push origin v0.1.29
+git tag v0.1.30 && git push origin v0.1.30
 ```
 
 Stack: [Tauri 2](https://tauri.app) (Rust + the system web view: WebView2, WebKit or WebKitGTK) and [SolidJS](https://www.solidjs.com).
