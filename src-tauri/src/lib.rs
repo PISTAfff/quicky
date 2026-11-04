@@ -145,6 +145,10 @@ pub fn run() {
                 }
                 // A popover: losing focus to another app tucks Quicky away (unless pinned).
                 WindowEvent::Focused(false) if window.label() == "main" => main_window::on_main_blur(app),
+                // Minimized: tucked away like closing (also when it wasn't in focus).
+                WindowEvent::Resized(_) if window.label() == "main" => {
+                    main_window::tuck_if_minimized(app);
+                }
                 WindowEvent::ScaleFactorChanged { .. } if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) => bubble::place(app),
                 _ => {}
             }

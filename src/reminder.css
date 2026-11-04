@@ -40,7 +40,8 @@ body { font: 700 16px/1.35 "Nunito", "Segoe UI", sans-serif; color: var(--on-acc
 .blob-wrap { width: 180px; height: 162px; animation: bounce 1.6s ease-in-out infinite; }
 .blob { width: 100%; height: 100%; overflow: visible; }
 .blob .body { fill: color-mix(in srgb, var(--accent) 70%, white); }
-.blob .eyes { transform-box: fill-box; transform-origin: center; animation: look 4s ease-in-out infinite; }
+.blob .eyes { transform-box: fill-box; transform-origin: center; animation: look 4s ease-in-out infinite; fill: var(--on-accent); }
+.blob .mouth { stroke: var(--on-accent); }
 @keyframes bounce { 0%, 100% { transform: translateY(0) scale(1, 1); } 45% { transform: translateY(-14px) scale(0.97, 1.03); } 60% { transform: translateY(0) scale(1.05, 0.95); } }
 @keyframes look { 0%, 40%, 100% { transform: translateX(0) scaleY(1); } 45% { transform: translateX(0) scaleY(0.1); } 50% { transform: translateX(0) scaleY(1); } 70% { transform: translateX(1.5px); } 85% { transform: translateX(-1.5px); } }
 

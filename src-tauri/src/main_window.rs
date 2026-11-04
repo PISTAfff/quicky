@@ -285,6 +285,9 @@ pub fn on_main_blur(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(180));
         let Some(main) = app.get_webview_window("main") else { return };
+        if tuck_if_minimized(&app) {
+            return;
+        }
         if PINNED.load(Ordering::Relaxed) || main.is_focused().unwrap_or(true) || !main_on_screen(&app) {
             return;
         }
@@ -296,6 +299,21 @@ pub fn on_main_blur(app: &AppHandle) {
         let _ = main.hide();
         bubble::sync(&app);
     });
+}
+
+/// Minimizing Quicky (the taskbar, Win+Down, ⌘M) tucks it away like closing does, pinned or not:
+/// a minimized Quicky would only sit in the taskbar, while hidden it comes back from the bubble,
+/// the tray or the shortcut (`show_main` restores it). Its spot inside an app isn't remembered
+/// from the minimized frame. Returns whether it was minimized.
+pub fn tuck_if_minimized(app: &AppHandle) -> bool {
+    let Some(main) = app.get_webview_window("main") else { return false };
+    if !main.is_minimized().unwrap_or(false) || !main.is_visible().unwrap_or(false) {
+        return false;
+    }
+    let _ = app.emit_to("main", "flush", ());
+    let _ = main.hide();
+    bubble::sync(app);
+    true
 }
 
 #[cfg(test)]

@@ -21,6 +21,19 @@ const DOCK_LAYERS: [&[u8]; 3] = [
     include_bytes!("../live-icons/dock-over.png"),
 ];
 pub(crate) const GRAPE: [u8; 3] = [0x6d, 0x4c, 0xff];
+/// The outline colour. On a light accent the face (white in the layers) is drawn in it instead.
+const INK: [u8; 3] = [0x2b, 0x25, 0x40];
+
+/// Whether the face reads better in ink than in white on this accent: the same rule as the
+/// app's `onAccent` (whichever contrasts more).
+fn dark_face(rgb: [u8; 3]) -> bool {
+    let lin = |c: u8| {
+        let c = c as f64 / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    let lum = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    1.05 / (lum + 0.05) < (lum + 0.05) / 0.072
+}
 
 fn decode_rgba(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     let mut dec = png::Decoder::new(bytes);
@@ -46,13 +59,18 @@ fn paint_over(d: &mut [u8], s: &[u8]) {
     d[3] = (oa * 255.0).round() as u8;
 }
 
-/// Stacks the layers bottom to top, with layer `body` tinted to `rgb`.
+/// Stacks the layers bottom to top, with layer `body` tinted to `rgb` (and the face over it in ink
+/// when `rgb` is light).
 pub(crate) fn blob_icon(layers: &[&[u8]], body: usize, rgb: [u8; 3]) -> Option<tauri::image::Image<'static>> {
+    let ink_face = dark_face(rgb);
     let mut out: Option<(Vec<u8>, u32, u32)> = None;
     for (i, bytes) in layers.iter().enumerate() {
         let (mut px, w, h) = decode_rgba(bytes)?;
         if i == body {
             px.chunks_mut(4).for_each(|p| p[..3].copy_from_slice(&rgb));
+        } else if i > body && ink_face {
+            // The face is the white part of what sits over the body; the outline is already ink.
+            px.chunks_mut(4).filter(|p| p[0] > 200 && p[1] > 200 && p[2] > 200).for_each(|p| p[..3].copy_from_slice(&INK));
         }
         match out.as_mut() {
             None => out = Some((px, w, h)),
@@ -102,5 +120,13 @@ mod tests {
             assert_eq!(at(x, y), vec![0xd6, 0x33, 0x6c, 255], "body pixel takes the accent");
             assert_eq!(at(0, 0)[3], 0, "corners stay transparent");
         }
+    }
+
+    #[test]
+    fn light_accents_get_an_ink_face() {
+        assert!(!dark_face(GRAPE));
+        assert!(!dark_face([0x00, 0x00, 0x00]));
+        assert!(dark_face([0xff, 0xd1, 0x66])); // a pale yellow
+        assert!(dark_face([0xff, 0xff, 0xff]));
     }
 }

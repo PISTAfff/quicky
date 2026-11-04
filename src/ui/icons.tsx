@@ -1,4 +1,5 @@
 import type { JSX } from "solid-js";
+import { isHex, onAccent } from "../lib/theme-colors";
 
 type P = { size?: number; class?: string };
 
@@ -69,7 +70,7 @@ export const Blob = (p: { size?: number; color?: string; mood?: "done" }) => {
           <path d="M11 18q3-3 6 0M23 18q3-3 6 0" />
         </g>
       ) : (
-        <g fill="#fff">
+        <g style={{ fill: p.color && isHex(p.color) ? onAccent(p.color) : "var(--on-accent, #fff)" }}>
           <rect x="12" y="13" width="4" height="7" rx="2" />
           <rect x="24" y="13" width="4" height="7" rx="2" />
         </g>

@@ -9,7 +9,7 @@
 // bubble.
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { storedAccent } from "./lib/theme-colors";
+import { onAccent, storedAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
 
 type Kind = "split" | "pop" | "hide";
@@ -46,15 +46,17 @@ const MINI_DY = 1.34;
 const INK = "#2b2540";
 const RED = "#ff3b3b";
 
+/** The face reads on the accent: white, or ink on light accents (like `--on-accent`). */
+const FACE = onAccent(storedAccent());
 const FACES: Record<Face, string> = {
-  happy: `<g fill="#fff"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g><path d="M17.2 25.2q2.8 2.4 5.6 0" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>`,
-  clear: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`,
+  happy: `<g fill="${FACE}"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g><path d="M17.2 25.2q2.8 2.4 5.6 0" fill="none" stroke="${FACE}" stroke-width="1.7" stroke-linecap="round"/>`,
+  clear: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="${FACE}" stroke-width="2.6" stroke-linecap="round"/>`,
   angry:
-    `<g fill="#fff" transform="translate(0 16.5) scale(1 0.55) translate(0 -16.5)"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g>` +
+    `<g fill="${FACE}" transform="translate(0 16.5) scale(1 0.55) translate(0 -16.5)"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g>` +
     `<path d="M17.2 26.8q2.8-2.2 5.6 0" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>` +
     `<path d="M10.5 10.5l6 2.4M29.5 10.5l-6 2.4" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/>`,
   squeeze: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`,
-  surprised: `<g fill="#fff"><rect x="11.5" y="11.5" width="5" height="9" rx="2.5"/><rect x="23.5" y="11.5" width="5" height="9" rx="2.5"/></g><circle cx="20" cy="26.5" r="1.8" fill="#fff"/>`,
+  surprised: `<g fill="${FACE}"><rect x="11.5" y="11.5" width="5" height="9" rx="2.5"/><rect x="23.5" y="11.5" width="5" height="9" rx="2.5"/></g><circle cx="20" cy="26.5" r="1.8" fill="${FACE}"/>`,
 };
 
 // ---- helpers ------------------------------------------------------------------------------
