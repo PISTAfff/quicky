@@ -3,7 +3,7 @@ import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { sfx } from "./sfx";
 import {
-  rollover, emptyData, dayKey, plusDays, uid, weekday,
+  rollover, emptyData, dayKey, plusDays, uid, weekday, mergeData, sameData,
   type Data, type Task, type Status, type Attachment, type Repeat, type Reminder, type Step,
 } from "./model";
 
@@ -18,6 +18,18 @@ export const [loadError, setLoadError] = createSignal<string | null>(null);
 let loaded = false;
 let dirty = false;
 let timer: number | undefined;
+let retry: number | undefined;
+/** What this window last read from or wrote to quicky.json: the base for merging another PC's changes. */
+let base: Data = emptyData();
+/** Saves and merges run one at a time, in order. */
+let queue: Promise<unknown> = Promise.resolve();
+const queued = <T>(job: () => Promise<T>): Promise<T> => {
+  const next = queue.then(job, job);
+  queue = next.catch(() => {});
+  return next;
+};
+/** Rust's answer when quicky.json changed on disk since this window read it (another PC). */
+const CHANGED = "CHANGED_ON_DISK";
 
 function scheduleSave() {
   if (!loaded) return;
@@ -26,16 +38,63 @@ function scheduleSave() {
   timer = window.setTimeout(flush, 250);
 }
 
-export async function flush() {
+export function flush() {
   clearTimeout(timer);
+  return queued(() => save());
+}
+
+async function save(attempt = 0): Promise<void> {
+  clearTimeout(retry);
   if (!loaded || !dirty) return;
   dirty = false;
+  const json = JSON.stringify(unwrap(data));
   try {
-    await invoke("save_data", { json: JSON.stringify(unwrap(data)) });
+    await invoke("save_data", { json });
+    base = JSON.parse(json);
   } catch (e) {
     dirty = true;
-    showToast(`Couldn't save: ${e}`);
+    // Another PC's changes reached the file first: take them in, then save the merge.
+    const changed = String(e).includes(CHANGED);
+    if (changed && attempt < 3 && (await mergeFromDisk())) return save(attempt + 1);
+    showToast(changed ? "Couldn't save yet: your tasks are changing on another PC. Trying again." : `Couldn't save: ${e}`);
+    // A sync client or virus scanner may hold the file for a moment: try again.
+    retry = window.setTimeout(() => void flush(), 5000);
   }
+}
+
+function parseData(raw: string): Data {
+  const parsed: Data = JSON.parse(raw);
+  if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.repeats)) throw new Error("unexpected format");
+  return parsed;
+}
+
+/** Merges what's in quicky.json now into this window's data. False when it couldn't be read. */
+async function mergeFromDisk(): Promise<boolean> {
+  let theirs: Data;
+  try {
+    const raw = await invoke<string | null>("load_data");
+    if (raw === null) return false; // gone from disk: the next save writes it again
+    theirs = parseData(raw);
+  } catch {
+    return false;
+  }
+  // This window may have rolled its tasks onto today since it last read the file (a laptop
+  // waking up): compare against the base rolled the same way, or every open task would look
+  // edited here and undo what the other PC finished or deleted.
+  const merged = mergeData(rollover(base, dayKey()), unwrap(data), theirs);
+  if (!sameData(merged, unwrap(data))) setData(reconcile(structuredClone(merged)));
+  base = theirs;
+  if (!sameData(merged, theirs)) dirty = true;
+  tick();
+  return true;
+}
+
+/** On focus and on the reminder tick: take in another PC's changes to quicky.json. */
+export function checkDisk() {
+  return queued(async () => {
+    if (!loaded || !(await invoke<boolean>("data_changed").catch(() => false))) return;
+    if ((await mergeFromDisk()) && dirty) await save();
+  });
 }
 
 function mutate(fn: (d: Data) => void) {
@@ -64,9 +123,10 @@ async function load() {
   loaded = false;
   setLoadError(null);
   try {
-    const raw = await invoke<string>("load_data");
-    const parsed: Data = raw ? JSON.parse(raw) : emptyData();
-    if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.repeats)) throw new Error("unexpected format");
+    // None when the folder has no quicky.json yet; an empty or unreadable one is an error.
+    const raw = await invoke<string | null>("load_data");
+    const parsed = raw === null ? emptyData() : parseData(raw);
+    base = structuredClone(parsed);
     setData(reconcile(parsed));
     loaded = true;
     tick();
@@ -85,7 +145,15 @@ export async function init() {
 
 export async function chooseDataDir(path: string) {
   await flush();
-  const dir = await invoke<string>("set_data_dir", { path });
+  // Nothing may be saved into the new folder before it's been read.
+  loaded = false;
+  let dir: string;
+  try {
+    dir = await invoke<string>("set_data_dir", { path });
+  } catch (e) {
+    loaded = true; // still on the old folder: keep saving there
+    throw e;
+  }
   setDataDir(dir);
   await load();
 }

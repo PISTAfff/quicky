@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, 
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
-  addAttachments, addTaskTo, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, spaceName, tick,
+  addAttachments, addTaskTo, checkDisk, data, dataDir, flush, init, loadError, nameSpace, ready, setSpace, setToast, showToast, space, spaceName, tick,
   toast, today,
 } from "./lib/store";
 import { importPaths } from "./lib/media";
@@ -86,7 +86,12 @@ export default function App() {
       frame = requestAnimationFrame(() => setMode(modeFor(innerWidth, innerHeight)));
     };
     addEventListener("resize", onResize);
-    addEventListener("focus", tick);
+    // Back in focus: maybe a new day, and maybe another PC's changes in a synced folder.
+    const onFocus = () => {
+      tick();
+      void checkDisk();
+    };
+    addEventListener("focus", onFocus);
     const minute = setInterval(tick, 60_000);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && sheet()) setSheet(null);
@@ -117,7 +122,7 @@ export default function App() {
     unlisten.push(() => document.removeEventListener("visibilitychange", onVisible));
     unlisten.push(
       () => removeEventListener("resize", onResize),
-      () => removeEventListener("focus", tick),
+      () => removeEventListener("focus", onFocus),
       () => removeEventListener("keydown", onKey),
       () => removeEventListener("contextmenu", onMenu),
       () => clearInterval(minute),

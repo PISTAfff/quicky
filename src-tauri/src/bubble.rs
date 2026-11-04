@@ -282,33 +282,46 @@ fn apply(app: &AppHandle, force: bool) {
     if !settled() {
         return;
     }
+    // Moving a window asks Tauri for its handle, which waits on the main thread; the main thread
+    // takes STATE too (`sync`), so the moves happen only after the lock is let go.
     if let (Some(b), Some(spot)) = (window(app), normal_spot(app)) {
         let visible = b.is_visible().unwrap_or(false);
-        aim(&b, &mut state().bubble, spot, force || !visible);
+        let to = aim(&mut state().bubble, spot, force || !visible, force);
+        if let Some((x, y)) = to {
+            win::move_to(&b, x, y);
+        }
     }
     let Some(m) = mini_window(app) else { return };
     let target = mini_target(app);
     let space = target.as_ref().map(|(_, key)| key.clone());
     let locked = locked_for(app, space.as_deref());
     let visible = m.is_visible().unwrap_or(false);
-    let mut st = state();
-    if force || st.space.as_ref() != Some(&space) {
-        // Tell the page whose mini it is now (whose tasks its badge counts, and its lock).
-        let _ = app.emit_to(MINI_LABEL, "bubble-mini", json!({ "space": space, "locked": locked }));
-        st.space = Some(space);
-    }
-    if let Some((spot, _)) = target {
-        aim(&m, &mut st.mini, spot, force || !visible);
+    let to = {
+        let mut st = state();
+        if force || st.space.as_ref() != Some(&space) {
+            // Tell the page whose mini it is now (whose tasks its badge counts, and its lock).
+            let _ = app.emit_to(MINI_LABEL, "bubble-mini", json!({ "space": space, "locked": locked }));
+            st.space = Some(space);
+        }
+        target.and_then(|(spot, _)| aim(&mut st.mini, spot, force || !visible, force))
+    };
+    if let Some((x, y)) = to {
+        win::move_to(&m, x, y);
     }
 }
 
-/// Points a window at `spot`: straight there when `jump`, otherwise `glide` takes it there.
-fn aim(w: &WebviewWindow, g: &mut Glide, spot: (i32, i32), jump: bool) {
+/// Points a glide at `spot`: straight there when `jump`, otherwise `glide` takes it there.
+/// Returns where to move the window now, if anywhere: a jump to where it already is is skipped
+/// (hidden windows are re-aimed every tick) unless `always`.
+fn aim(g: &mut Glide, spot: (i32, i32), jump: bool, always: bool) -> Option<(i32, i32)> {
     g.goal = Some(spot);
-    if jump || g.at.is_none() {
-        win::move_to(w, spot.0, spot.1);
-        g.at = Some((spot.0 as f64, spot.1 as f64));
+    if !jump && g.at.is_some() {
+        return None;
     }
+    let there = (spot.0 as f64, spot.1 as f64);
+    let moved = always || g.at != Some(there);
+    g.at = Some(there);
+    moved.then_some(spot)
 }
 
 /// One step of gliding both towards their goals. Returns true while either is still on the way.
@@ -318,18 +331,29 @@ fn glide(app: &AppHandle, dt_ms: f64) -> bool {
     }
     let k = 1.0 - (-dt_ms / GLIDE_MS).exp();
     let (b, m) = (window(app), mini_window(app));
-    let mut st = state();
-    let bubble = b.is_some_and(|b| step(&b, &mut st.bubble, k));
-    let mini = m.is_some_and(|m| step(&m, &mut st.mini, k));
-    bubble || mini
+    let (bubble, mini) = {
+        let mut st = state();
+        (b.as_ref().map(|_| step(&mut st.bubble, k)), m.as_ref().map(|_| step(&mut st.mini, k)))
+    };
+    let mut moving = false;
+    for (w, s) in [(b, bubble), (m, mini)] {
+        if let (Some(w), Some((on_the_way, to))) = (w, s) {
+            moving |= on_the_way;
+            if let Some((x, y)) = to {
+                win::move_to(&w, x, y);
+            }
+        }
+    }
+    moving
 }
 
-/// Moves a window a step (`k` of the way) towards its goal. Returns true while still on the way.
-fn step(w: &WebviewWindow, g: &mut Glide, k: f64) -> bool {
-    let (Some((x, y)), Some((gx, gy))) = (g.at, g.goal) else { return false };
+/// A step (`k` of the way) towards the goal: whether it's still on the way, and where to move the
+/// window now (only when that's a different pixel).
+fn step(g: &mut Glide, k: f64) -> (bool, Option<(i32, i32)>) {
+    let (Some((x, y)), Some((gx, gy))) = (g.at, g.goal) else { return (false, None) };
     let (gx, gy) = (gx as f64, gy as f64);
     if (gx - x).abs() < 0.5 && (gy - y).abs() < 0.5 {
-        return false;
+        return (false, None);
     }
     let (mut nx, mut ny) = (x + (gx - x) * k, y + (gy - y) * k);
     if (gx - nx).abs() < 0.6 && (gy - ny).abs() < 0.6 {
@@ -337,11 +361,8 @@ fn step(w: &WebviewWindow, g: &mut Glide, k: f64) -> bool {
     }
     let (px, py) = (x.round() as i32, y.round() as i32);
     let (rx, ry) = (nx.round() as i32, ny.round() as i32);
-    if (rx, ry) != (px, py) {
-        win::move_to(w, rx, ry);
-    }
     g.at = Some((nx, ny));
-    true
+    (true, ((rx, ry) != (px, py)).then_some((rx, ry)))
 }
 
 /// Sizes both exactly and puts them where they belong (startup, reset, display changes).

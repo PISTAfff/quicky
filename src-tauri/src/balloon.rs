@@ -112,14 +112,17 @@ fn place(app: &AppHandle, b: &WebviewWindow, w: &WebviewWindow) {
     let right = wa.x + size.width as i32 - bw;
     let x = (cx - bw / 2).clamp(wa.x, right.max(wa.x));
     let tail = ((cx - x) as f64 / scale).round() as i32;
-    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    if *last == Some((x, y, below, tail)) {
-        return;
-    }
+    // Let go of LAST before moving: the move waits on the main thread, which reads LAST too.
+    let geometry_changed = {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if *last == Some((x, y, below, tail)) {
+            return;
+        }
+        let changed = last.is_none_or(|l| (l.2, l.3) != (below, tail));
+        *last = Some((x, y, below, tail));
+        changed
+    };
     win::move_to(w, x, y);
-    let geometry_changed = last.is_none_or(|l| (l.2, l.3) != (below, tail));
-    *last = Some((x, y, below, tail));
-    drop(last);
     if geometry_changed {
         let _ = app.emit_to(LABEL, "balloon-geom", json!({ "below": below, "tail": tail }));
     }

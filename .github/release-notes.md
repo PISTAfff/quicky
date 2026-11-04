@@ -1,4 +1,4 @@
-**New:** minimizing Quicky (the taskbar, Win+Down, Cmd+M) tucks it away like closing does, and on light accent colours Quicky gets dark eyes, on the bubble, the reminder and the taskbar, Dock and tray icons. Also recent: an AM/PM time picker everywhere, and Mac fixes for the mic, dragging and Ctrl+Space.
+**New:** Quicky keeps your tasks safe when its folder syncs between two PCs (each PC's changes are merged instead of one overwriting the other), never starts over from an empty or damaged quicky.json, and retries a save when OneDrive or a virus scanner holds the file. Also fixed: a rare freeze while the bubble glides, Alt+F4 on a reminder hiding the bubble and stopping later reminders, and Quicky opening off screen after it was minimized.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

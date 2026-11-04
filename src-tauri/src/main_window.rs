@@ -91,6 +91,7 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
     match bubble::active_stuck(app) {
         Some((entry, focus, rect)) => {
             let Some(main) = app.get_webview_window("main") else { return };
+            restore_if_minimized(&main);
             remember_app_window(app);
             let s = bubble::scale(app);
             let margin = (14.0 * s) as i32;
@@ -102,7 +103,7 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
             // Leaving the general window: remember its size and spot to restore later.
             // (Each placement() lock is let go before the next: it isn't re-entrant.)
             let from_general = placement().space.is_none();
-            if let (true, Some(f)) = (from_general, win::own_frame(&main)) {
+            if let (true, Some(f)) = (from_general, win::own_frame(&main).filter(on_screen_frame)) {
                 placement().general = Some((f.left, f.top, (f.right - f.left) as u32, (f.bottom - f.top) as u32));
             }
             if rect.right - rect.left >= min_w + 2 * margin && rect.bottom - rect.top >= min_h + 2 * margin {
@@ -126,9 +127,11 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
                 }
                 set_visible_frame(&main, x, y, min_w, min_h);
             }
+            // Measured before locking: asking for the frame can wait on the main thread.
+            let placed = win::own_frame(&main);
             let mut p = placement();
             p.space = Some((entry.exe.clone(), focus.hwnd));
-            p.placed_frame = win::own_frame(&main);
+            p.placed_frame = placed;
             drop(p);
             let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": bubble::space_key(&entry.exe), "name": entry.name }));
             show_main(app);
@@ -140,6 +143,7 @@ pub fn open_for_context(app: &AppHandle, near_bubble: bool) {
 /// Opens the general list (next to the bubble when `near_bubble`), whatever app is in front.
 pub fn open_general(app: &AppHandle, near_bubble: bool) {
     let Some(main) = app.get_webview_window("main") else { return };
+    restore_if_minimized(&main);
     remember_app_window(app);
     leave_space(&main);
     let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
@@ -189,6 +193,7 @@ fn leave_space(main: &tauri::WebviewWindow) {
 /// tray, brought to the front so the tray's hidden-icons popup closes.
 pub fn open_from_tray(app: &AppHandle, (x, y): (i32, i32)) {
     let Some(main) = app.get_webview_window("main") else { return };
+    restore_if_minimized(&main);
     remember_app_window(app);
     leave_space(&main);
     let _ = app.emit_to("main", "open-space", serde_json::json!({ "key": null }));
@@ -225,6 +230,20 @@ pub fn open_from_tray(app: &AppHandle, (x, y): (i32, i32)) {
     }
     show_main(app);
     win::force_foreground(&main);
+}
+
+/// A minimized Quicky is tucked away still minimized (`tuck_if_minimized`). Before it's measured
+/// or placed it comes back to its normal frame: minimized, Windows reports it at its off-screen
+/// spot (-32000), which would be remembered as the general window's place and restored later.
+fn restore_if_minimized(main: &tauri::WebviewWindow) {
+    if main.is_minimized().unwrap_or(false) {
+        let _ = main.unminimize();
+    }
+}
+
+/// Not the off-screen spot (-32000) Windows reports for a minimized window.
+fn on_screen_frame(f: &Rect) -> bool {
+    f.left > -30000 && f.top > -30000
 }
 
 /// Places a window so its *visible* frame is exactly (x, y, w, h): Windows adds invisible resize
@@ -303,8 +322,8 @@ pub fn on_main_blur(app: &AppHandle) {
 
 /// Minimizing Quicky (the taskbar, Win+Down, ⌘M) tucks it away like closing does, pinned or not:
 /// a minimized Quicky would only sit in the taskbar, while hidden it comes back from the bubble,
-/// the tray or the shortcut (`show_main` restores it). Its spot inside an app isn't remembered
-/// from the minimized frame. Returns whether it was minimized.
+/// the tray or the shortcut (`restore_if_minimized` and `show_main` restore it). Its spot isn't
+/// remembered from the minimized frame. Returns whether it was minimized.
 pub fn tuck_if_minimized(app: &AppHandle) -> bool {
     let Some(main) = app.get_webview_window("main") else { return false };
     if !main.is_minimized().unwrap_or(false) || !main.is_visible().unwrap_or(false) {

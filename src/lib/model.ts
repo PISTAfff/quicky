@@ -372,3 +372,81 @@ export function inQuietHours(now: Date, from: string, to: string): boolean {
   if (a === b) return false;
   return a < b ? m >= a && m < b : m >= a || m < b;
 }
+
+// ---- two copies of quicky.json --------------------------------------------------
+// The folder can be synced between PCs (OneDrive, Dropbox): when another PC's changes reach
+// quicky.json, they're merged with this PC's instead of one side writing over the other.
+
+/** The same JSON text whatever order the keys were added in. */
+const stable = (v: unknown) =>
+  JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : x,
+  );
+
+/** Same content (key order and missing-vs-undefined don't count). */
+export const sameData = (a: unknown, b: unknown) => stable(a) === stable(b);
+
+/**
+ * Three-way merge by id: whichever side changed an item wins (both changed: `mine`). An item
+ * deleted on one side goes, unless the other side changed it since (nobody's edit is lost); new
+ * items from both sides stay.
+ */
+function mergeById<T extends { id: string }>(base: T[], mine: T[], theirs: T[]): T[] {
+  const index = (xs: T[]) => new Map(xs.map((x) => [x.id, x]));
+  const [b, m, t] = [index(base), index(mine), index(theirs)];
+  const ids = [...m.keys(), ...[...t.keys()].filter((id) => !m.has(id))];
+  const out: T[] = [];
+  for (const id of ids) {
+    const [bx, mx, tx] = [b.get(id), m.get(id), t.get(id)];
+    if (mx && tx) out.push(sameData(mx, bx) ? tx : mx);
+    else if (mx) {
+      if (!bx || !sameData(mx, bx)) out.push(mx);
+    } else if (tx && (!bx || !sameData(tx, bx))) out.push(tx);
+  }
+  return out;
+}
+
+/** A repeat's copy nobody has done anything with yet. */
+const untouched = (t: Task) =>
+  t.status === "todo" && !t.note && !t.attachments?.length && !t.lastFired && !t.snoozeUntil && !t.later && !t.steps?.some((s) => s.done);
+
+/**
+ * Both PCs spawn the day's copy of a repeat; after a merge only one may stay. Of the copies of one
+ * repeat listed since the same day, the ones someone touched stay; if none was, the one with the
+ * smallest id (every PC picks the same one).
+ */
+function oneCopyPerDay(tasks: Task[]): Task[] {
+  const groups = new Map<string, Task[]>();
+  for (const t of tasks) {
+    if (!t.repeatId) continue;
+    const key = `${t.repeatId} ${t.since}`;
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  const drop = new Set<string>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const touched = g.filter((t) => !untouched(t));
+    const keep = touched.length ? touched : [g.reduce((a, b) => (a.id < b.id ? a : b))];
+    for (const t of g) if (!keep.includes(t)) drop.add(t.id);
+  }
+  return drop.size ? tasks.filter((t) => !drop.has(t.id)) : tasks;
+}
+
+/**
+ * Merges this window's data (`mine`) with what's in quicky.json now (`theirs`), given what this
+ * window last read or wrote there (`base`). Pure: none of the three is changed.
+ */
+export function mergeData(base: Data, mine: Data, theirs: Data): Data {
+  const tasks = oneCopyPerDay(mergeById(base.tasks, mine.tasks, theirs.tasks));
+  const repeats = mergeById(base.repeats, mine.repeats, theirs.repeats);
+  // Fields a newer Quicky added survive from either side.
+  const out: Data = { ...theirs, ...mine, tasks, repeats };
+  const spaces = { ...(theirs.spaces ?? {}), ...(mine.spaces ?? {}) };
+  if (Object.keys(spaces).length) out.spaces = spaces;
+  const focus = sameData(mine.focus, base.focus) ? theirs.focus : mine.focus;
+  if (focus && tasks.some((t) => t.id === focus.id)) out.focus = focus;
+  else delete out.focus;
+  return out;
+}

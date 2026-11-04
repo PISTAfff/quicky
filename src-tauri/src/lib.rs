@@ -125,10 +125,15 @@ pub fn run() {
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
+                // Alt+F4 on the reminder answers it like Esc (snooze), so it's never left unanswered.
+                WindowEvent::CloseRequested { api, .. } if window.label() == "reminder" => {
+                    api.prevent_close();
+                    reminder::dismiss(app);
+                }
+                WindowEvent::Destroyed if window.label() == "reminder" => reminder::destroyed(app),
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
-                // closing the bubble (Alt+F4) just switches the bubble off. The reminder can only
-                // be closed through its own buttons (Esc snoozes).
-                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "reminder" | "fx" | "balloon" | "menu") => {
+                // closing the bubble (Alt+F4) just switches the bubble off.
+                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu") => {
                     api.prevent_close();
                     if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) {
                         // Only when the user closed one (Alt+F4 on it, so it's in front): closing the
@@ -159,6 +164,7 @@ pub fn run() {
             data::default_data_dir,
             data::load_data,
             data::save_data,
+            data::data_changed,
             data::import_files,
             data::save_blob,
             data::open_media,

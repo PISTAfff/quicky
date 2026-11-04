@@ -104,6 +104,27 @@ pub async fn show_reminder(app: AppHandle, mut payload: Value) -> Result<(), Str
     Ok(())
 }
 
+/// The id of the reminder showing now, as the page's answers carry it.
+fn showing_id() -> Value {
+    PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|p| p.get("id").cloned()).unwrap_or(json!(""))
+}
+
+/// Alt+F4 (or the system closing it) on the reminder: the same answer as Esc, snooze 10 minutes.
+pub fn dismiss(app: &AppHandle) {
+    let id = showing_id();
+    close_reminder(app.clone(), json!({ "id": id, "action": "snooze", "minutes": 10 }));
+}
+
+/// The reminder window is gone. Unanswered (it was closed some other way), Quicky would otherwise
+/// keep its bubble hidden and never show another reminder: answer it as a snooze.
+pub fn destroyed(app: &AppHandle) {
+    let Some(p) = PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    OVERLAY_UP.store(false, Ordering::Relaxed);
+    bubble::sync(app);
+    let id = p.get("id").cloned().unwrap_or(json!(""));
+    let _ = app.emit_to("main", "reminder-action", json!({ "id": id, "action": "snooze", "minutes": 10 }));
+}
+
 /// The reminder page asks for its content once it has loaded.
 #[tauri::command]
 pub fn reminder_payload() -> Option<Value> {
@@ -124,10 +145,11 @@ pub fn reminder_ready(app: AppHandle) {
 /// Done in Rust so the overlay always goes away, whatever state the main page is in.
 #[tauri::command]
 pub fn close_reminder(app: AppHandle, action: Value) {
+    // Cleared first, so the window's Destroyed event knows this one was answered.
+    *PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()) = None;
     if let Some(win) = app.get_webview_window("reminder") {
         let _ = win.destroy();
     }
-    *PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()) = None;
     OVERLAY_UP.store(false, Ordering::Relaxed);
     if action.get("action").and_then(Value::as_str) == Some("open") {
         show_main(&app);

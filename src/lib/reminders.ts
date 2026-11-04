@@ -5,7 +5,7 @@ import { createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { dueReminder, inQuietHours, nextReminderAt, time12 } from "./model";
-import { data, markReminderShown, setStatus, snoozeTask } from "./store";
+import { checkDisk, data, markReminderShown, setStatus, snoozeTask } from "./store";
 import { setSheet } from "../ui/state";
 
 const PREVIEW = "__preview";
@@ -150,7 +150,11 @@ export async function startReminders() {
     }
     setTimeout(checkReminders, 800);
   });
-  await listen("reminder-tick", () => void checkReminders());
+  // Also the moment to take in another PC's changes to a synced quicky.json (works while hidden).
+  await listen("reminder-tick", () => {
+    void checkDisk();
+    void checkReminders();
+  });
   await listen("preview-reminder", previewReminder);
   setInterval(checkReminders, 30_000);
   // Any change to the tasks can move the next reminder (a new time, a snooze, ticked off). Its own
