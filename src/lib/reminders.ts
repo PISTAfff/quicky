@@ -4,7 +4,9 @@
 import { createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { dueReminder, inQuietHours, nextReminderAt, time12 } from "./model";
+import { dayKey, dueReminder, inQuietHours, nextReminderAt, parseDay, time12 } from "./model";
+import { CALENDAR_ID, dueAlarm, markShown, nextAlarmAt, snoozeAlarm, startEvents, type Alarm } from "./events";
+import { openExtension, readInstalled } from "./cloud";
 import { checkDisk, data, markReminderShown, setStatus, snoozeTask } from "./store";
 import { setSheet } from "../ui/state";
 
@@ -71,9 +73,23 @@ async function quietNow(now: Date): Promise<boolean> {
 
 // ---- showing them -----------------------------------------------------------------------
 
+/** Calendar events remind with ids of their own (their alarm key after this). */
+const EVENT = "event:";
+
+/** "3:30 PM", "All day", or with the day when it isn't today: "Thu 12, 3:30 PM". */
+function eventTime(a: Alarm): string {
+  const day = a.key.slice(a.key.lastIndexOf("@") + 1);
+  const when = a.event.allDay || !a.event.time ? "All day" : time12(a.event.time);
+  if (day === dayKey()) return when;
+  const d = parseDay(day);
+  return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getDate()}, ${when}`;
+}
+
 /** Tells Rust when the next reminder is due, so its tick wakes the check right then. */
 function wakeForNext() {
-  void invoke("reminder_wake_at", { at: nextReminderAt(data.tasks, new Date()) }).catch(() => {});
+  const now = new Date();
+  const times = [nextReminderAt(data.tasks, now), nextAlarmAt(now)].filter((t): t is number => t !== null);
+  void invoke("reminder_wake_at", { at: times.length ? Math.min(...times) : null }).catch(() => {});
 }
 
 /** Shows the first reminder that's due (one at a time; the rest follow after an answer). */
@@ -91,9 +107,13 @@ export async function checkReminders() {
       markReminderShown(t.id, key);
       writeHeld([...readHeld().filter((h) => h.id !== t.id), { id: t.id, title: t.title, time: label(key) }]);
     }
+    for (let a = dueAlarm(now); a; a = dueAlarm(now)) {
+      markShown(a.key);
+      writeHeld([...readHeld(), { id: EVENT + a.key, title: a.title, time: eventTime(a) }]);
+    }
     return;
   }
-  const held = readHeld().filter((h) => data.tasks.some((t) => t.id === h.id && t.status === "todo"));
+  const held = readHeld().filter((h) => h.id.startsWith(EVENT) || data.tasks.some((t) => t.id === h.id && t.status === "todo"));
   writeHeld([]);
   if (held.length) {
     showing = HELD;
@@ -119,6 +139,12 @@ export async function checkReminders() {
     }
     return;
   }
+  const alarm = dueAlarm(now);
+  if (alarm) {
+    showing = EVENT + alarm.key;
+    markShown(alarm.key);
+    invoke("show_reminder", { payload: { id: EVENT + alarm.key, title: alarm.title, note: alarm.note, time: eventTime(alarm) } }).catch(() => (showing = null));
+  }
 }
 
 /** Settings → "Preview a reminder": the real overlay with a sample task; answers do nothing. */
@@ -139,6 +165,12 @@ export async function startReminders() {
     showing = null;
     if (a.id === HELD) {
       if (a.action === "open") setSheet({ kind: "reminders" });
+    } else if (a.id.startsWith(EVENT)) {
+      // An event: snooze shows it again later; open shows the calendar.
+      const key = a.id.slice(EVENT.length);
+      if (a.action === "snooze") snoozeAlarm(key, a.minutes ?? 10);
+      const cal = readInstalled().find((i) => i.id === CALENDAR_ID);
+      if (a.action === "open" && cal) void openExtension(cal).catch(() => {});
     } else if (a.id !== PREVIEW) {
       if (a.action === "doing") setStatus(a.id, "doing");
       else if (a.action === "done") setStatus(a.id, "done");
@@ -156,6 +188,11 @@ export async function startReminders() {
     void checkReminders();
   });
   await listen("preview-reminder", previewReminder);
+  // Calendar events: read every few minutes, on focus, and when the calendar window changes one.
+  startEvents(() => {
+    wakeForNext();
+    void checkReminders();
+  });
   setInterval(checkReminders, 30_000);
   // Any change to the tasks can move the next reminder (a new time, a snooze, ticked off). Its own
   // root: this runs after awaits, outside any component, and lives as long as the app.

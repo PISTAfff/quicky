@@ -79,6 +79,10 @@ unsafe extern "C" {
     fn CGDisplayModeGetWidth(mode: CFRef) -> usize;
     fn CGDisplayModeGetPixelWidth(mode: CFRef) -> usize;
     fn CGDisplayModeRelease(mode: CFRef);
+    fn CGDisplayCreateImageForRect(display: u32, rect: CGRect) -> CFRef;
+    fn CGImageGetDataProvider(image: CFRef) -> CFRef;
+    fn CGDataProviderCopyData(provider: CFRef) -> CFRef;
+    fn CGImageGetBitsPerPixel(image: CFRef) -> usize;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -88,6 +92,8 @@ unsafe extern "C" {
     fn CFDictionaryGetValue(dict: CFRef, key: CFRef) -> CFRef;
     fn CFNumberGetValue(number: CFRef, kind: isize, out: *mut c_void) -> bool;
     fn CFRelease(cf: CFRef);
+    fn CFDataGetBytePtr(data: CFRef) -> *const u8;
+    fn CFDataGetLength(data: CFRef) -> isize;
 }
 
 const ON_SCREEN_ONLY: u32 = 1 << 0;
@@ -309,6 +315,44 @@ pub fn left_button_down() -> bool {
 
 pub fn right_button_down() -> bool {
     unsafe { CGEventSourceButtonState(0, 1) }
+}
+
+/// The colour of the screen pixel under the pointer. Without Screen Recording permission macOS
+/// only shows Quicky's own windows and the desktop, so other apps read as the wallpaper.
+pub fn color_under_cursor() -> Option<(u8, u8, u8)> {
+    unsafe {
+        let e = CGEventCreate(std::ptr::null());
+        if e.is_null() {
+            return None;
+        }
+        let p = CGEventGetLocation(e);
+        CFRelease(e);
+        let mut display = 0u32;
+        let mut count = 0u32;
+        if CGGetDisplaysWithPoint(p, 1, &mut display, &mut count) != 0 || count == 0 {
+            return None;
+        }
+        let b = CGDisplayBounds(display);
+        let rect = CGRect { origin: CGPoint { x: p.x - b.origin.x, y: p.y - b.origin.y }, size: CGSize { width: 1.0, height: 1.0 } };
+        let image = CGDisplayCreateImageForRect(display, rect);
+        if image.is_null() {
+            return None;
+        }
+        let bpp = CGImageGetBitsPerPixel(image);
+        let data = CGDataProviderCopyData(CGImageGetDataProvider(image));
+        let mut out = None;
+        if !data.is_null() {
+            let ptr = CFDataGetBytePtr(data);
+            if bpp >= 32 && CFDataGetLength(data) >= 4 && !ptr.is_null() {
+                // Screen images are 32-bit BGRA (little-endian, alpha first).
+                let px = std::slice::from_raw_parts(ptr, 4);
+                out = Some((px[2], px[1], px[0]));
+            }
+            CFRelease(data);
+        }
+        CFRelease(image);
+        out
+    }
 }
 
 // ---- Quicky's own windows -------------------------------------------------------------------

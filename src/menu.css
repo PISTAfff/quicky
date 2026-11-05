@@ -23,4 +23,13 @@
   border: solid var(--accent-ink); border-width: 0 2.5px 2.5px 0; border-radius: 1px; transform: rotate(45deg);
 }
 .qmenu-sep { margin: 4px 8px; border-top: 1.5px dashed var(--line); }
-@media (prefers-reduced-motion: reduce) { .qmenu.in { animation: none; } }
+/* An item with a side menu: a chevron, and it stays lit while its side menu is open. */
+.qmenu button.has-sub { padding-right: 30px; }
+.qmenu button.has-sub::after {
+  content: ""; position: absolute; right: 13px; top: 12px; width: 6px; height: 6px;
+  border: solid currentColor; border-width: 2.5px 2.5px 0 0; border-radius: 1px; transform: rotate(45deg);
+}
+.qmenu button.has-sub.open { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
+.qmenu.sub { visibility: hidden; }
+.qmenu.sub.open { visibility: visible; animation: qmenu-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+@media (prefers-reduced-motion: reduce) { .qmenu.in, .qmenu.sub.open { animation: none; } }

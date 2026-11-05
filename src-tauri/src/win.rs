@@ -270,6 +270,21 @@ pub fn right_button_down() -> bool {
     (unsafe { GetAsyncKeyState(VK_RBUTTON as i32) } as u16 & 0x8000) != 0
 }
 
+/// The colour of the screen pixel under the pointer (any app, any monitor).
+pub fn color_under_cursor() -> Option<(u8, u8, u8)> {
+    use windows_sys::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC, CLR_INVALID};
+    let (x, y) = cursor();
+    unsafe {
+        let dc = GetDC(std::ptr::null_mut());
+        if dc.is_null() {
+            return None;
+        }
+        let c = GetPixel(dc, x, y);
+        ReleaseDC(std::ptr::null_mut(), dc);
+        (c != CLR_INVALID).then_some(((c & 0xff) as u8, ((c >> 8) & 0xff) as u8, ((c >> 16) & 0xff) as u8))
+    }
+}
+
 pub fn keep_topmost(w: &tauri::WebviewWindow) {
     let Some(hwnd) = own(w) else { return };
     unsafe {

@@ -1,8 +1,9 @@
 // Shared by Quicky's two menus: the bubble's (menu.html, its items sent between windows) and the
 // main window's (ui/ContextMenu.tsx, its items run in place).
 
-/** An item of the bubble's menu (greyed out without an action, ticked when `checked`) or a line. */
-export type MenuEntry = { id: string; text: string; checked?: boolean; disabled?: boolean } | "sep";
+/** An item of the bubble's menu (greyed out without an action, ticked when `checked`, opening a
+ *  side menu of its own on hover when it has `sub`) or a line. */
+export type MenuEntry = { id: string; text: string; checked?: boolean; disabled?: boolean; sub?: MenuEntry[] } | "sep";
 
 /** Arrow keys move through `items`, wrapping round. Returns whether it was an arrow key. */
 export function arrowFocus(key: string, items: HTMLElement[]): boolean {

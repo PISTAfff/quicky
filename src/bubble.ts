@@ -8,6 +8,7 @@ import { sfx } from "./lib/sfx";
 import { saveBlob } from "./lib/media";
 import type { Attachment } from "./lib/model";
 import type { MenuEntry } from "./lib/menus";
+import { openExtension, readInstalled } from "./lib/cloud";
 
 // Events are heard with `win.listen` (only those sent to this window), never the global `listen`,
 // which hears events sent to any window: the bubble would act on the mini's veil, menu picks, etc.
@@ -368,6 +369,22 @@ async function openContextMenu() {
     await invoke("set_bubble_locked", { locked, space: forSpace });
   };
   add("Open Quicky", () => invoke("open_from_bubble"));
+  // Installed extensions (Settings → Online), each opening its own window.
+  const sub: MenuEntry[] = [];
+  const subAdd = (text: string, run?: () => unknown) => {
+    const id = `x${sub.length}`;
+    if (run) actions.set(id, run);
+    sub.push({ id, text, disabled: !run });
+  };
+  const installed = readInstalled();
+  for (const ext of installed) subAdd(ext.name, () => openExtension(ext).catch(() => {}));
+  if (!installed.length) subAdd("No extensions yet");
+  sub.push("sep");
+  subAdd(installed.length ? "Get more extensions" : "Get extensions", async () => {
+    await invoke("open_from_bubble");
+    await emitTo("main", "open-sheet", "extensions");
+  });
+  items.push({ id: "extensions", text: "Extensions", sub });
   items.push("sep");
   if (isMini && ctx?.stuck) {
     // A mini's own menu: hiding it removes just this app's mini (drop Quicky on the app to get it back).

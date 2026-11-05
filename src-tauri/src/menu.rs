@@ -33,6 +33,9 @@ pub fn menu_prewarm(app: AppHandle) {
     if app.get_webview_window(LABEL).is_none() {
         build(&app);
     }
+    // And the windows for the sticky trail and the big moments, so the first of each is smooth.
+    crate::trail::prewarm(&app);
+    crate::fx::prewarm(&app);
 }
 
 /// A bubble page (the bubble or a mini): open the menu at the pointer with these items.

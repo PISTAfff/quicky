@@ -1,4 +1,6 @@
 import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
+import { startBridge } from "./lib/bridge";
+import { startSync } from "./lib/sync";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -14,7 +16,7 @@ import { BoardView, ListView, MiniView } from "./ui/Views";
 import { Sheets } from "./ui/Sheets";
 import { Tour } from "./ui/Tour";
 import { ContextMenu } from "./ui/ContextMenu";
-import { dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
+import { closeSheet, dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
 import { Blob } from "./ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { modDown } from "./lib/platform";
@@ -94,7 +96,7 @@ export default function App() {
     addEventListener("focus", onFocus);
     const minute = setInterval(tick, 60_000);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && sheet()) setSheet(null);
+      if (e.key === "Escape" && sheet()) closeSheet();
       else if (modDown(e) && e.key.toLowerCase() === "n") {
         e.preventDefault();
         focusQuickAdd();
@@ -146,6 +148,8 @@ export default function App() {
       }),
     );
     unlisten.push(await listen("flush", () => void flush()));
+    // The bubble's menu → Extensions → Get extensions.
+    unlisten.push(await listen<string>("open-sheet", ({ payload }) => payload === "extensions" && setSheet({ kind: "extensions" })));
     unlisten.push(
       await getCurrentWebview().onDragDropEvent(async (e) => {
         const p = e.payload;
@@ -171,6 +175,8 @@ export default function App() {
     );
 
     await init();
+    startSync();
+    await startBridge();
     await startReminders();
     startUpdateChecks();
   });

@@ -33,6 +33,7 @@ const CHANGED = "CHANGED_ON_DISK";
 
 function scheduleSave() {
   if (!loaded) return;
+  if (!applyingSync) localChange?.();
   dirty = true;
   clearTimeout(timer);
   timer = window.setTimeout(flush, 250);
@@ -88,6 +89,32 @@ async function mergeFromDisk(): Promise<boolean> {
   tick();
   return true;
 }
+
+// ---- online sync (lib/sync.ts) ----------------------------------------------------
+
+let localChange: (() => void) | null = null;
+let applyingSync = false;
+/** Called after each change made on this PC (not ones that came from the server). */
+export const onLocalChange = (fn: () => void) => void (localChange = fn);
+export const isLoaded = () => loaded;
+/** This window's data as it is now (a copy). */
+export const snapshot = (): Data => structuredClone(unwrap(data));
+/** Takes in the merge of the server's copy: shown at once and saved to quicky.json. */
+export function applySynced(next: Data) {
+  applyingSync = true;
+  try {
+    setData(reconcile(structuredClone(next)));
+    scheduleSave();
+    tick();
+  } finally {
+    applyingSync = false;
+  }
+}
+/** Runs in turn with quicky.json's saves and merges. */
+export const syncQueued = <T>(job: () => Promise<T>) => queued(job);
+export const mediaExists = (rel: string) => invoke<boolean>("media_exists", { rel }).catch(() => false);
+export const readMedia = (rel: string) => invoke<ArrayBuffer>("read_media", { rel });
+export const writeMedia = (rel: string, bytes: ArrayBuffer) => invoke("write_media", new Uint8Array(bytes), { headers: { "x-path": rel } });
 
 /** On focus and on the reminder tick: take in another PC's changes to quicky.json. */
 export function checkDisk() {
@@ -217,8 +244,9 @@ export function addTask(title: string, attachments: Attachment[], repeatDays?: n
   sfx.add();
 }
 
-/** A task made somewhere else (something dropped on the bubble or a mini), into a given list. */
-export function addTaskTo(key: string | null, title: string, attachments: Attachment[], note?: string) {
+/** A task made somewhere else (something dropped on the bubble or a mini, the calendar), into a
+ *  given list. Returns its id. */
+export function addTaskTo(key: string | null, title: string, attachments: Attachment[], note?: string): string | undefined {
   title = title.trim() || attachments[0]?.name || "";
   if (!title) return;
   const t = today();
@@ -228,6 +256,7 @@ export function addTaskTo(key: string | null, title: string, attachments: Attach
     ...(key ? { space: key } : {}),
   };
   mutate((d) => void d.tasks.push(task));
+  return task.id;
 }
 
 const find = (d: Data, id: string) => d.tasks.find((t) => t.id === id);

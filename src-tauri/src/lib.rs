@@ -5,10 +5,13 @@ mod balloon;
 mod bubble;
 mod config;
 mod data;
+mod extensions;
 mod fx;
+mod trail;
 mod icons;
 mod main_window;
 mod menu;
+mod picker;
 mod reminder;
 mod tray;
 // Native window calls behind one set of functions: Win32 on Windows, AppKit and CoreGraphics on
@@ -133,7 +136,7 @@ pub fn run() {
                 WindowEvent::Destroyed if window.label() == "reminder" => reminder::destroyed(app),
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
                 // closing the bubble (Alt+F4) just switches the bubble off.
-                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu") => {
+                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu") && !window.label().starts_with(extensions::LABEL_PREFIX) => {
                     api.prevent_close();
                     if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) {
                         // Only when the user closed one (Alt+F4 on it, so it's in front): closing the
@@ -169,6 +172,9 @@ pub fn run() {
             data::save_blob,
             data::open_media,
             data::remove_media,
+            data::media_exists,
+            data::read_media,
+            data::write_media,
             data::open_data_dir,
             main_window::hide_main,
             main_window::set_pinned,
@@ -201,6 +207,8 @@ pub fn run() {
             menu::menu_pending,
             menu::menu_show,
             menu::menu_hide,
+            trail::trail_state,
+            trail::trail_done,
             fx::fx_payload,
             fx::fx_ready,
             fx::fx_handoff,
@@ -209,7 +217,12 @@ pub fn run() {
             reminder::reminder_payload,
             reminder::reminder_wake_at,
             reminder::reminder_ready,
-            reminder::close_reminder
+            reminder::close_reminder,
+            extensions::extension_save,
+            extensions::extension_remove,
+            extensions::extension_file,
+            extensions::open_extension,
+            picker::pick_screen_color
         ])
         .build(tauri::generate_context!())
         .expect("error while building Quicky")

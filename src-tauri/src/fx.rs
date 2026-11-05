@@ -84,39 +84,54 @@ pub fn play(app: &AppHandle, kind: Kind, from: (i32, i32), mini: (i32, i32), to:
         let (left, top) = (from.0.min(to.0).min(mini.0) - pad, from.1.min(to.1).min(mini.1) - pad);
         let (right, bottom) = (from.0.max(to.0).max(mini.0) + pad, from.1.max(to.1).max(mini.1) + pad);
         let page = |(x, y): (i32, i32)| json!({ "x": (x - left) as f64 / scale, "y": (y - top) as f64 / scale });
-        *PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(json!({ "kind": kind.name(), "from": page(from), "mini": page(mini), "to": page(to), "space": space, "push": { "x": push.0, "y": push.1 } }));
+        let payload = json!({ "run": run, "kind": kind.name(), "from": page(from), "mini": page(mini), "to": page(to), "space": space, "push": { "x": push.0, "y": push.1 } });
+        *PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()) = Some(payload.clone());
 
-        if let Some(old) = app.get_webview_window(LABEL) {
-            let _ = old.destroy();
-        }
-        let built = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("fx.html".into()))
-            .title("Quicky")
-            .additional_browser_args(BROWSER_ARGS)
-            .decorations(false)
-            .transparent(true)
-            .shadow(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .focused(false)
-            .visible(false)
-            .build();
-        match built {
-            Ok(w) => {
-                let _ = w.set_position(PhysicalPosition::new(left, top));
-                let _ = w.set_size(PhysicalSize::new((right - left) as u32, (bottom - top) as u32));
-                // Clicks go straight through to whatever is underneath.
-                let _ = w.set_ignore_cursor_events(true);
-            }
-            Err(_) => return finish(&app),
-        }
+        // The window is kept between moments (a new web view each time stuttered while it started).
+        let Some(w) = build(&app) else { return finish(&app) };
+        let _ = w.set_position(PhysicalPosition::new(left, top));
+        let _ = w.set_size(PhysicalSize::new((right - left) as u32, (bottom - top) as u32));
+        let _ = app.emit_to(LABEL, "fx-play", payload);
         // Safety net: whatever happens to the page, the bubble always comes back.
         std::thread::sleep(Duration::from_millis(3500));
         if RUN.load(Ordering::SeqCst) == run && ACTIVE.load(Ordering::SeqCst) {
             finish(&app);
         }
     });
+}
+
+/// Makes the (hidden) overlay window ahead of time, so the first moment plays smoothly too.
+pub fn prewarm(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_some() {
+        return;
+    }
+    let app = app.clone();
+    // Never from the main thread inside a command (it deadlocks on Windows).
+    std::thread::spawn(move || {
+        let _ = build(&app);
+    });
+}
+
+fn build(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(w) = app.get_webview_window(LABEL) {
+        return Some(w);
+    }
+    let w = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("fx.html".into()))
+        .title("Quicky")
+        .additional_browser_args(BROWSER_ARGS)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .visible(false)
+        .build()
+        .ok()?;
+    // Clicks go straight through to whatever is underneath.
+    let _ = w.set_ignore_cursor_events(true);
+    Some(w)
 }
 
 fn monitor_scale(app: &AppHandle, (x, y): (i32, i32)) -> Option<f64> {
@@ -126,11 +141,16 @@ fn monitor_scale(app: &AppHandle, (x, y): (i32, i32)) -> Option<f64> {
     })
 }
 
-/// Hands the bubble back (if the page hasn't yet) and removes the overlay.
+/// Whether a big moment is playing now (the sticky trail lets it take over).
+pub fn playing() -> bool {
+    ACTIVE.load(Ordering::SeqCst)
+}
+
+/// Hands the bubble back (if the page hasn't yet) and puts the overlay away (kept for next time).
 fn finish(app: &AppHandle) {
     handoff(app);
     if let Some(w) = app.get_webview_window(LABEL) {
-        let _ = w.destroy();
+        win::show(&w, false);
     }
     ACTIVE.store(false, Ordering::SeqCst);
 }

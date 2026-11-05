@@ -15,6 +15,7 @@ use crate::balloon;
 use crate::fx::{self, Kind};
 use crate::menu;
 use crate::reminder;
+use crate::trail::{self, Drag};
 use crate::win::{self, AppWindow, Rect};
 use crate::config::{read_config, update_config, StuckApp};
 use crate::main_window::{self, main_on_screen};
@@ -182,6 +183,22 @@ fn mini_side(app: &AppHandle) -> i32 {
         .and_then(|m| m.outer_size().ok())
         .map(|s| s.width as i32)
         .unwrap_or((MINI * scale(app)) as i32)
+}
+
+/// Centre of the carried bubble (physical px), for the sticky trail; `half` is half its width.
+pub(crate) fn carry_center(half: i32) -> Option<(i32, i32)> {
+    state().carry.as_ref().map(|c| (c.at.0 + half, c.at.1 + half))
+}
+
+/// Centre of the mini being dragged inside its app (physical px), for the sticky trail.
+pub(crate) fn wall_center() -> Option<(i32, i32)> {
+    state().wall.as_ref().map(|w| (w.at.0 + w.side / 2, w.at.1 + w.side / 2))
+}
+
+/// Centre of the bubble window where its glide has it now (physical px), for the sticky trail;
+/// `half` is half its width.
+pub(crate) fn glide_center(half: i32) -> Option<(i32, i32)> {
+    state().bubble.at.map(|(x, y)| (x.round() as i32 + half, y.round() as i32 + half))
 }
 
 /// Centre of a bubble window (physical px).
@@ -698,6 +715,9 @@ pub fn note_focus() {
 /// (returns false).
 #[tauri::command]
 pub fn bubble_drag_start(app: AppHandle) -> bool {
+    if let Some(center) = window(&app).and_then(|b| center_of(&b)) {
+        trail::start(&app, center, Drag::Move);
+    }
     if cfg!(windows) {
         state().dragging = true;
         return true;
@@ -710,6 +730,9 @@ pub fn bubble_drag_start(app: AppHandle) -> bool {
 /// app's window it gives that app a mini (a left drag just moves it).
 #[tauri::command]
 pub fn bubble_carry_start(app: AppHandle) {
+    if let Some(center) = window(&app).and_then(|b| center_of(&b)) {
+        trail::start(&app, center, Drag::Carry);
+    }
     carry(&app, true);
 }
 
@@ -732,6 +755,9 @@ pub fn mini_drag_start(app: AppHandle, right: Option<bool>) -> bool {
     let (Ok(p), Some(mover)) = (m.outer_position(), win::Mover::new(&m)) else { return false };
     let (side, scale) = (mini_side(&app), scale(&app));
     let right = right.unwrap_or(false);
+    if let Some(center) = center_of(&m) {
+        trail::start(&app, center, Drag::Mini { right });
+    }
     state().wall = Some(WallDrag {
         exe: entry.exe,
         rect,

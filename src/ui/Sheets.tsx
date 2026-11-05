@@ -7,6 +7,9 @@ import { SearchSheet } from "./sheets/SearchSheet";
 import { RepeatsSheet } from "./sheets/RepeatsSheet";
 import { RemindersSheet } from "./sheets/RemindersSheet";
 import { SettingsSheet } from "./sheets/SettingsSheet";
+import { AccountSheet } from "./sheets/AccountSheet";
+import { ExtensionsSheet } from "./sheets/ExtensionsSheet";
+import { FeedbackSheet } from "./sheets/FeedbackSheet";
 
 export function Sheets() {
   return (
@@ -18,6 +21,9 @@ export function Sheets() {
         : s.kind === "search" ? <SearchSheet />
         : s.kind === "repeats" ? <RepeatsSheet />
         : s.kind === "reminders" ? <RemindersSheet />
+        : s.kind === "account" ? <AccountSheet />
+        : s.kind === "extensions" ? <ExtensionsSheet />
+        : s.kind === "feedback" ? <FeedbackSheet />
         : <SettingsSheet />
       }
     </Show>

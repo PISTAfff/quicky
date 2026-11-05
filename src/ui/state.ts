@@ -9,9 +9,19 @@ export type Sheet =
   | { kind: "repeats" }
   | { kind: "reminders" }
   | { kind: "settings" }
+  | { kind: "account" }
+  | { kind: "extensions" }
+  | { kind: "feedback" }
   | null;
 
 export const [sheet, setSheet] = createSignal<Sheet>(null);
+
+/** Panels opened from Settings go back to Settings when closed (the rest close outright). */
+const FROM_SETTINGS = ["account", "extensions", "feedback"];
+export const closeSheet = () => {
+  const s = sheet();
+  setSheet(s && FROM_SETTINGS.includes(s.kind) ? { kind: "settings" } : null);
+};
 export const [staged, setStaged] = createSignal<Attachment[]>([]);
 export const [dropping, setDropping] = createSignal(false);
 export const [pinned, setPinned] = createSignal(false);

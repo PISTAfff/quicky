@@ -46,9 +46,10 @@ const MINI_DY = 1.34;
 const INK = "#2b2540";
 const RED = "#ff3b3b";
 
-/** The face reads on the accent: white, or ink on light accents (like `--on-accent`). */
-const FACE = onAccent(storedAccent());
-const FACES: Record<Face, string> = {
+/** The face reads on the accent: white, or ink on light accents (like `--on-accent`). The window
+ *  is kept between moments, so these are read again at the start of each one. */
+let FACE = onAccent(storedAccent());
+const faceSet = (): Record<Face, string> => ({
   happy: `<g fill="${FACE}"><rect x="12" y="13" width="4" height="7" rx="2"/><rect x="24" y="13" width="4" height="7" rx="2"/></g><path d="M17.2 25.2q2.8 2.4 5.6 0" fill="none" stroke="${FACE}" stroke-width="1.7" stroke-linecap="round"/>`,
   clear: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="${FACE}" stroke-width="2.6" stroke-linecap="round"/>`,
   angry:
@@ -57,7 +58,8 @@ const FACES: Record<Face, string> = {
     `<path d="M10.5 10.5l6 2.4M29.5 10.5l-6 2.4" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/>`,
   squeeze: `<path d="M11 18q3-3 6 0M23 18q3-3 6 0" fill="none" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`,
   surprised: `<g fill="${FACE}"><rect x="11.5" y="11.5" width="5" height="9" rx="2.5"/><rect x="23.5" y="11.5" width="5" height="9" rx="2.5"/></g><circle cx="20" cy="26.5" r="1.8" fill="${FACE}"/>`,
-};
+});
+let FACES = faceSet();
 
 // ---- helpers ------------------------------------------------------------------------------
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -96,7 +98,7 @@ const crisp = el("g", {}, svg);
 const goo = el("g", { filter: "url(#goo)" }, svg);
 const faces = el("g", {}, svg);
 const bits = el("g", {}, svg);
-const ACCENT = storedAccent();
+let ACCENT = storedAccent();
 
 /** One blob: drawn crisp (exactly like the bubble) or inside the goo layer while it merges. */
 class Body {
@@ -250,6 +252,8 @@ function split(p: Payload, stayClear: boolean, homeClear: boolean): Step {
   stay.at(from);
   const twin = new Body();
   twin.shown = false;
+  /** Where the twin is (blob centre), for the sticky trail it travels home along. */
+  let tw: Pt = from;
   let snapped = false;
   let landed = false;
 
@@ -276,7 +280,8 @@ function split(p: Payload, stayClear: boolean, homeClear: boolean): Step {
         b.face = "squeeze";
       }
       stay.at({ x: from.x - u.x * s * 0.55, y: from.y - u.y * s * 0.55 });
-      twin.at({ x: from.x + u.x * s, y: from.y + u.y * s });
+      tw = { x: from.x + u.x * s, y: from.y + u.y * s };
+      twin.at(tw);
     } else {
       const tau = t - 440;
       if (!snapped) {
@@ -310,6 +315,7 @@ function split(p: Payload, stayClear: boolean, homeClear: boolean): Step {
         const e = easeInOutCubic(q);
         const pos = bez(e);
         const ahead = bez(Math.min(1, e + 0.02));
+        tw = pos;
         twin.at(pos);
         twin.rot = Math.atan2(ahead.y - pos.y, ahead.x - pos.x);
         const stretch = 1 + 0.3 * Math.sin(Math.PI * q);
@@ -324,6 +330,7 @@ function split(p: Payload, stayClear: boolean, homeClear: boolean): Step {
           sfx.tap();
           sparkle(home, 4, 120);
         }
+        tw = home;
         twin.at(home);
         twin.k = NORMAL;
         twin.face = homeClear ? "clear" : "happy";
@@ -338,12 +345,20 @@ function split(p: Payload, stayClear: boolean, homeClear: boolean): Step {
       if (tau > rest + 100) stay.shown = twin.shown = false;
       stay.draw();
       twin.draw();
+      tellTrail({ x: tw.x, y: tw.y - NORMAL_DY }, p.mini, tau > flight);
       return { handoff: tau > rest, done: tau > rest + 140 };
     }
     stay.draw();
     twin.draw();
     return { handoff: false, done: false };
   };
+}
+
+/** The sticky trail's window draws the strand the twin travels home along: it hears where the
+ *  twin and the new mini are (window centres, in screen px so it can place them in its own window). */
+function tellTrail(twin: Pt, mini: Pt, landed: boolean) {
+  const s = (q: Pt) => ({ x: q.x + window.screenX, y: q.y + window.screenY });
+  void emitTo("trail", "fx-twin", { twin: s(twin), mini: s(mini), landed }).catch(() => {});
 }
 
 function burst(p: Payload, hard: boolean): Step {
@@ -474,19 +489,44 @@ function burst(p: Payload, hard: boolean): Step {
 // ---- run ----------------------------------------------------------------------------------
 function counts(timeout: number): Promise<Counts | null> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), timeout);
-    void listen<Counts>("counts", ({ payload }) => {
+    let stop: (() => void) | null = null;
+    let over = false;
+    const end = (c: Counts | null) => {
+      if (over) return;
+      over = true;
       clearTimeout(timer);
-      resolve(payload);
-    }).then(() => emitTo("main", "bubble-ready"));
+      stop?.();
+      resolve(c);
+    };
+    const timer = setTimeout(() => end(null), timeout);
+    // The window is kept between moments, so each one stops listening when it has its answer.
+    void listen<Counts>("counts", ({ payload }) => end(payload)).then((u) => {
+      stop = u;
+      if (over) u();
+      else void emitTo("main", "bubble-ready");
+    });
   });
 }
 
 const frame = () => new Promise<number>((r) => requestAnimationFrame(r));
+/** A frame, or a moment: while this window is still hidden its frames come late or not at all. */
+const frameOrSoon = () => Promise.race([frame(), new Promise<number>((r) => setTimeout(() => r(performance.now()), 34))]);
 
-async function main() {
-  const p = await invoke<Payload | null>("fx_payload").catch(() => null);
-  if (!p || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+/** The moment playing (or last played), so the same one never plays twice. */
+let current = 0;
+
+/** Plays one moment. The window is made once and kept (hidden) between moments: making a new
+ *  web view for each one made them stutter while it started up. */
+async function play(p: Payload & { run: number }) {
+  if (p.run <= current) return;
+  current = p.run;
+  // Colours may have changed since the last one.
+  ACCENT = storedAccent();
+  FACE = onAccent(ACCENT);
+  FACES = faceSet();
+  for (const layer of [crisp, goo, faces, bits]) layer.replaceChildren();
+  sparks.length = 0;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
     await invoke("fx_handoff").catch(() => {});
     return void invoke("fx_done");
   }
@@ -497,8 +537,8 @@ async function main() {
   // Draw the first frame (identical to the bubble) before this window shows; Rust then shows it
   // and hides the real bubble's blob.
   step(0, 0);
-  await frame();
-  await frame();
+  await frameOrSoon();
+  await frameOrSoon();
   await invoke("fx_ready").catch(() => {});
 
   let handed = false;
@@ -515,9 +555,14 @@ async function main() {
       void invoke("fx_handoff");
     }
     if (done && sparks.length === 0) break;
+    if (p.run !== current) return; // a newer moment took over
   }
   if (!handed) await invoke("fx_handoff").catch(() => {});
+  // Nothing left drawn for the next time the window shows.
+  for (const layer of [crisp, goo, faces, bits]) layer.replaceChildren();
   void invoke("fx_done");
 }
 
-void main();
+void listen<Payload & { run: number }>("fx-play", ({ payload }) => void play(payload));
+// A moment asked for before this page was listening (the first one, while it was being made).
+void invoke<(Payload & { run: number }) | null>("fx_payload").then((p) => p && play(p)).catch(() => {});

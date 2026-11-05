@@ -450,3 +450,101 @@ export function mergeData(base: Data, mine: Data, theirs: Data): Data {
   else delete out.focus;
   return out;
 }
+
+// ---- calendar events (the Calendar extension's, for reminders) ---------------------------
+
+export type EventRepeat = "none" | "daily" | "weekly" | "monthly" | "yearly";
+
+/** A calendar event as Quicky's server sends it (days "YYYY-MM-DD", times "HH:MM"). */
+export interface CalEvent {
+  id: string;
+  title: string;
+  note: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  time: string | null;
+  repeat: EventRepeat;
+  until: string | null;
+  /** Minutes before it starts to remind (null: none). */
+  remind: number | null;
+}
+
+/** An all-day event's reminder counts back from this time of its day. */
+export const ALL_DAY_AT = "09:00";
+
+/** The days a (repeating) event starts on whose span touches `from`..`to` (inclusive). */
+export function eventStarts(e: Pick<CalEvent, "start" | "end" | "repeat" | "until">, from: string, to: string): string[] {
+  const span = Math.max(0, daysBetween(e.start, e.end));
+  const last = e.until && e.until < to ? e.until : to;
+  const out: string[] = [];
+  const touches = (s: string) => s <= to && plusDays(span, parseDay(s)) >= from;
+  if (e.repeat === "none") return touches(e.start) ? [e.start] : [];
+  if (e.repeat === "daily" || e.repeat === "weekly") {
+    const step = e.repeat === "daily" ? 1 : 7;
+    // Jump straight to the first start that could still touch `from`.
+    const skip = Math.max(0, Math.floor((daysBetween(e.start, from) - span) / step));
+    for (let k = skip; ; k++) {
+      const s = plusDays(k * step, parseDay(e.start));
+      if (s > last) break;
+      if (touches(s)) out.push(s);
+    }
+    return out;
+  }
+  const [y0, m0, d0] = e.start.split("-").map(Number);
+  const months = e.repeat === "monthly" ? 1 : 12;
+  for (let k = 0; ; k++) {
+    const d = new Date(y0, m0 - 1 + k * months, d0);
+    // A month without that day (the 31st, Feb 29) is skipped.
+    if (d.getDate() !== d0) {
+      if (dayKey(new Date(y0, m0 - 1 + k * months, 1)) > last) break;
+      continue;
+    }
+    const s = dayKey(d);
+    if (s > last) break;
+    if (touches(s)) out.push(s);
+  }
+  return out;
+}
+
+/** When an event's reminders fire around now: one per start day, `remind` minutes before it starts. */
+export function eventAlarms(e: CalEvent, now: Date): { key: string; at: number; day: string }[] {
+  if (e.remind === null || e.remind === undefined) return [];
+  const from = plusDays(-1, now);
+  const to = plusDays(Math.ceil(e.remind / 1440) + 2, now);
+  return eventStarts(e, from, to).map((day) => {
+    const [h, m] = (e.allDay || !e.time ? ALL_DAY_AT : e.time).split(":").map(Number);
+    const d = parseDay(day);
+    d.setHours(h, m, 0, 0);
+    return { key: `${e.id}@${day}`, at: d.getTime() - e.remind! * 60_000, day };
+  });
+}
+
+// ---- online sync (lib/sync.ts) ----------------------------------------------------
+
+/** What this PC last agreed with the server: its revision and copy. */
+export interface SyncBase { rev: number; base: Data }
+
+/**
+ * One round of online sync: what this PC's data becomes, whether to show it, and whether to send
+ * it up. A deletion only goes through against a base the server's copy grew from: when the server
+ * has no copy, or one older than this PC last saw (restored from a backup, a lost volume), the two
+ * are put together and nothing is dropped.
+ */
+export function planSync(
+  st: SyncBase | null,
+  remote: { rev: number; data: Data | null },
+  mine: Data,
+  today: string,
+): { merged: Data; theirs: Data; apply: boolean; upload: boolean } {
+  const theirs = remote.data ?? emptyData();
+  if (st && remote.data && remote.rev === st.rev) {
+    // Nothing new on the server: only this PC's own changes go up.
+    return { merged: mine, theirs, apply: false, upload: !sameData(mine, theirs) };
+  }
+  const trusted = !!st && !!remote.data && remote.rev > st.rev;
+  // Rolled like this PC's own data, or a new day makes every open task look edited here.
+  const base = trusted ? rollover(st!.base, today) : emptyData();
+  const merged = mergeData(base, mine, theirs);
+  return { merged, theirs, apply: !sameData(merged, mine), upload: !remote.data || !sameData(merged, theirs) };
+}

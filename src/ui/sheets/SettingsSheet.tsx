@@ -13,10 +13,13 @@ import { readQuiet, writeQuiet } from "../../lib/reminders";
 import { showTour } from "../Tour";
 import { previewReminder } from "../../lib/reminders";
 import { readSfx, sfx, writeSfx } from "../../lib/sfx";
+import { readAccount } from "../../lib/cloud";
+import { setSyncOn, syncNow, syncOn, syncStatus } from "../../lib/sync";
 import { IBell, IClose, IPin2, IFolder } from "../icons";
 import { setSheet } from "../state";
 import { Panel } from "./Panel";
 import { TimeField } from "../TimeField";
+import { ColorPicker } from "../ColorPicker";
 
 export function SettingsSheet() {
   const change = async () => {
@@ -53,6 +56,7 @@ export function SettingsSheet() {
     await invoke("set_show_bubble", { show: next });
     setBubble(next);
   };
+  const [pickerOpen, setPickerOpen] = createSignal(false);
   const [version, setVersion] = createSignal("");
   getVersion().then(setVersion).catch(() => {});
   const [auto, setAuto] = createSignal(autoCheck());
@@ -83,29 +87,33 @@ export function SettingsSheet() {
               />
             )}
           </For>
-          {/* Your own colour: the native picker sits invisibly on top of the swatch. */}
-          <label
-            class="swatch custom"
-            classList={{ on: theme().accent === "custom" }}
-            style={{
-              background: theme().accent === "custom" ? theme().custom : "conic-gradient(#ff6b6b, #ffd166, #06d6a0, #4cc9f0, #7b61ff, #ff6bd6, #ff6b6b)",
-              color: onAccent(theme().custom),
-            }}
-            title="Pick your own colour"
-          >
-            <input
-              type="color"
+          {/* Your own colour, in Quicky's own picker (with an eyedropper for anything on screen). */}
+          <span class="swatch-wrap">
+            <button
+              class="swatch custom"
+              classList={{ on: theme().accent === "custom" }}
+              style={{
+                background: theme().accent === "custom" ? theme().custom : "conic-gradient(#ff6b6b, #ffd166, #06d6a0, #4cc9f0, #7b61ff, #ff6bd6, #ff6b6b)",
+                color: onAccent(theme().custom),
+              }}
+              title="Pick your own colour"
               aria-label="Custom colour"
-              value={theme().custom}
-              onInput={(e) => setTheme({ accent: "custom", custom: e.currentTarget.value })}
-              onClick={() => theme().accent !== "custom" && setTheme({ accent: "custom" })}
-            />
-            <Show when={theme().accent !== "custom"}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2b2540" stroke-width="3" stroke-linecap="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
+              aria-expanded={pickerOpen()}
+              onClick={() => {
+                if (theme().accent !== "custom") setTheme({ accent: "custom" });
+                setPickerOpen(!pickerOpen());
+              }}
+            >
+              <Show when={theme().accent !== "custom"}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2b2540" stroke-width="3" stroke-linecap="round" aria-hidden="true">
+                  <path d="M5 12h14M12 5v14" />
+                </svg>
+              </Show>
+            </button>
+            <Show when={pickerOpen()}>
+              <ColorPicker value={theme().custom} onChange={(hex) => setTheme({ accent: "custom", custom: hex })} onClose={() => setPickerOpen(false)} />
             </Show>
-          </label>
+          </span>
         </div>
         <div class="segment modes" role="group" aria-label="Light or dark">
           <For each={[["light", "Light"], ["dark", "Dark"], ["auto", `Match ${SYSTEM_NAME}`]] as const}>
@@ -198,6 +206,22 @@ export function SettingsSheet() {
         </label>
       </div>
       <div class="box">
+        <div class="box-row wrap">
+          <span class="box-label">Online</span>
+          <span class="row-gap">
+            <button class="btn small" onClick={() => setSheet({ kind: "account" })}>{readAccount() ? "Account" : "Sign in"}</button>
+            <button class="btn small" onClick={() => setSheet({ kind: "extensions" })}>Extensions</button>
+          </span>
+        </div>
+        <small class="muted online-who">{readAccount() ? `Signed in as ${readAccount()!.user.email}` : "Not signed in"}</small>
+        <Show
+          when={readAccount()}
+          fallback={<small class="muted">Sign in to keep your tasks and settings the same on every PC, and for online projects you share with others.</small>}
+        >
+          <SyncRow />
+        </Show>
+      </div>
+      <div class="box">
         <div class="box-row">
           <span class="box-label"><IBell size={14} /> Reminders</span>
           <span class="row-gap">
@@ -206,6 +230,13 @@ export function SettingsSheet() {
           </span>
         </div>
         <QuietHours />
+      </div>
+      <div class="box">
+        <div class="box-row">
+          <span class="box-label">Bugs &amp; requests</span>
+          <button class="btn small" onClick={() => setSheet({ kind: "feedback" })}>Send one</button>
+        </div>
+        <small class="muted">Found something broken, or wish Quicky did something? Tell us.</small>
       </div>
       <div class="box">
         <div class="box-row">
@@ -255,6 +286,52 @@ function QuietHours() {
         <span>Wait during full-screen apps<small>Games, videos and presentations aren't interrupted</small></span>
         <input type="checkbox" role="switch" checked={q().busy} onChange={() => set({ busy: !q().busy })} />
       </label>
+    </>
+  );
+}
+
+/** Settings → Online: task sync on or off, and how it went last. */
+function SyncRow() {
+  const [on, setOn] = createSignal(syncOn());
+  const [now, setNow] = createSignal(Date.now());
+  const clock = setInterval(() => setNow(Date.now()), 15_000);
+  onCleanup(() => clearInterval(clock));
+  const line = () => {
+    const s = syncStatus();
+    if (!on()) return "Off: your tasks stay on this PC only.";
+    if (!readAccount()?.user.verified) return "Confirm your email (Account) to start syncing.";
+    if (s.state === "syncing") return "Syncing…";
+    if (s.state === "error") return `Couldn't sync: ${s.error}`;
+    if (s.state === "ok" && s.at) {
+      const mins = Math.floor((now() - s.at) / 60_000);
+      return `Synced ${mins < 1 ? "just now" : mins === 1 ? "a minute ago" : mins < 60 ? `${mins} minutes ago` : "a while ago"}.`;
+    }
+    return "Waiting to sync.";
+  };
+  return (
+    <>
+      <label class="switch-row">
+        <span>
+          Sync my tasks and settings
+          <small>Tasks, repeats, app lists, attachments (pictures shrunk to save space, up to 500 MB), your look and reminder settings: the same on every PC signed in to this account</small>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={on()}
+          onChange={() => {
+            setSyncOn(!on());
+            setOn(!on());
+          }}
+        />
+      </label>
+      <small class="muted" role="status">
+        {line()}
+        <Show when={on() && syncStatus().state !== "syncing"}>
+          {" "}
+          <button class="link" onClick={() => void syncNow()}>Sync now</button>
+        </Show>
+      </small>
     </>
   );
 }

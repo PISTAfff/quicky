@@ -327,6 +327,36 @@ pub fn remove_media(app: AppHandle, rel: String) -> Result<(), String> {
     Ok(())
 }
 
+// Task sync (`src/lib/sync.ts`) moves attached files to and from Quicky's server by their
+// relative path, so another PC finds them where its tasks say they are.
+
+/// Whether an attachment's file is in this PC's data folder.
+#[tauri::command]
+pub fn media_exists(app: AppHandle, rel: String) -> bool {
+    resolve_media(&app, &rel).is_ok_and(|p| p.is_file())
+}
+
+/// An attachment's bytes, for uploading.
+#[tauri::command]
+pub async fn read_media(app: AppHandle, rel: String) -> Result<tauri::ipc::Response, String> {
+    let abs = resolve_media(&app, &rel)?;
+    fs::read(abs).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
+/// Raw-body command: a downloaded attachment, saved at its relative path (header `x-path`).
+#[tauri::command]
+pub fn write_media(app: AppHandle, request: Request<'_>) -> Result<(), String> {
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Expected raw bytes".into());
+    };
+    let rel = request.headers().get("x-path").and_then(|v| v.to_str().ok()).unwrap_or_default();
+    let abs = resolve_media(&app, rel)?;
+    if let Some(dir) = abs.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    write_atomic(&abs, bytes)
+}
+
 #[tauri::command]
 pub fn open_data_dir(app: AppHandle) -> Result<(), String> {
     let dir = data_dir(&app)?;

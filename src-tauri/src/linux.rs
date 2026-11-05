@@ -213,6 +213,17 @@ pub fn right_button_down() -> bool {
     pointer().is_some_and(|(_, _, mask)| mask & u16::from(KeyButMask::BUTTON3) != 0)
 }
 
+/// The colour of the screen pixel under the pointer (read from the root window).
+pub fn color_under_cursor() -> Option<(u8, u8, u8)> {
+    use x11rb::protocol::xproto::ImageFormat;
+    let (px, py, _) = pointer()?;
+    let x = x()?;
+    let conn = x.conn.lock().unwrap_or_else(|e| e.into_inner());
+    let img = conn.get_image(ImageFormat::Z_PIXMAP, x.root, px as i16, py as i16, 1, 1, !0).ok()?.reply().ok()?;
+    // 24- and 32-bit visuals store a pixel as B, G, R, (pad) on little-endian servers.
+    (img.depth >= 24 && img.data.len() >= 3).then(|| (img.data[2], img.data[1], img.data[0]))
+}
+
 /// The pointer's position (physical px) and which buttons and modifiers are down.
 fn pointer() -> Option<(i32, i32, u16)> {
     let x = x()?;

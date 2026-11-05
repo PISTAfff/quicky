@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quicky extension</title>
+    <link rel="stylesheet" href="/src/tokens.css" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; user-select: none; }
+      body { font: 600 14px/1.35 "Nunito", "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+      button { font: inherit; color: inherit; cursor: pointer; }
+      :focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+      /* Quicky's own title bar (the window has no system frame), same as the main window's. */
+      .titlebar { height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding-left: 12px; }
+      .brand { min-width: 0; display: flex; align-items: center; gap: 8px; font: 600 14px "Fredoka", sans-serif; }
+      .brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .brand .sep { color: var(--muted); }
+      .winbtns { flex-shrink: 0; display: flex; height: 100%; }
+      .wb { width: 40px; height: 100%; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; }
+      .wb:hover { background: var(--soft); color: var(--ink); }
+      .wb:active { transform: scale(0.92); }
+      .wb.close:hover { background: #e81123; color: #fff; }
+      #stage { flex: 1; min-height: 0; position: relative; }
+      iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--bg); }
+      .note { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 24px; box-sizing: border-box; }
+      .note h1 { margin: 0; font: 700 26px "Fredoka", sans-serif; }
+      .note p { margin: 0; max-width: 380px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header class="titlebar" data-tauri-drag-region>
+      <div class="brand" data-tauri-drag-region>
+        <svg width="20" height="18" viewBox="0 0 40 36" aria-hidden="true">
+          <path d="M20 1C31 1 39 9 39 20c0 9-6 15-19 15S1 29 1 20C1 9 9 1 20 1z" fill="var(--accent)" />
+          <g style="fill: var(--on-accent, #fff)"><rect x="12" y="13" width="4" height="7" rx="2" /><rect x="24" y="13" width="4" height="7" rx="2" /></g>
+        </svg>
+        <span data-tauri-drag-region>Quicky</span><span class="sep" data-tauri-drag-region>/</span><span id="ext-name" data-tauri-drag-region>Extension</span>
+      </div>
+      <div class="winbtns">
+        <button class="wb" id="wb-min" aria-label="Minimize" title="Minimize">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M5 12h14" /></svg>
+        </button>
+        <button class="wb" id="wb-max" aria-label="Maximize" title="Maximize">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+        </button>
+        <button class="wb close" id="wb-close" aria-label="Close" title="Close">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+    </header>
+    <div id="stage"></div>
+    <script type="module" src="/src/extension.ts"></script>
+  </body>
+</html>

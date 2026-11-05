@@ -63,6 +63,7 @@ function play(notes: Note[]) {
 }
 
 let lastSquish = 0;
+let lastGoo = 0;
 
 export const sfx = {
   /** New task: a bright little "plip". */
@@ -92,6 +93,27 @@ export const sfx = {
     lastSquish = now;
     play([{ f: 160 + strain * 260, to: 130 + strain * 320, d: 0.08, type: "triangle", g: 0.18 + strain * 0.2 }]);
   },
+  /** The sticky trail stretching as the bubble moves: a wet squelch, faster and higher with
+   *  speed (0..1). Throttled. */
+  goo: (speed: number) => {
+    const now = performance.now();
+    if (speed < 0.08 || now - lastGoo < 140 - speed * 60) return;
+    lastGoo = now;
+    const f = 70 + Math.random() * 50 + speed * 90;
+    play([
+      { f, to: f * 0.55, d: 0.09, type: "triangle", g: 0.12 + speed * 0.16 },
+      { f: f * 3.2, to: f * 2.1, d: 0.04, t: 0.03, g: 0.05 + speed * 0.06 },
+    ]);
+  },
+  /** The bubble comes unstuck and the trail starts: a sticky pull. */
+  stick: () => play([{ f: 90, to: 210, d: 0.16, type: "triangle", g: 0.3 }, { f: 420, to: 260, d: 0.07, t: 0.12, g: 0.12 }]),
+  /** The trail slurped back in. */
+  slurp: () =>
+    play([
+      { f: 160, to: 360, d: 0.1, type: "triangle", g: 0.3 },
+      { f: 220, to: 480, d: 0.1, t: 0.08, type: "triangle", g: 0.26 },
+      { f: 300, to: 160, d: 0.12, t: 0.17, type: "triangle", g: 0.22 },
+    ]),
   /** Springing back after a tug. */
   boing: () => play([{ f: 200, to: 540, d: 0.22, g: 0.45 }, { f: 540, to: 380, d: 0.16, t: 0.18, g: 0.2 }]),
   /** Popped out of an app. */
