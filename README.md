@@ -1,12 +1,14 @@
 # Quicky
 
-A tiny, cute task manager for Windows, macOS and Linux. Add mini tasks fast, mark them **To do → Doing → Done**, and let unfinished ones roll over to the next day on their own. A little bubble waits on screen, and any app can get its own mini Quicky with a list of its own.
+**[quicky.pistasspot.com](https://quicky.pistasspot.com)**
+
+A tiny, cute task manager for Windows, macOS and Linux. Add mini tasks fast, mark them **To do → Doing → Done**, and let unfinished ones roll over to the next day on their own. A little bubble waits on screen, and any app can get its own mini Quicky with a list of its own. Sign in to keep your tasks the same on every PC, and add extensions for shared calendars and whiteboards.
 
 ![Quicky](.github/cover.png)
 
 ## Install
 
-Open the [latest release](../../releases/latest) (or [Quicky's page on pistasspot.com](https://www.pistasspot.com/project/quicky), which has the same files) and download the file for your system.
+Get it from **[quicky.pistasspot.com](https://quicky.pistasspot.com)**, or open the [latest release](../../releases/latest) and download the file for your system.
 
 - **Windows:** **`Quicky_x.y.z_x64-setup.exe`**. Run it: it installs for your user only, no admin needed, and adds Quicky to the Start menu (and a desktop shortcut). If Windows shows *"Windows protected your PC"*, click **More info**, then **Run anyway**: the installer isn't code-signed yet.
 - **macOS** (11 or newer, Apple silicon and Intel): **`Quicky_x.y.z_universal.dmg`**. Open it and drag Quicky into Applications. Quicky isn't notarized by Apple yet, so the first time you open it macOS says it can't check it for malware: open **System Settings**, **Privacy & Security**, and click **Open Anyway** next to Quicky.
@@ -18,7 +20,7 @@ Or on Windows, from a terminal, with the [GitHub CLI](https://cli.github.com):
 gh release download --repo PISTAfff/quicky --pattern "*-setup.exe" --dir . && ./Quicky_*_x64-setup.exe
 ```
 
-On first launch Quicky asks where to keep your data and creates a `Quicky` folder there (picking a folder that's already called `Quicky`, or one that already holds `quicky.json`, uses it as is). Everything stays on your computer.
+On first launch Quicky asks where to keep your data and creates a `Quicky` folder there (picking a folder that's already called `Quicky`, or one that already holds `quicky.json`, uses it as is). Quicky works offline from that folder; signing in (Settings → Online) also syncs it to your account.
 
 ## Using it
 
@@ -57,6 +59,11 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 - **Popover, not a background window:** Quicky tucks itself away as soon as you click into another app, and the bubble (and that app's mini) come back. Pin it (📌) to keep it open and on top.
 - **Colours:** Settings (gear in the title bar) has five accents (Grape, Bubblegum, Mint, Tangerine, Ocean) plus a rainbow swatch to pick any colour you like, and Light / Dark / Match the system. The bubble and the taskbar (Dock on macOS) and tray icons follow along.
 - **Tray icon:** left-click opens or hides Quicky, right above the tray. Right-click for *Show* and *Quit*. **Close** only hides Quicky, so Ctrl+Space and the bubble keep working.
+- **Sync:** sign in from Settings → Online and your tasks, repeats, steps, each app's list, attachments (pictures are shrunk before upload; up to 25 MB a file, 500 MB in all) and your colours, sounds and quiet hours stay the same on every PC signed in to the account, live. Changes made on two PCs at once are merged, never lost. *Sync my tasks and settings* turns it off.
+- **Extensions:** Settings → Online → Extensions adds them; open one from there or by right-clicking the bubble → *Extensions*.
+  - **Projects:** a shared whiteboard with task cards, sticky notes, text, shapes and containers, arrows that route themselves around cards (and hop over each other), images and voice notes, with everyone's changes live.
+  - **Calendar:** shared calendars with month and week views, all-day, timed and multi-day events, repeats, colours and notes. Event reminders show on Quicky's own reminder screen. Your tasks with due dates show on it and can be edited there, and any event can become a Quicky task or a card on a board.
+  - Share a board or calendar with its join code; changing the code locks everyone else out again.
 - **Updates:** Quicky checks GitHub for a new version a little after it starts and twice a day, and shows a banner when one is ready. *Update and restart* installs it. Check by hand, or turn the automatic check off, in Settings → Updates.
 
 ## On macOS and Linux
@@ -74,7 +81,7 @@ Everything works the same, with a few differences:
 └ media/2026-11/…      copies of every attachment and voice note
 ```
 
-Put the folder in OneDrive or Dropbox to sync it. Use the folder button in the title bar to open the folder or switch to another one. Switching doesn't move files.
+Signed in with sync on, the same data also lives on Quicky's server, one copy per account. Without an account, put the folder in OneDrive or Dropbox to share it between PCs. Use the folder button in the title bar to open the folder or switch to another one. Switching doesn't move files.
 
 ## Develop
 
