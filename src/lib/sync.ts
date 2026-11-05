@@ -7,6 +7,7 @@
 // server, this PC's own, the server's) and put back with the revision they started from; when
 // another PC got there first the server answers 409 with its newer copy, which is merged again.
 import { createSignal } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { ACCOUNT_EVENT, API, CloudError, api, readAccount, mediaDown, mediaList, mediaUp } from "./cloud";
 import { dayKey, planSync, type Attachment, type Data, type SyncBase } from "./model";
 import { applySynced, isLoaded, onLocalChange, snapshot, syncQueued, mediaExists, readMedia, writeMedia, showToast } from "./store";
@@ -19,8 +20,10 @@ const ON_KEY = "quicky-sync";
 const stateKey = (userId: string) => `quicky-sync-state-${userId}`;
 /** Per account: the settings this PC last sent or took, and when they were changed. */
 const settingsKey = (userId: string) => `quicky-sync-settings-${userId}`;
-/** Settings that follow the account (each one a localStorage key every window reads). */
-const SHARED = { theme: THEME_KEY, sfx: "quicky-sfx", quiet: "quicky-quiet" } as const;
+/** Settings that follow the account (each one a localStorage key every window reads). The minis
+ *  (which apps have one, and where) live in Rust's config; `MINIS_KEY` mirrors them here. */
+const MINIS_KEY = "quicky-minis";
+const SHARED = { theme: THEME_KEY, sfx: "quicky-sfx", quiet: "quicky-quiet", minis: MINIS_KEY } as const;
 type Shared = Partial<Record<keyof typeof SHARED, unknown>>;
 
 /** Pictures are shrunk before they go up: at most this many pixels on the long side. */
@@ -104,6 +107,7 @@ async function syncOnce() {
   setSyncStatus({ state: "syncing" });
   openSocket();
   let remote = await api<Remote>("GET", "/api/sync");
+  await mirrorMinis();
   await syncSettings(userId, remote);
   let synced: Data | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -146,7 +150,17 @@ function localShared(): Shared {
   return out;
 }
 
+/** Copies this PC's minis from Rust's config into `MINIS_KEY`, so a change shows up as a settings change. */
+async function mirrorMinis() {
+  const list = await invoke<unknown[]>("minis_get").catch(() => null);
+  if (list) write(MINIS_KEY, list);
+}
+
 function applyShared(s: Shared) {
+  if (Array.isArray(s.minis)) {
+    write(MINIS_KEY, s.minis);
+    void invoke("minis_set", { list: s.minis }).catch(() => {});
+  }
   if (s.theme && typeof s.theme === "object") setTheme(s.theme as Partial<Theme>);
   if (s.sfx && typeof s.sfx === "object") writeSfx(s.sfx as SfxPrefs);
   if (s.quiet && typeof s.quiet === "object") writeQuiet(s.quiet as Quiet);
@@ -320,7 +334,8 @@ export function startSync() {
   addEventListener(ACCOUNT_EVENT, accountChanged);
   addEventListener("storage", (e) => e.key === "quicky-account" && accountChanged());
   setInterval(() => void syncNow(), 3 * 60_000);
-  // Settings are changed through their own setters all over the app: look for changes here.
-  setInterval(() => settingsChanged() && void syncNow(), 4000);
+  // Settings are changed through their own setters all over the app: look for changes here
+  // (the minis in Rust's config, copied over first).
+  setInterval(() => void mirrorMinis().then(() => settingsChanged() && void syncNow()), 4000);
   void syncNow();
 }
