@@ -11,6 +11,7 @@ import { calendarEvents, CALENDAR_ID, snoozeAlarm, startEvents, upcomingAlarms }
 import { readQuiet } from "../lib/reminders";
 import { readInstalled } from "../lib/cloud";
 import { theme } from "../lib/theme";
+import { readSfx } from "../lib/sfx";
 import { setSheet, WEEK_LONG } from "../ui/state";
 import { pushWidgets, scheduleAlarms, takeActions, type Alarm, type Row, type Snapshot } from "./native";
 
@@ -79,6 +80,7 @@ function snapshot(): Snapshot {
     next: nextTask ? { ...row(nextTask, day), pinned: !!focus } : null,
     today: [...eventRows(day), ...dueToday],
     week: week(open, day),
+    sfx: readSfx(),
     counts: { open: open.length, done: tasks.filter((t) => t.status === "done" && t.doneDay === day && !t.space).length },
   };
 }
@@ -168,6 +170,8 @@ export function startPhone() {
   });
   new MutationObserver(refreshWidgets).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-mode"] });
   addEventListener("storage", (e) => e.key === "quicky-quiet" && refreshAlarms());
+  // The widgets' sounds follow the app's Sounds setting.
+  addEventListener("quicky-sfx", refreshWidgets);
   // Reminders are handed over a few days ahead: top them up now and then.
   setInterval(refreshAlarms, 30 * 60_000);
 }

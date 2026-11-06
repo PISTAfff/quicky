@@ -358,10 +358,14 @@ object Widgets {
 
     // ---- taps --------------------------------------------------------------------------------
 
-    private fun openApp(ctx: Context, action: JSONObject?, code: Int): PendingIntent? =
-        launchIntent(ctx, action)?.let {
-            PendingIntent.getActivity(ctx, code, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        }
+    /** Opens Quicky (on a task, or the calendar), through [WidgetTapActivity] so the tap makes its sound. */
+    private fun openApp(ctx: Context, action: JSONObject?, code: Int): PendingIntent? {
+        val tap = Intent(ctx, WidgetTapActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra("what", "launch")
+            .putExtra("action", action?.toString())
+        return PendingIntent.getActivity(ctx, code, tap, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
 
     private fun quickAdd(ctx: Context): PendingIntent =
         PendingIntent.getActivity(
@@ -779,7 +783,10 @@ class WidgetTapActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val id = intent.getStringExtra("id") ?: ""
-        when (intent.getStringExtra("what")) {
+        val what = intent.getStringExtra("what")
+        Sfx.play(this, when (what) { "done" -> "done"; "doing" -> "doing"; "todo" -> "undo"; "delete" -> "delete"; else -> "tap" })
+        when (what) {
+            "launch" -> launchIntent(this, intent.getStringExtra("action")?.let { JSONObject(it) })?.let { startActivity(it) }
             "done" -> if (id.isNotEmpty()) {
                 Store.enqueue(this, JSONObject().put("type", "status").put("id", id).put("status", "done").put("at", System.currentTimeMillis()))
                 Store.markDone(this, id)
@@ -810,6 +817,7 @@ class QuickAddActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.quick_add)
+        if (savedInstanceState == null) Sfx.play(this, "open")
         val look = Widgets.Look(this, Store.snapshot(this), WidgetStyle())
         findViewById<View>(R.id.qa_root).setBackgroundResource(if (look.dark) R.drawable.w_card_q_dark else R.drawable.w_card_q_light)
         val field = findViewById<EditText>(R.id.qa_text)
@@ -829,6 +837,7 @@ class QuickAddActivity : Activity() {
                 val id = java.lang.Long.toString(System.currentTimeMillis(), 36) + "w" + (Math.random() * 1e6).toLong().toString(36)
                 Store.enqueue(this, JSONObject().put("type", "add").put("id", id).put("title", title).put("at", System.currentTimeMillis()))
                 Store.addTask(this, id, title)
+                Sfx.play(this, "add")
                 Widgets.refresh(this)
             }
             finish()

@@ -35,6 +35,8 @@ export interface Snapshot {
   /** The week widget: the next 7 days' events and due tasks, under a heading per day. */
   week: Row[];
   counts: { open: number; done: number };
+  /** The app's Sounds setting, for the widgets' own sounds. */
+  sfx: { on: boolean; volume: number };
 }
 
 /** A reminder for Android to show at `at` (ms), even with Quicky closed. */
