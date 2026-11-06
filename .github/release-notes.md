@@ -1,8 +1,8 @@
-**Android widgets, redone.** Seven home-screen widgets in Quicky's own look (your accent colour, light and dark): your task list, quick add, next up, today, the Quicky blob with your open count, Doing now and This week. They fit any size, each has its own settings (which list, text size), and you can tick, start, pause and delete tasks right on them, with little sounds. Quick add is also a Quick Settings tile (Settings, Add to Quick Settings), and the add box is smaller with a Cancel button.
+**Windows open and close in goo.** Hiding Quicky and closing its windows play a short squishy animation (Windows), and opening them springs in.
 
-**Bugs & requests:** add up to 3 pictures to a bug report or request, and see your past requests with their state (open, fixed, added or dismissed) and any reply.
+**Each extension has its own icon.** Projects, Calendar and other extension windows show their own badge on the taskbar instead of Quicky's.
 
-**Sticky trail switch:** Settings, Sticky trail turns off the goo the bubble and minis leave when dragged.
+**Android:** pinching no longer zooms the whole app. Projects on the phone has new touch controls (update it from Extensions).
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 
