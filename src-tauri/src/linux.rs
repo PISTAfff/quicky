@@ -200,6 +200,12 @@ pub fn exe_icon_png(exe: &str, size: i32) -> Option<Vec<u8>> {
     Some(png)
 }
 
+/// Whether the system's own window move shows the window (Quicky moves the bubble itself on
+/// Linux anyway).
+pub fn live_window_drag() -> bool {
+    true
+}
+
 /// Where the mouse pointer is right now (physical px).
 pub fn cursor() -> (i32, i32) {
     pointer().map_or((0, 0), |(x, y, _)| (x, y))

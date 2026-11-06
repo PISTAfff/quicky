@@ -253,6 +253,16 @@ pub fn exe_icon_png(exe: &str, size: i32) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Whether the system shows a window's contents while it's dragged ("Show window contents while
+/// dragging"). Lite and "best performance" setups turn it off: the system's own move then hides
+/// the window and drags a bare outline, so Quicky moves the bubble itself instead.
+pub fn live_window_drag() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETDRAGFULLWINDOWS};
+    let mut on: BOOL = 1;
+    let ok = unsafe { SystemParametersInfoW(SPI_GETDRAGFULLWINDOWS, 0, (&mut on as *mut BOOL).cast(), 0) };
+    ok == 0 || on != 0
+}
+
 /// Where the mouse pointer is right now (physical px, whole desktop).
 pub fn cursor() -> (i32, i32) {
     use windows_sys::Win32::Foundation::POINT;
