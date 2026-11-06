@@ -65,6 +65,9 @@ object Widgets {
         else -> SizeF(230f, 100f)
     }
 
+    /** List widgets this tall (dp) and up show Quicky in their empty state. */
+    private const val TALL = 150f
+
     fun kindOf(className: String?): Class<*>? = KINDS.firstOrNull { it.name == className }
 
     fun refresh(ctx: Context) {
@@ -92,25 +95,32 @@ object Widgets {
     private fun views(ctx: Context, mgr: AppWidgetManager, kind: Class<*>, id: Int, s: JSONObject): RemoteViews {
         val style = Store.widgetStyle(ctx, id)
         val big = bigFrom(kind)
+        val list = LISTS.containsKey(kind)
         if (Build.VERSION.SDK_INT >= 31) {
             // The launcher shows the biggest layout that fits, and switches as the widget is resized.
-            return RemoteViews(mapOf(
-                SizeF(40f, 40f) to build(ctx, kind, id, s, style, false),
-                big to build(ctx, kind, id, s, style, true),
-            ))
+            // List widgets also get short versions, without Quicky in their empty state.
+            val sizes = mutableMapOf(
+                SizeF(40f, 40f) to build(ctx, kind, id, s, style, false, !list),
+                big to build(ctx, kind, id, s, style, true, !list),
+            )
+            if (list) {
+                sizes[SizeF(40f, TALL)] = build(ctx, kind, id, s, style, false, true)
+                sizes[SizeF(big.width, TALL)] = build(ctx, kind, id, s, style, true, true)
+            }
+            return RemoteViews(sizes)
         }
         val o = mgr.getAppWidgetOptions(id)
         val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
         val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
-        return build(ctx, kind, id, s, style, w == 0 || (w >= big.width && h >= big.height))
+        return build(ctx, kind, id, s, style, w == 0 || (w >= big.width && h >= big.height), w == 0 || h >= TALL)
     }
 
     /** One widget's views at one size (also used by the settings screen's preview). */
-    fun build(ctx: Context, kind: Class<*>, id: Int, s: JSONObject, style: WidgetStyle, big: Boolean): RemoteViews {
+    fun build(ctx: Context, kind: Class<*>, id: Int, s: JSONObject, style: WidgetStyle, big: Boolean, tall: Boolean = true): RemoteViews {
         val look = Look(ctx, s, style)
         val which = LISTS[kind]
         return when {
-            which != null -> list(ctx, look, s, id, which, big)
+            which != null -> list(ctx, look, s, id, which, big, tall)
             kind == NextUpWidget::class.java -> next(ctx, look, s, big)
             kind == BlobWidget::class.java -> blob(ctx, look, s, big)
             else -> add(ctx, look, big)
@@ -277,6 +287,10 @@ object Widgets {
     // ---- headings in Fredoka ---------------------------------------------------------------------
 
     private var fredoka: Typeface? = null
+    /** Headings drawn lately: one picture per text and size, shared by a widget's layouts (kept small for updates). */
+    private val headings = object : LinkedHashMap<String, Bitmap>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>?) = size > 48
+    }
 
     /**
      * A heading drawn in Fredoka, the app's heading font: launchers draw widgets with a restricted
@@ -287,6 +301,8 @@ object Widgets {
         if (Build.VERSION.SDK_INT < 26 || text.isEmpty()) return null
         val face = fredoka ?: (try { ctx.resources.getFont(R.font.quicky_fredoka) } catch (_: Exception) { null } ?: return null).also { fredoka = it }
         val dm = ctx.resources.displayMetrics
+        val key = "$text|$sp|${dm.densityDpi}|${ctx.resources.configuration.fontScale}"
+        headings[key]?.let { return it }
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = face
             color = Color.WHITE
@@ -294,9 +310,11 @@ object Widgets {
         }
         val fm = paint.fontMetricsInt
         val w = Math.ceil(paint.measureText(text).toDouble()).toInt() + 2
-        val bmp = Bitmap.createBitmap(w.coerceAtMost(2000), (fm.descent - fm.ascent).coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        // A mask (alpha only): a quarter of the size of a colour picture, tinted when drawn.
+        val bmp = Bitmap.createBitmap(w.coerceAtMost(2000), (fm.descent - fm.ascent).coerceAtLeast(1), Bitmap.Config.ALPHA_8)
         bmp.density = dm.densityDpi
         Canvas(bmp).drawText(text, 1f, -fm.ascent.toFloat(), paint)
+        headings[key] = bmp
         return bmp
     }
 
@@ -332,7 +350,7 @@ object Widgets {
 
     private const val BG = android.R.id.background
 
-    private fun list(ctx: Context, look: Look, s: JSONObject, widgetId: Int, which: String, big: Boolean): RemoteViews {
+    private fun list(ctx: Context, look: Look, s: JSONObject, widgetId: Int, which: String, big: Boolean, tall: Boolean): RemoteViews {
         val v = RemoteViews(ctx.packageName, if (big) R.layout.w_list else R.layout.w_list_compact)
         v.setInt(BG, "setBackgroundResource", look.card)
         val counts = s.optJSONObject("counts")
@@ -386,6 +404,7 @@ object Widgets {
         v.text(R.id.w_empty_sub, look.muted)
         v.tint(R.id.w_logo, look.accent)
         v.mascot(look, mood)
+        v.shown(R.id.w_mascot, tall)
         v.button(look, R.id.w_add_bg, R.id.w_add_ring, R.id.w_add)
 
         // How much of today is done, on the task list (the bar is tinted, so Android 12+ only).
@@ -400,9 +419,11 @@ object Widgets {
         }
 
         v.setOnClickPendingIntent(R.id.w_add_wrap, quickAdd(ctx))
-        val home = openApp(ctx, if (which == "today" || which == "week") JSONObject().put("type", "open").put("calendar", true) else null, 9100 + which.length)
+        // Each kind its own request code: PendingIntents that differ only in extras would share one.
+        val calendar = which == "today" || which == "week"
+        val home = openApp(ctx, if (calendar) JSONObject().put("type", "open").put("calendar", true) else null, if (calendar) 9112 else 9110)
         v.setOnClickPendingIntent(R.id.w_head, home)
-        v.setOnClickPendingIntent(R.id.w_empty, openApp(ctx, null, 9100))
+        v.setOnClickPendingIntent(R.id.w_empty, openApp(ctx, null, 9110))
 
         if (Build.VERSION.SDK_INT >= 31) {
             // The rows travel with the update itself, so a full update always shows them (some

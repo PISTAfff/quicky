@@ -36,6 +36,8 @@ class WidgetSettingsActivity : Activity() {
             finish()
             return
         }
+        // A widget placed with these settings open gets no update of its own until they close: draw it now.
+        Widgets.update(this, mgr, kind!!, intArrayOf(id))
         style = Store.widgetStyle(this, id)
         snapshot = Store.snapshot(this)
         look = Widgets.Look(this, snapshot, WidgetStyle())
