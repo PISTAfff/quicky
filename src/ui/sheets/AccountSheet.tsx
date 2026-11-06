@@ -1,9 +1,10 @@
 import { createSignal, Match, Show, Switch } from "solid-js";
-import { forgotPassword, readAccount, refreshAccount, resendVerification, resetPassword, signIn, signOut, signUp, verifyEmail } from "../../lib/cloud";
+import { deleteAccount, forgotPassword, readAccount, refreshAccount, resendVerification, resetPassword, signIn, signOut, signUp, verifyEmail } from "../../lib/cloud";
 import { showToast } from "../../lib/store";
 import { setSheet } from "../state";
 import { Panel } from "./Panel";
 import { IS_MOBILE } from "../../lib/platform";
+import { setSyncOn } from "../../lib/sync";
 
 type Mode = "signin" | "signup" | "forgot" | "reset";
 
@@ -17,6 +18,8 @@ export function AccountSheet() {
   const [code, setCode] = createSignal("");
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
+  /** The "Delete account" confirm step is open. */
+  const [deleting, setDeleting] = createSignal(false);
   if (account()) void refreshAccount().then(setAccount);
 
   const go = (m: Mode) => {
@@ -67,7 +70,26 @@ export function AccountSheet() {
     });
   };
 
-  const title = () => (account() ? (confirmed() ? "Account" : "Confirm your email") : { signin: "Sign in", signup: "Create an account", forgot: "Forgot password", reset: "Choose a new password" }[mode()]);
+  const here = IS_MOBILE ? "this phone" : "this computer";
+  const removeAccount = (e: Event) => {
+    e.preventDefault();
+    if (busy()) return;
+    const id = account()?.user.id;
+    void run(async () => {
+      await deleteAccount(password());
+      // Nothing left online to sync with: this device keeps its tasks and stops syncing.
+      setSyncOn(false);
+      try {
+        if (id) localStorage.removeItem(`quicky-sync-state-${id}`);
+      } catch {}
+      setDeleting(false);
+      setAccount(null);
+      go("signin");
+      showToast(`Account deleted. Your tasks are still on ${here}`);
+    });
+  };
+
+  const title = () => (account() && deleting() ? "Delete account" : account() ? (confirmed() ? "Account" : "Confirm your email") : { signin: "Sign in", signup: "Create an account", forgot: "Forgot password", reset: "Choose a new password" }[mode()]);
 
   return (
     <Panel title={title()} class="account-sheet">
@@ -145,7 +167,7 @@ export function AccountSheet() {
       >
         {(a) => (
           <>
-            <Show when={!confirmed()}>
+            <Show when={!confirmed() && !deleting()}>
               <form class="box account-form" onSubmit={confirm}>
                 <p class="muted">We emailed a 6-digit code to {a().user.email}. Type it here to finish setting up your account.</p>
                 <label class="field">
@@ -177,19 +199,70 @@ export function AccountSheet() {
               <span class="box-label">{a().user.name}</span>
               <span class="muted">{a().user.email}</span>
             </div>
-            <div class="sheet-actions">
-              <button class="btn ghost" disabled={!confirmed()} onClick={() => setSheet({ kind: "extensions" })}>Extensions</button>
-              <button
-                class="btn ghost"
-                onClick={async () => {
-                  await signOut();
-                  setAccount(null);
-                  go("signin");
-                }}
-              >
-                Sign out
-              </button>
-            </div>
+            <Show
+              when={deleting()}
+              fallback={
+                <>
+                  <div class="sheet-actions">
+                    <button class="btn ghost" disabled={!confirmed()} onClick={() => setSheet({ kind: "extensions" })}>Extensions</button>
+                    <button
+                      class="btn ghost"
+                      onClick={async () => {
+                        await signOut();
+                        setAccount(null);
+                        go("signin");
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                  <div class="account-links">
+                    <button
+                      type="button"
+                      class="link danger-link"
+                      onClick={() => {
+                        go(mode());
+                        setDeleting(true);
+                      }}
+                    >
+                      Delete account…
+                    </button>
+                  </div>
+                </>
+              }
+            >
+              <form class="box account-form" onSubmit={removeAccount}>
+                <p>Deleting your account can't be undone. Right away, it removes:</p>
+                <ul class="delete-list">
+                  <li>your account and its sign-in on every device</li>
+                  <li>the online copy of your tasks, settings and attachments</li>
+                  <li>projects and calendars you own, for everyone in them, and your place in other people's</li>
+                  <li>your bugs and requests</li>
+                </ul>
+                <p class="muted">Your tasks on {here} stay here, and {here} stops syncing. Cards you added to other people's projects stay in them.</p>
+                <label class="field">
+                  <span>Password</span>
+                  <input id="acct-delete-password" type="password" autocomplete="current-password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} required />
+                </label>
+                <Show when={error()}>
+                  <p class="error" role="alert">{error()}</p>
+                </Show>
+                <div class="sheet-actions">
+                  <button
+                    type="button"
+                    class="btn ghost"
+                    disabled={busy()}
+                    onClick={() => {
+                      setDeleting(false);
+                      go(mode());
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button class="btn danger" type="submit" disabled={busy() || !password()}>{busy() ? "One moment…" : "Delete account"}</button>
+                </div>
+              </form>
+            </Show>
           </>
         )}
       </Show>

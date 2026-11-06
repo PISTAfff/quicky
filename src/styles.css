@@ -595,6 +595,8 @@ button.chip:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .field input:focus { border-color: var(--accent); }
 .field small { font-weight: 700; }
 .account-form p { margin: 0; }
+.delete-list { margin: 0; padding-left: 20px; font-weight: 700; }
+.delete-list li { margin: 2px 0; }
 .account-links { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .link { border: 0; background: none; padding: 2px 0; color: var(--accent-ink); font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
 .ext-card small.muted { font-weight: 700; }

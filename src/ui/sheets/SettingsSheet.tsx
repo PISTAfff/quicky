@@ -14,7 +14,8 @@ import { readQuiet, writeQuiet } from "../../lib/reminders";
 import { showTour } from "../Tour";
 import { previewReminder } from "../../lib/reminders";
 import { readSfx, sfx, writeSfx } from "../../lib/sfx";
-import { readAccount } from "../../lib/cloud";
+import { PRIVACY_URL, readAccount } from "../../lib/cloud";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { setSyncOn, syncNow, syncOn, syncStatus } from "../../lib/sync";
 import { IBell, IClose, IPin2, IFolder } from "../icons";
 import { setSheet } from "../state";
@@ -233,7 +234,11 @@ export function SettingsSheet() {
             <button class="btn small" onClick={() => setSheet({ kind: "extensions" })}>Extensions</button>
           </span>
         </div>
-        <small class="muted online-who">{readAccount() ? `Signed in as ${readAccount()!.user.email}` : "Not signed in"}</small>
+        <small class="muted online-who">
+          {readAccount() ? `Signed in as ${readAccount()!.user.email}` : "Not signed in"}
+          {" · "}
+          <button class="link" onClick={() => void openUrl(PRIVACY_URL).catch(() => showToast("Couldn't open the privacy policy"))}>Privacy policy</button>
+        </small>
         <Show
           when={readAccount()}
           fallback={<small class="muted">Sign in to keep your tasks and settings the same on every {IS_MOBILE ? "PC and phone" : "PC"}, and for online projects you share with others.</small>}

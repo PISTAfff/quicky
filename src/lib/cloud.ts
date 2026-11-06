@@ -87,7 +87,17 @@ export async function signOut() {
   writeAccount(null);
 }
 
-export const forgotPassword = (email: string) => api("POST", "/api/auth/forgot", { email });
+/** Deletes the account and everything the server keeps for it (the password confirms it), then
+ *  signs this device out. Turning sync off is the caller's (sync.ts isn't loaded everywhere). */
+export async function deleteAccount(password: string) {
+  await api("DELETE", "/api/auth/me", { password });
+  writeAccount(null);
+}
+
+/** The privacy policy (also how to delete an account from the web). */
+export const PRIVACY_URL = "https://quicky.pistasspot.com/privacy";
+
+export const forgotPassword =(email: string) => api("POST", "/api/auth/forgot", { email });
 
 /** Confirms the email with the code sent at sign-up, and remembers the confirmed user. */
 export async function verifyEmail(code: string) {
