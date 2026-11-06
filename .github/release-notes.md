@@ -1,8 +1,6 @@
-**New shortcuts.** Ctrl+Shift+Space (also Option+Shift+Space on macOS) shows or hides the bubble, and Ctrl+Space now closes Quicky too when it's open in front.
+**Quicky opens and closes in snotty goo.** Closing, the window wobbles like jelly, melts with drips and gets slurped through a lumpy strand into the bubble (or plops into a puddle when the bubble is off). Opening, the bubble shoots out a strand and the window bulges out of the blob with a jelly bounce. With little goo sounds.
 
-**The bubble waves goodbye.** Hiding it plays a little squash, hop and shrink before it goes.
-
-**Fixes:** the goo trail snaps away when a mini is pushed out of its app instead of staying behind, and on PCs where Windows drags only window outlines (lite and "best performance" setups) the bubble now moves for real instead of as an empty box.
+**Fix:** the sticky trail now stays above other always-on-top windows, like a meeting's picture-in-picture.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 
