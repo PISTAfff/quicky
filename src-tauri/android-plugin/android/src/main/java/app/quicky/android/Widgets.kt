@@ -435,7 +435,6 @@ object Widgets {
         val addSize = if (big) 36f else 30f
         v.size(look, R.id.w_logo, logo, logo)
         v.size(look, R.id.w_add_wrap, addSize, addSize)
-        v.size(look, R.id.w_mascot, if (big) 52f else 48f, if (big) 47f else 44f)
         v.button(look, R.id.w_add_bg, R.id.w_add_ring, R.id.w_add)
 
         // How much of today is done, on the task list (the bar is tinted, so Android 12+ only).
