@@ -384,11 +384,6 @@ void listen<Play>("squish-play", async ({ payload: p }) => {
   shown = p;
   const step = p.phase === "close" ? closing(p) : opening(p);
   step(0, 0);
-  // The overlay is unseen until its first frames with the picture are on screen (it would show
-  // the last thing it drew otherwise).
-  await frames(2);
-  if (playing !== p.run) return;
-  await invoke("squish_visible", { run: p.run });
   let landed = false;
   let covered = p.phase !== "close";
   let drawn = 0;

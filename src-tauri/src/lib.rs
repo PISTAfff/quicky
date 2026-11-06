@@ -222,7 +222,6 @@ pub fn run() {
             main_window::set_pinned,
             anim::set_reduced_motion,
             anim::squish_frame,
-            anim::squish_visible,
             anim::squish_covered,
             anim::squish_landed,
             anim::squish_done,

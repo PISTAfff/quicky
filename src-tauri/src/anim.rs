@@ -140,6 +140,10 @@ pub fn prewarm(app: &AppHandle) {
 }
 
 fn overlay(app: &AppHandle) -> Option<WebviewWindow> {
+    // Only where windows' pictures can be taken: elsewhere it would just sit on top, unused.
+    if !win::CAN_SNAPSHOT {
+        return None;
+    }
     if let Some(w) = app.get_webview_window(LABEL) {
         return Some(w);
     }
@@ -162,11 +166,9 @@ fn overlay(app: &AppHandle) -> Option<WebviewWindow> {
     Some(w)
 }
 
-/// Between animations: one see-through pixel in the corner, still shown (see `place_overlay`)
-/// but unseen: moved and resized later, it would show what it last drew for a moment, so it's
-/// only seen again once its page has drawn the new picture (`squish_visible`).
+/// Between animations: one see-through pixel in the corner, still shown (see `place_overlay`;
+/// cloaking it instead would count as hidden too, and its frames would come late).
 fn park(ov: &WebviewWindow) {
-    win::set_invisible(ov, true);
     win::place_overlay(ov, 0, 0, 1, 1);
 }
 
@@ -326,14 +328,6 @@ fn play(w: &WebviewWindow, run: u64, phase: &str, px: Vec<u8>, frame: Rect, targ
 #[tauri::command]
 pub fn squish_frame() -> tauri::ipc::Response {
     tauri::ipc::Response::new(FRAME.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default())
-}
-
-/// The page has drawn the picture (still unseen): the overlay can be seen now.
-#[tauri::command]
-pub fn squish_visible(app: AppHandle, run: u64) {
-    if let Some(ov) = app.get_webview_window(LABEL).filter(|_| current(run)) {
-        win::set_invisible(&ov, false);
-    }
 }
 
 /// The page has the picture over the window: a closing window really hides now.
