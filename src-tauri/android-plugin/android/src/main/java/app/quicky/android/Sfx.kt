@@ -19,9 +19,9 @@ import kotlin.math.sin
 
 /**
  * The widgets' little sounds, made the way the app makes them (`src/lib/sfx.ts`): a few notes with
- * a quick fade in and out, rendered to a tiny buffer, no audio files. They follow the app's Sounds
- * switch and volume (the snapshot's `sfx`). With the phone on silent or vibrate there's a light
- * haptic tick instead.
+ * a quick fade in and out, rendered to a tiny buffer, no audio files. Like the app's, they play
+ * at the media volume (also with the phone on vibrate) and follow the app's Sounds switch and
+ * volume (the snapshot's `sfx`). With the media volume at zero there's a light haptic tick instead.
  */
 object Sfx {
     /** A note: start and (optional) glide-to frequency in Hz, length and start in seconds, loudness, triangle or sine. */
@@ -46,23 +46,23 @@ object Sfx {
 
     private val cache = HashMap<String, ShortArray>()
 
-    /** Plays a sound (or, on silent, a haptic tick). Never throws: sound is a nicety. */
+    /** Plays a sound (or, with the media volume off, a haptic tick). Never throws: sound is a nicety. */
     fun play(ctx: Context, name: String) {
         try {
             val prefs = Store.snapshot(ctx).optJSONObject("sfx")
             val on = prefs?.optBoolean("on", true) ?: true
             val volume = (prefs?.optDouble("volume", 0.6) ?: 0.6).coerceIn(0.0, 1.0)
+            if (!on || volume <= 0.0) return
             val audio = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (audio.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
+            if (audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
                 tick(ctx)
                 return
             }
-            if (!on || volume <= 0.0) return
             val pcm = cache.getOrPut(name) { render(SOUNDS[name] ?: return) }
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_GAME)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build(),
                 )
