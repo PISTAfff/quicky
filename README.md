@@ -150,6 +150,16 @@ git tag v0.1.38 && git push origin v0.1.35
 
 Stack: [Tauri 2](https://tauri.app) (Rust + the system web view: WebView2, WebKit or WebKitGTK) and [SolidJS](https://www.solidjs.com).
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). This applies to the Windows installers from the first signed release on; until then they are unsigned.
+
+- Committers and reviewers: [PISTAfff](https://github.com/PISTAfff) (the maintainer; every change is made or reviewed by them)
+- Approvers: [PISTAfff](https://github.com/PISTAfff)
+- Releases are built only by GitHub Actions from tagged commits of this repository ([release workflow](.github/workflows/release.yml)); nothing built anywhere else is signed.
+
+Privacy: Quicky doesn't send anything to other networked systems unless you ask it to. Signing in (Settings, Online) syncs your tasks with Quicky's server and loads the extensions you add from it; the update check asks GitHub for new versions (turn it off in Settings, Updates). See the [privacy policy](https://quicky.pistasspot.com/privacy).
+
 ## License
 
 [MIT](LICENSE): use it, change it and share it freely; keep the copyright notice.
