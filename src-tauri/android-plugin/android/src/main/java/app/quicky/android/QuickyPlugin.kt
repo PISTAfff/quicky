@@ -3,6 +3,7 @@ package app.quicky.android
 import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -37,7 +38,9 @@ fun launchIntent(ctx: Context, action: JSONObject?): Intent? {
  * - `schedule {alarms}`: the coming reminders (JSON list); replaces the ones scheduled before;
  * - `actions`: what was done from widgets and notifications since last asked (emptied);
  * - `permission {ask, exact}`: whether notifications (and exact alarms) are allowed; asks first;
- * - `leave`: back with nothing open: Quicky goes to the background.
+ * - `leave`: back with nothing open: Quicky goes to the background;
+ * - `tile`: asks Android to put the quick-add tile in Quick Settings (Android 13+; `supported`
+ *   false before, where the user adds it by editing the panel).
  */
 @TauriPlugin
 class QuickyPlugin(private val activity: Activity) : Plugin(activity) {
@@ -115,6 +118,29 @@ class QuickyPlugin(private val activity: Activity) : Plugin(activity) {
         out.put("notifications", notify)
         out.put("exact", exactOk)
         invoke.resolve(out)
+    }
+
+    @Command
+    fun tile(invoke: Invoke) {
+        val out = JSObject()
+        if (Build.VERSION.SDK_INT < 33) {
+            out.put("supported", false)
+            invoke.resolve(out)
+            return
+        }
+        val bar = activity.getSystemService(android.app.StatusBarManager::class.java)
+        bar.requestAddTileService(
+            ComponentName(activity, QuickAddTile::class.java),
+            "Quicky add",
+            android.graphics.drawable.Icon.createWithResource(activity, R.drawable.ic_tile_add),
+            activity.mainExecutor,
+        ) { result ->
+            // Added (2), already there (1), or not added (0 or an error).
+            out.put("supported", true)
+            out.put("added", result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED || result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED)
+            out.put("already", result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED)
+            invoke.resolve(out)
+        }
     }
 
     @Command

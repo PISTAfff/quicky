@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quicky's face: eyes open, smiling (tinted the text-on-accent colour). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="42dp" android:height="38dp" android:viewportWidth="42" android:viewportHeight="38">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,15a2,2 0,0 1,4 0v3a2,2 0,0 1,-4 0zM24,15a2,2 0,0 1,4 0v3a2,2 0,0 1,-4 0z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:pathData="M17.2,25.2q2.8,2.4 5.6,0" />
+</vector>

@@ -1,15 +1,17 @@
 // The phone's background jobs: keeping the widgets and the scheduled reminders up to date with
-// the tasks, and taking in what was done from them (a tick on a widget, Done or Snooze on a
+// the tasks, and taking in what was done from them (a tick, start, pause or delete on a widget, Done or Snooze on a
 // notification, the widget's add box) through the store's own actions, so it's saved and synced
 // like anything done in the app.
 import { createEffect, createRoot, on } from "solid-js";
-import { addTaskTo, data, setStatus, snoozeTask, today } from "../lib/store";
+import { addTaskTo, data, removeTask, setStatus, snoozeTask, today } from "../lib/store";
 import {
   byUrgency, dueLabel, eventStarts, inQuietHours, isLater, parseDay, plusDays, stepsDone, time12, upcoming, type Task,
 } from "../lib/model";
 import { calendarEvents, CALENDAR_ID, snoozeAlarm, startEvents, upcomingAlarms } from "../lib/events";
 import { readQuiet } from "../lib/reminders";
 import { readInstalled } from "../lib/cloud";
+import { theme } from "../lib/theme";
+import { readSfx } from "../lib/sfx";
 import { setSheet, WEEK_LONG } from "../ui/state";
 import { pushWidgets, scheduleAlarms, takeActions, type Alarm, type Row, type Snapshot } from "./native";
 
@@ -72,11 +74,13 @@ function snapshot(): Snapshot {
     accent: css.getPropertyValue("--accent").trim(),
     onAccent: css.getPropertyValue("--on-accent").trim(),
     dark: document.documentElement.dataset.mode === "dark",
+    mode: theme().mode,
     date: `${WEEK_LONG[d.getDay()]} ${d.getDate()}`,
     tasks: open.slice(0, 40).map((t) => row(t, day)),
     next: nextTask ? { ...row(nextTask, day), pinned: !!focus } : null,
     today: [...eventRows(day), ...dueToday],
     week: week(open, day),
+    sfx: readSfx(),
     counts: { open: open.length, done: tasks.filter((t) => t.status === "done" && t.doneDay === day && !t.space).length },
   };
 }
@@ -127,6 +131,7 @@ export async function applyActions() {
   for (const a of list) {
     const task = "id" in a && a.id ? data.tasks.find((t) => t.id === a.id) : undefined;
     if (a.type === "status" && task && task.status !== a.status) setStatus(task.id, a.status);
+    else if (a.type === "delete" && task) removeTask(task.id);
     else if (a.type === "add" && !data.tasks.some((t) => t.id === a.id)) addTaskTo(null, a.title, [], undefined, { id: a.id, at: a.at });
     else if (a.type === "snooze") {
       if (task && task.status === "todo") snoozeTask(task.id, a.minutes);
@@ -160,11 +165,13 @@ export function startPhone() {
   });
   createRoot(() => {
     // Any change to the tasks, the day, the calendar or the look redraws the widgets.
-    createEffect(on(() => [JSON.stringify(data), today(), calendarEvents()], refreshWidgets));
+    createEffect(on(() => [JSON.stringify(data), today(), calendarEvents(), theme()], refreshWidgets));
     createEffect(on(() => [JSON.stringify(data.tasks), calendarEvents()], refreshAlarms));
   });
   new MutationObserver(refreshWidgets).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-mode"] });
   addEventListener("storage", (e) => e.key === "quicky-quiet" && refreshAlarms());
+  // The widgets' sounds follow the app's Sounds setting.
+  addEventListener("quicky-sfx", refreshWidgets);
   // Reminders are handed over a few days ahead: top them up now and then.
   setInterval(refreshAlarms, 30 * 60_000);
 }

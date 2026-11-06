@@ -21,6 +21,8 @@ export function writeSfx(p: SfxPrefs) {
   try {
     localStorage.setItem(KEY, JSON.stringify(p));
   } catch {}
+  // This window hears no "storage" event for its own change (the phone's widgets follow it).
+  dispatchEvent(new Event(KEY));
 }
 
 interface Note {

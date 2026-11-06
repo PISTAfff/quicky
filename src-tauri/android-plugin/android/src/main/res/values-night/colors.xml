@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="w_card">@color/w_card_dark</color>
+    <color name="w_ink">@color/w_ink_dark</color>
+    <color name="w_muted">@color/w_muted_dark</color>
+    <color name="w_soft">@color/w_soft_dark</color>
+    <color name="w_ring">@color/w_ring_dark</color>
+    <color name="w_doing">@color/w_doing_dark</color>
+    <color name="w_late">@color/w_late_dark</color>
+    <color name="w_late_soft">@color/w_late_soft_dark</color>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="WTitle"><item name="android:fontFamily">@font/quicky_fredoka</item></style>
+    <style name="WBody"><item name="android:fontFamily">@font/quicky_nunito</item></style>
+    <style name="WMeta"><item name="android:fontFamily">@font/quicky_nunito_bold</item></style>
+</resources>

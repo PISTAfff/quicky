@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quicky, drawn like the desktop bubble: a hard shadow, the body in the accent, an ink outline and a
+     face (smiling, happy when all is done, cross when something is overdue). Layers tinted from code. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_mascot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <ImageView android:id="@+id/w_q_shadow" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:src="@drawable/w_q_shadow" android:tint="#FF2B2540" android:contentDescription="@null" />
+    <ImageView android:id="@+id/w_q_body" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:src="@drawable/w_q_body" android:tint="#FF6D4CFF" android:contentDescription="@null" />
+    <ImageView android:id="@+id/w_q_line" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:src="@drawable/w_q_line" android:contentDescription="@null" />
+    <ImageView android:id="@+id/w_q_face" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:src="@drawable/w_q_face" android:contentDescription="Quicky" />
+    <ImageView android:id="@+id/w_q_cross" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:src="@drawable/w_q_cross" android:visibility="gone" android:contentDescription="@null" />
+</FrameLayout>

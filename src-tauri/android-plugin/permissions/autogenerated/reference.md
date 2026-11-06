@@ -1,6 +1,6 @@
 ## Default Permission
 
-Everything Quicky's page needs: widgets, reminders, queued widget and notification actions
+Everything Quicky's page needs: widgets, reminders, queued widget and notification actions, the Quick Settings tile
 
 #### This default permission set includes the following:
 
@@ -9,6 +9,7 @@ Everything Quicky's page needs: widgets, reminders, queued widget and notificati
 - `allow-actions`
 - `allow-permission`
 - `allow-leave`
+- `allow-tile`
 
 ## Permission Table
 
@@ -119,6 +120,32 @@ Enables the schedule command without any pre-configured scope.
 <td>
 
 Denies the schedule command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`quicky-android:allow-tile`
+
+</td>
+<td>
+
+Enables the tile command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`quicky-android:deny-tile`
+
+</td>
+<td>
+
+Denies the tile command without any pre-configured scope.
 
 </td>
 </tr>

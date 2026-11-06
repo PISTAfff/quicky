@@ -64,5 +64,24 @@
             android:taskAffinity=""
             android:windowSoftInputMode="stateVisible|adjustResize"
             android:theme="@style/QuickyDialog" />
+        <!-- Quicky in the Quick Settings panel: opens the add box. -->
+        <service
+            android:name=".QuickAddTile"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_add"
+            android:label="@string/tile_add"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="false" />
+        </service>
+        <!-- A widget's settings (look and colours): on placing it before Android 12, then its pencil. -->
+        <activity
+            android:name=".WidgetSettingsActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/QuickyDialog">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
     </application>
 </manifest>

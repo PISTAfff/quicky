@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Quick add, 1 cell: the accent button with the app's edge and hard shadow. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/w_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="4dp">
-    <ImageView android:id="@+id/w_add_bg" android:tint="#FF6D4CFF" android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="center" android:src="@drawable/w_circle" android:contentDescription="@null" />
-    <ImageView android:id="@+id/w_add" android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="center" android:padding="15dp" android:src="@drawable/ic_add" android:contentDescription="Add a task" />
+    <FrameLayout android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="center">
+        <ImageView android:id="@+id/w_add_shadow" android:layout_width="53dp" android:layout_height="53dp" android:layout_marginStart="3dp" android:layout_marginTop="3dp" android:src="@drawable/w_round" android:tint="#FF2B2540" android:contentDescription="@null" />
+        <ImageView android:id="@+id/w_add_bg" android:layout_width="53dp" android:layout_height="53dp" android:src="@drawable/w_round" android:tint="#FF6D4CFF" android:contentDescription="@null" />
+        <ImageView android:id="@+id/w_add_ring" android:layout_width="53dp" android:layout_height="53dp" android:src="@drawable/w_ring" android:contentDescription="@null" />
+        <ImageView android:id="@+id/w_add" android:layout_width="53dp" android:layout_height="53dp" android:padding="15dp" android:src="@drawable/ic_add" android:contentDescription="Add a task" />
+    </FrameLayout>
 </FrameLayout>

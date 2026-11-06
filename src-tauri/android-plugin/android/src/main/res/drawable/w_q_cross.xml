@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quicky's worried brows and frown, in ink: something is overdue. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="42dp" android:height="38dp" android:viewportWidth="42" android:viewportHeight="38">
+    <path android:strokeColor="#FF2B2540" android:strokeWidth="2.2" android:strokeLineCap="round" android:pathData="M11,12.4l5.2,-2.2M29,12.4l-5.2,-2.2" />
+    <path android:strokeColor="#FF2B2540" android:strokeWidth="1.8" android:strokeLineCap="round" android:pathData="M17.2,26.8q2.8,-2.2 5.6,0" />
+</vector>

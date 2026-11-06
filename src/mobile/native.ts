@@ -25,6 +25,8 @@ export interface Snapshot {
   accent: string;
   onAccent: string;
   dark: boolean;
+  /** The app's theme setting: "auto" lets the widgets follow the phone's dark mode by themselves. */
+  mode: "light" | "dark" | "auto";
   /** "Fri 6" */
   date: string;
   tasks: Row[];
@@ -33,6 +35,8 @@ export interface Snapshot {
   /** The week widget: the next 7 days' events and due tasks, under a heading per day. */
   week: Row[];
   counts: { open: number; done: number };
+  /** The app's Sounds setting, for the widgets' own sounds. */
+  sfx: { on: boolean; volume: number };
 }
 
 /** A reminder for Android to show at `at` (ms), even with Quicky closed. */
@@ -51,6 +55,7 @@ export interface Alarm {
 export type Action =
   | { type: "status"; id: string; status: "todo" | "doing" | "done"; at: number }
   | { type: "add"; id: string; title: string; at: number }
+  | { type: "delete"; id: string; at: number }
   | { type: "snooze"; id?: string; event?: string; minutes: number; at: number }
   | { type: "open"; id?: string; calendar?: boolean };
 
@@ -61,5 +66,7 @@ export const takeActions = () => call<{ actions: Action[] }>("actions").then((r)
  *  opens the exact-alarm switch in Android's settings when it's off. */
 export const notifyPermission = (ask = false, exact = false) =>
   call<{ notifications: boolean; exact: boolean }>("permission", { ask, exact });
+/** Asks Android to add Quicky's quick-add tile to Quick Settings (Android 13+). */
+export const addTile = () => call<{ supported: boolean; added?: boolean; already?: boolean }>("tile");
 /** Back with nothing open: Quicky goes to the background (as Android's own back does). */
 export const leaveApp = () => call("leave");
