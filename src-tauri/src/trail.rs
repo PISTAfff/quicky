@@ -106,6 +106,9 @@ pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
         let _ = w.set_size(PhysicalSize::new(size.0, size.1));
         let _ = app.emit_to(LABEL, "trail-start", hello);
         win::show(&w, true);
+        // Above other always-on-top windows too (a meeting's picture-in-picture, PowerToys'
+        // Always On Top): showing alone leaves it under whichever came to the top last.
+        win::keep_topmost(&w);
         // The bubbles stay on top of their own strand.
         for b in [bubble::window(&app), bubble::mini_window(&app)].into_iter().flatten() {
             win::keep_topmost(&b);
@@ -115,6 +118,7 @@ pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
         let held: fn() -> bool = if right { win::right_button_down } else { win::left_button_down };
         let mut at = center;
         let mut sent = None;
+        let mut steps: u32 = 0;
         // A mini pushed out of its app pops (and is gone) while the button is still held.
         let pops = bubble::MINI_POPS.load(Ordering::SeqCst);
         let mut popped = false;
@@ -135,6 +139,15 @@ pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
             if sent != Some(at) {
                 let _ = app.emit_to(LABEL, "trail-move", json!({ "run": run, "at": page(at) }));
                 sent = Some(at);
+            }
+            // Something else that keeps itself on top (a picture-in-picture call) can climb back
+            // over the strand: put it and the bubbles back on top now and then.
+            steps += 1;
+            if steps.is_multiple_of(40) {
+                win::keep_topmost(&w);
+                for b in [bubble::window(&app), bubble::mini_window(&app)].into_iter().flatten() {
+                    win::keep_topmost(&b);
+                }
             }
             std::thread::sleep(STEP);
         }
