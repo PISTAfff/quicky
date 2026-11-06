@@ -124,10 +124,15 @@ pub fn extension_ready(window: tauri::WebviewWindow) {
 /// The user closed an extension's window: it squishes away, then really closes.
 #[cfg(desktop)]
 pub fn close_window(w: &tauri::WebviewWindow) {
-    crate::anim::close(w, None, |w| {
-        gone(w);
-        let _ = w.destroy();
-    });
+    crate::anim::close(
+        w,
+        None,
+        |w| {
+            gone(w);
+            let _ = w.destroy();
+        },
+        || {},
+    );
 }
 
 /// What has to happen before an extension's window goes away: Windows wants its taskbar group

@@ -56,10 +56,15 @@ pub fn tuck(app: &AppHandle) {
     // While it's still on screen (it only remembers a visible window's spot).
     remember_app_window(app);
     let handle = app.clone();
-    anim::close(&main, anim_target(app), move |w| {
-        let _ = w.hide();
-        bubble::sync(&handle);
-    });
+    // The bubble comes back when the goo reaches it (right away when there's no animation).
+    anim::close(
+        &main,
+        anim_target(app),
+        |w| {
+            let _ = w.hide();
+        },
+        move || bubble::sync(&handle),
+    );
 }
 
 /// The bubble the main window's droplets fly into and out of: Quicky's own, or the app's mini

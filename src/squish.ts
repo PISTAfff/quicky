@@ -1,14 +1,18 @@
 // The overlay a window's open and close animations play in (`src-tauri/src/anim.rs`), in the
-// bubble's goo: closing, a picture of the window gathers itself into a Quicky blob, which bursts
-// into droplets that fly into the bubble (it gulps them) or, with no bubble to go to, scatter and
-// pop. Opening is the other way round: droplets fly out of the bubble, melt into a blob, and the
-// blob swells into the window. Nothing fades: the window is solid until it's a blob.
+// sticky trail's snot (`trail.ts`): closing, a picture of the window wobbles like jelly, sags and
+// melts into a dripping blob, which a lumpy, sagging strand pulls into the bubble (or the app's
+// mini); the goo left behind slurps in after it and the bubble gulps. With no bubble on screen it
+// plops into a puddle that splats and shrinks away. Opening runs it back: the bubble shoots out
+// along a strand, swells into a dripping blob, and the window bulges out of it like jelly.
+// Nothing fades: the window is solid until it's goo.
 // The overlay is never really hidden (Rust parks it as one see-through pixel), so its frames come
-// on time. Rust hides the real window once the picture covers it (`squish_covered`) and shows it
-// again under the last frame of an opening (`squish_landed`). Plain TS, like the bubble.
+// on time. Rust hides the real window once the picture covers it (`squish_covered`), and shows
+// the bubble (closing) or the real window (opening) when the goo lands (`squish_landed`). Plain
+// TS, like the bubble.
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { onAccent, storedAccent } from "./lib/theme-colors";
+import { sfx } from "./lib/sfx";
 
 interface Pt {
   x: number;
@@ -30,19 +34,12 @@ interface Play {
 const SVGNS = "http://www.w3.org/2000/svg";
 // The bubble's shape (bubble.html: a 40 x 36 view box).
 const BLOB = "M20 1C31 1 39 9 39 20c0 9-6 15-19 15S1 29 1 20C1 9 9 1 20 1z";
-const INK = "#2b2540";
 /** The blob a window becomes, px wide (the bubble's own is 58). */
 const SIZE = 70;
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
-const easeInOutCubic = (t: number) => {
-  t = clamp(t, 0, 1);
-  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-};
-/** 0 → 1 with a bouncy overshoot, settled by about x = 1. */
-const springTo = (x: number) => (x <= 0 ? 0 : 1 - Math.exp(-5 * x) * Math.cos(10 * x));
 
 const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, parent?: Element) => {
   const e = document.createElementNS(SVGNS, tag);
@@ -53,9 +50,7 @@ const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, 
 
 const svg = document.getElementById("stage") as unknown as SVGSVGElement;
 const goo = el("g", { filter: "url(#goo)" }, svg);
-const crisp = el("g", {}, svg);
 const faces = el("g", {}, svg);
-const bits = el("g", {}, svg);
 const pic = document.getElementById("pic")!;
 const shot = document.getElementById("shot") as HTMLCanvasElement;
 const tint = document.getElementById("tint")!;
@@ -96,113 +91,99 @@ function picture(p: Play, c: Pt, w: number, h: number, round: number, tinted: nu
   tint.style.opacity = clamp(tinted, 0, 1).toFixed(3);
 }
 
-// ---- droplets and sparkles (like fx.ts) -----------------------------------------------------
-interface Drop {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  r: number;
-  /** When it heads for its goal (ms), and that trip: start, velocity, duration. */
-  turn: number;
-  p0?: Pt;
-  v0?: Pt;
-  dur: number;
-  done: boolean;
-  g: SVGGElement;
-  dot: SVGCircleElement;
-  shade: SVGCircleElement | null;
+// ---- snot (the sticky trail's goo, see trail.ts) ---------------------------------------------
+/** Per-frame goo circles, under the blob: the goo filter melts them into one body. */
+const snot = el("g", {});
+goo.insertBefore(snot, blobPath);
+/** The goo filter wipes out anything much thinner than this (px radius). */
+const THIN = 4.4;
+/** One drop every this many px along a strand. */
+const GAP = 3.5;
+
+function dot(out: SVGCircleElement[], x: number, y: number, r: number) {
+  if (r < THIN * 0.9) return;
+  out.push(el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: r.toFixed(1), fill: ACCENT }));
 }
 
-function drop(layer: SVGGElement, at: Pt, v: Pt, r: number, turn: number, dur: number, outlined: boolean): Drop {
-  const g = el("g", {}, layer);
-  const shade = outlined ? el("circle", { r, fill: INK }, g) : null;
-  const dot = el("circle", outlined ? { r, fill: ACCENT, stroke: INK, "stroke-width": 1.5 } : { r, fill: ACCENT }, g);
-  return { x: at.x, y: at.y, vx: v.x, vy: v.y, r, turn, dur, done: false, g, dot, shade };
+/** What makes each animation's goo its own mess: lumps oozing along the strand, drips hanging
+ *  off it (and off the melting window), splats around a puddle. */
+interface Mess {
+  lumps: { s: number; size: number; speed: number; phase: number }[];
+  drips: { s: number; len: number; bulb: number; phase: number }[];
+  splats: { ang: number; dist: number; r: number }[];
 }
 
-/** Moves a droplet: flung (gravity and drag) until its turn, then a smooth curve into `goal`
- *  that keeps its momentum at first. Returns how far along that curve it is (0 → 1). */
-function fly(d: Drop, t: number, dt: number, goal: Pt | null): number {
-  if (t < d.turn || !goal) {
-    d.vy += 1100 * (dt / 1000);
-    d.vx *= Math.pow(0.985, dt / 16);
-    d.vy *= Math.pow(0.985, dt / 16);
-    d.x += (d.vx * dt) / 1000;
-    d.y += (d.vy * dt) / 1000;
-    return 0;
+function newMess(): Mess {
+  return {
+    lumps: Array.from({ length: 3 + Math.floor(Math.random() * 3) }, () => ({ s: rand(0.15, 0.85), size: rand(3.5, 8), speed: rand(0.02, 0.07), phase: rand(0, 6) })),
+    drips: Array.from({ length: 3 }, (_, i) => ({ s: rand(0.15, 0.3) + i * 0.28, len: rand(26, 54), bulb: rand(6, 9), phase: rand(0, 6) })),
+    splats: Array.from({ length: 5 + Math.floor(Math.random() * 3) }, () => ({ ang: rand(0, Math.PI * 2), dist: rand(26, 46), r: rand(5, 9) })),
+  };
+}
+
+const bez = (a: Pt, m: Pt, b: Pt, s: number): Pt => ({
+  x: (1 - s) ** 2 * a.x + 2 * (1 - s) * s * m.x + s ** 2 * b.x,
+  y: (1 - s) ** 2 * a.y + 2 * (1 - s) * s * m.y + s ** 2 * b.y,
+});
+
+/** Where the strand between `a` and `b` sags to (its curve's middle control point). */
+function sagOf(a: Pt, b: Pt, t: number): Pt {
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  const flat = 1 - 0.6 * Math.abs((b.y - a.y) / (d || 1));
+  const sag = Math.min(90, d * 0.16) * flat + Math.sin(t * 5.2) * Math.min(6, d * 0.02);
+  return { x: (a.x + b.x) / 2 + Math.sin(t * 3.1) * 4, y: (a.y + b.y) / 2 + sag };
+}
+
+/** One drip hanging from `top`: a thin string with a bulb at the end. */
+function drip(out: SVGCircleElement[], top: Pt, len: number, bulb: number, swing: number) {
+  if (len < 6) return;
+  const steps = Math.max(3, Math.round(len / 3));
+  for (let j = 0; j <= steps; j++) dot(out, top.x + swing * (j / steps), top.y + len * (j / steps), THIN);
+  dot(out, top.x + swing, top.y + len + bulb * 0.6, Math.max(THIN, bulb));
+}
+
+/** A lumpy, sagging snot strand from `a` (radius `ra`) to `b` (radius `rb`), with a thinner
+ *  string hanging lower and drips off it. `thin` (0..1) wrings it out (being slurped up). */
+function strand(out: SVGCircleElement[], a: Pt, b: Pt, ra: number, rb: number, thin: number, t: number, m: Mess) {
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  if (d <= 4) return;
+  const keep = 1 - thin;
+  const mid = sagOf(a, b, t);
+  const neck = Math.max(THIN, (12 - d * 0.012) * keep) * (1 + 0.1 * Math.sin(t * 9));
+  const count = clamp(Math.round(d / GAP), 10, 260);
+  const lumps = m.lumps.map((l) => ({ at: l.s + Math.sin(t * (1 + l.speed * 10) + l.phase) * 0.05, size: l.size * keep }));
+  for (let i = 1; i < count; i++) {
+    const s = i / count;
+    const q = bez(a, mid, b, s);
+    const edge = Math.min(s, 1 - s) * 2;
+    let r = lerp(lerp(ra, rb, s) * 0.85, neck, Math.min(1, edge * 1.6) ** 0.7);
+    for (const l of lumps) r += l.size * Math.exp(-(((s - l.at) / 0.045) ** 2));
+    dot(out, q.x, q.y, Math.max(THIN, r));
   }
-  if (!d.p0) {
-    d.p0 = { x: d.x, y: d.y };
-    d.v0 = { x: d.vx / 1000, y: d.vy / 1000 };
-  }
-  const s = clamp((t - d.turn) / d.dur, 0, 1);
-  const h10 = s * s * s - 2 * s * s + s;
-  const h01 = -2 * s * s * s + 3 * s * s;
-  d.x = (1 - h01) * d.p0.x + h10 * d.dur * d.v0!.x + h01 * goal.x;
-  d.y = (1 - h01) * d.p0.y + h10 * d.dur * d.v0!.y + h01 * goal.y;
-  return s;
-}
-
-function place(d: Drop, r: number) {
-  for (const [c, off] of [[d.dot, 0], [d.shade, 1.6]] as const) {
-    if (!c) continue;
-    c.setAttribute("cx", (d.x + off).toFixed(1));
-    c.setAttribute("cy", (d.y + off).toFixed(1));
-    c.setAttribute("r", Math.max(0, r).toFixed(2));
-  }
-}
-
-interface Spark {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  age: number;
-  node: SVGCircleElement;
-}
-const sparks: Spark[] = [];
-
-function sparkle(at: Pt, count: number, speed: number) {
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + Math.random() * 0.7;
-    const v = speed * rand(0.7, 1.2);
-    const node = el("circle", { r: rand(2.4, 3.6), fill: ACCENT, stroke: INK, "stroke-width": 1.4 }, bits);
-    sparks.push({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(320, 480), age: 0, node });
-  }
-}
-
-function stepSparks(dt: number) {
-  for (let i = sparks.length - 1; i >= 0; i--) {
-    const s = sparks[i];
-    s.age += dt;
-    s.vx *= 0.93;
-    s.vy = s.vy * 0.93 + 0.25 * (dt / 16);
-    s.x += (s.vx * dt) / 1000;
-    s.y += (s.vy * dt) / 1000;
-    const k = 1 - s.age / s.life;
-    if (k <= 0) {
-      s.node.remove();
-      sparks.splice(i, 1);
-      continue;
+  if (d > 70 && keep > 0.3) {
+    const low = { x: mid.x - Math.sin(t * 2.3) * 6, y: mid.y + (mid.y - (a.y + b.y) / 2) * 0.7 + 14 };
+    for (let i = 2; i < count - 1; i++) {
+      const s = i / count;
+      const q = bez(a, low, b, s);
+      dot(out, q.x, q.y, THIN * (1 + 0.5 * Math.exp(-(((s - 0.5) / 0.08) ** 2))));
     }
-    s.node.setAttribute("cx", s.x.toFixed(1));
-    s.node.setAttribute("cy", s.y.toFixed(1));
-    s.node.setAttribute("r", (3 * (0.3 + 0.7 * k)).toFixed(2));
+  }
+  if (d > 50) {
+    for (const dr of m.drips) {
+      const top = bez(a, mid, b, dr.s);
+      drip(out, top, Math.min(dr.len, d * 0.2) * keep * (1 + 0.12 * Math.sin(t * 4 + dr.phase)), dr.bulb * keep, Math.sin(t * 2.6 + dr.phase) * 4);
+    }
   }
 }
 
-/** A quick ink shock ring where the blob bursts. */
-function ring(at: Pt, size: number) {
-  const c = el("circle", { cx: at.x, cy: at.y, r: 8, fill: "none", stroke: INK, "stroke-width": 3.2 }, bits);
-  c.animate(
-    [
-      { r: "8px", strokeWidth: "3.2px", opacity: 1 },
-      { r: `${size}px`, strokeWidth: "0.5px", opacity: 0 },
-    ],
-    { duration: 320, easing: "cubic-bezier(.2,.8,.3,1)", fill: "forwards" },
-  ).finished.then(() => c.remove());
+/** A puddle at `at`, `r` wide, flattened, with splats around it (`spread` 0..1 flings them out). */
+function puddle(out: SVGCircleElement[], at: Pt, r: number, spread: number, keep: number, m: Mess) {
+  if (r < THIN) return;
+  for (const f of [-0.55, 0, 0.55]) dot(out, at.x + f * r, at.y + Math.abs(f) * r * 0.15, r * (1 - Math.abs(f) * 0.45));
+  for (const sp of m.splats) {
+    const dd = sp.dist * spread;
+    dot(out, at.x + Math.cos(sp.ang) * dd * 1.4, at.y + Math.sin(sp.ang) * dd * 0.45, sp.r * keep);
+  }
 }
 
 // ---- the two animations ---------------------------------------------------------------------
@@ -210,125 +191,199 @@ type Step = (t: number, dt: number) => { landed: boolean; done: boolean };
 /** Closing, the real window hides this long into the animation (the picture only bulges until
  *  then, covering it): by now the picture is surely on screen, so there's never a gap. */
 const COVER = 55;
+const easeIn = (t: number) => clamp(t, 0, 1) ** 2;
+const easeOut = (t: number) => 1 - (1 - clamp(t, 0, 1)) ** 3;
 
-/** Closing: gather into a blob (0 → GATHER ms), shrug, burst, and the droplets fly home. */
+/** The bubble's blob (or a mini's), px wide: the goo arrives as, or leaves from, one this size. */
+const blobFor = (p: Play) => (p.gulp === "mini" ? 38 : 58);
+
+/** Closing: the window wobbles like jelly, sags and melts into a dripping blob, which is pulled
+ *  through a lumpy snot strand into the bubble; the goo left behind slurps in after it and the
+ *  bubble gulps. No bubble: the blob plops into a puddle that splats and shrinks away. */
 function closing(p: Play): Step {
   const r = p.rect;
   const c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-  const GATHER = 240;
-  const BURST = GATHER + 110;
-  const N = 9;
   const home = p.to;
-  const dist = home ? Math.hypot(home.x - c.x, home.y - c.y) : 0;
-  const trip = clamp(240 + dist * 0.12, 260, 460);
-  const drops: Drop[] = [];
-  let burst = false;
+  const m = newMess();
+  const end = blobFor(p);
+  const MELT = 220;
+  // Where the melted blob ends up: sagged below the window's middle.
+  const B = { x: c.x, y: c.y + Math.min(46, r.h * 0.12) };
+  const dist = home ? Math.hypot(home.x - B.x, home.y - B.y) : 0;
+  const TRAVEL = clamp(130 + dist * 0.08, 150, 230);
+  const SLURP = 150;
+  const PLOP = 280;
+  const heard = { melt: false, pull: false, slurp: false, end: false };
   let gulped = false;
 
-  return (t, dt) => {
-    if (t < GATHER) {
-      // A jelly wobble first (never smaller than the real window, which hides under it
-      // meanwhile), then it gathers itself into a round, accent blob.
-      const q = clamp(t / COVER, 0, 1);
-      const bulge = { x: 1 + 0.04 * Math.sin(Math.PI * q), y: 1 + 0.025 * Math.sin(Math.PI * Math.min(1, q * 1.6)) };
-      const e = easeInOutCubic((t - COVER) / (GATHER - COVER));
-      const w = lerp(r.w * bulge.x, SIZE, e);
-      const h = lerp(r.h * bulge.y, SIZE * 0.9, e);
-      picture(p, c, w, h, e, 0.12 * q + (e - 0.3) / 0.5);
-      // The goo blob takes over under it at the very end.
-      Object.assign(blob, { shown: e > 0.85, x: c.x, y: c.y, size: SIZE, sx: w / SIZE, sy: h / (SIZE * 0.9), squeeze: false });
-    } else if (t < BURST) {
+  return (t) => {
+    const out: SVGCircleElement[] = [];
+    let landed = false;
+    if (t < COVER) {
+      // Jelly: it wobbles (never smaller than the real window, which hides under it meanwhile).
+      const q = t / COVER;
+      picture(p, c, r.w * (1 + 0.035 * Math.sin(Math.PI * q)), r.h * (1 + 0.02 * Math.sin(2 * Math.PI * Math.min(1, q))), 0, 0.1 * q);
+    } else if (t < MELT) {
+      // Sagging and melting into a blob, dripping off its bottom edge as it goes.
+      if (!heard.melt) {
+        heard.melt = true;
+        sfx.goo(0.9);
+      }
+      const q = (t - COVER) / (MELT - COVER);
+      const e = easeIn(q);
+      const wob = Math.sin(t * 0.05) * 0.07 * (1 - e);
+      const w = lerp(r.w * (1 + wob), SIZE * 1.05, e);
+      const h = lerp(r.h * (1 - wob * 0.7), SIZE * 0.88, e);
+      const at = { x: lerp(c.x, B.x, e), y: lerp(c.y, B.y, e) };
+      picture(p, at, w, h, e, 0.15 + (e - 0.2) / 0.55);
+      // Oozing from its bottom edge: a bead of goo on the edge, a string and a bulb below.
+      const bottom = at.y + h / 2;
+      const ooze = Math.sin(Math.PI * Math.min(1, q * 1.15));
+      for (const dr of m.drips) {
+        const top = { x: at.x + (dr.s - 0.5) * w * 0.8, y: bottom - 3 };
+        dot(out, top.x, top.y, 7 * ooze + THIN * (1 - ooze));
+        drip(out, top, dr.len * 1.3 * ooze, dr.bulb, 0);
+      }
+      Object.assign(blob, { shown: e > 0.82, x: B.x, y: B.y, size: SIZE, sx: w / SIZE, sy: h / (SIZE * 0.88), squeeze: true });
+    } else if (home) {
       pic.style.display = "none";
-      // A little shrug, eyes squeezed shut, then poof.
-      const e = Math.sin((Math.PI * (t - GATHER)) / (BURST - GATHER));
-      Object.assign(blob, { shown: true, sx: 1 + 0.16 * e, sy: 1 - 0.14 * e, squeeze: t - GATHER > 30 });
-    } else if (!burst) {
-      burst = true;
-      blob.shown = false;
-      ring(c, 54);
-      sparkle(c, 6, 170);
-      for (let i = 0; i < N; i++) {
-        // Into the bubble: a puff all round, then home. No bubble: a wider spray that pops.
-        const a = (i / N) * Math.PI * 2 + rand(-0.3, 0.3);
-        const v = home ? rand(170, 300) : rand(260, 420);
-        drops.push(drop(crisp, c, { x: Math.cos(a) * v, y: Math.sin(a) * v - (home ? 0 : 120) }, rand(4, 7), BURST + 150 + i * 16, trip * rand(0.9, 1.1), true));
+      // Pulled into the bubble: the blob travels along the strand, the goo left behind slurps in.
+      if (!heard.pull) {
+        heard.pull = true;
+        sfx.stick();
       }
+      const q = clamp((t - MELT) / TRAVEL, 0, 1);
+      const e = easeIn(q) * 0.6 + easeOut(q) * 0.4;
+      const s = clamp((t - MELT - TRAVEL * 0.55) / SLURP, 0, 1);
+      if (s > 0 && !heard.slurp) {
+        heard.slurp = true;
+        sfx.slurp();
+      }
+      const se = easeIn(s);
+      const pos = bez(B, sagOf(B, home, 0.4), home, e);
+      const left = { x: lerp(B.x, pos.x, se), y: lerp(B.y, pos.y, se) };
+      const stretch = Math.sin(Math.PI * q);
+      const size = lerp(SIZE, end, e);
+      // Still drawn on the last frame, while the real bubble comes back under it.
+      Object.assign(blob, { shown: true, x: pos.x, y: pos.y, size, sx: 1 + 0.22 * stretch, sy: 1 - 0.16 * stretch, squeeze: true });
+      if (s < 1) {
+        const pr = 20 * (1 - 0.8 * se);
+        puddle(out, left, pr, 0.4 * (1 - se), 1 - se, m);
+        strand(out, left, pos, pr, size * 0.32, se, t / 1000, m);
+      }
+      landed = s >= 1;
+      if (landed && !gulped) {
+        gulped = true;
+        sfx.gulp();
+        if (p.gulp) void emitTo(p.gulp, "bubble-gulp").catch(() => {});
+      }
+    } else {
+      pic.style.display = "none";
+      // No bubble to go to: it plops down into a puddle that splats and shrinks away.
+      const q = clamp((t - MELT) / PLOP, 0, 1);
+      const fall = easeIn(q / 0.3);
+      const P = { x: B.x, y: B.y + 34 };
+      if (q >= 0.3 && !heard.end) {
+        heard.end = true;
+        sfx.goo(1);
+      }
+      Object.assign(blob, { shown: q < 0.3, x: B.x, y: lerp(B.y, P.y, fall), size: SIZE, sx: 1 + 0.5 * fall, sy: 1 - 0.45 * fall, squeeze: true });
+      if (q >= 0.25) {
+        const k = (q - 0.25) / 0.75;
+        puddle(out, P, 30 * (1 - easeIn(k)), easeOut(k * 2.5), 1 - easeIn(k), m);
+      }
+      landed = q >= 1;
     }
+    snot.replaceChildren(...out);
     drawBlob();
-
-    for (const d of drops) {
-      if (d.done) continue;
-      if (home) {
-        const s = fly(d, t, dt, home);
-        // Shrinking as it dives into the bubble.
-        place(d, d.r * clamp(Math.hypot(d.x - home.x, d.y - home.y) / 36, 0.3, 1));
-        if (s >= 1) d.done = true;
-      } else {
-        fly(d, t, dt, null);
-        const k = 1 - (t - BURST) / 420;
-        place(d, d.r * k);
-        if (k <= 0) d.done = true;
-      }
-      if (d.done) d.g.remove();
-    }
-    const allIn = burst && drops.every((d) => d.done);
-    if (allIn && !gulped && p.gulp) {
-      gulped = true;
-      void emitTo(p.gulp, "bubble-gulp").catch(() => {});
-    }
-    return { landed: allIn, done: allIn };
+    return { landed, done: landed };
   };
 }
 
-/** Opening: droplets fly out of the bubble (or in from all round) and melt into a blob, which
- *  swells into the window and settles with a bounce. */
+/** Opening: the bubble shoots out along a snot strand, swells into a dripping blob, and the
+ *  window bulges out of it with a jelly overshoot while the strand slurps back. No bubble: splats
+ *  run together into a puddle that rises into the blob. */
 function opening(p: Play): Step {
   const r = p.rect;
   const c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-  const N = 8;
-  const from = p.to;
-  const dist = from ? Math.hypot(from.x - c.x, from.y - c.y) : 160;
-  const trip = clamp(180 + dist * 0.1, 200, 360);
-  const drops: Drop[] = [];
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2 + rand(-0.3, 0.3);
-    // Out of the bubble with a little spray; with no bubble, from a ring around the window's middle.
-    const start = from ?? { x: c.x + Math.cos(a) * 170, y: c.y + Math.sin(a) * 170 };
-    const v = from ? rand(200, 340) : rand(40, 90);
-    drops.push(drop(goo, start, { x: Math.cos(a) * v, y: Math.sin(a) * v }, rand(5, 8), i * 14, trip * rand(0.9, 1.1), false));
-  }
-  const MELT = Math.max(...drops.map((d) => d.turn + d.dur));
-  const SWELL = 300;
+  const home = p.to;
+  const m = newMess();
+  const start = blobFor(p);
+  const B = { x: c.x, y: c.y + Math.min(30, r.h * 0.08) };
+  const dist = home ? Math.hypot(home.x - B.x, home.y - B.y) : 0;
+  const LEAP = home ? clamp(130 + dist * 0.08, 150, 230) : 200;
+  const BULGE = LEAP + 30;
+  const GROW = 330;
+  const P = { x: B.x, y: B.y + 40 };
+  const heard = { go: false, slurp: false, bulge: false };
 
-  return (t, dt) => {
-    let arrived = 0;
-    for (const d of drops) {
-      if (d.done) {
-        arrived++;
-        continue;
-      }
-      const s = fly(d, t, dt, c);
-      place(d, d.r * lerp(0.7, 1, s));
-      if (s >= 1) {
-        d.done = true;
-        d.g.remove();
-        arrived++;
-      }
+  return (t) => {
+    const out: SVGCircleElement[] = [];
+    if (!heard.go) {
+      heard.go = true;
+      sfx.stick();
     }
-    if (t < MELT) {
-      // Each droplet that arrives makes the blob a little bigger.
-      Object.assign(blob, { shown: arrived > 0, x: c.x, y: c.y, size: SIZE * lerp(0.45, 1, arrived / N), sx: 1, sy: 1, squeeze: true });
+    if (home) {
+      // The bubble (a stand-in: the real one is hidden now) squashes, then shoots along the
+      // strand; the goo it leaves at home slurps after it.
+      const wind = clamp(t / 50, 0, 1);
+      const q = clamp((t - 50) / (LEAP - 50), 0, 1);
+      const e = easeIn(q) * 0.4 + easeOut(q) * 0.6;
+      const pos = bez(home, sagOf(home, B, 0.4), B, e);
+      const s = clamp((t - LEAP * 0.7) / 170, 0, 1);
+      if (s > 0 && !heard.slurp) {
+        heard.slurp = true;
+        sfx.slurp();
+      }
+      const se = easeIn(s);
+      const left = { x: lerp(home.x, pos.x, se), y: lerp(home.y, pos.y, se) };
+      const stretch = Math.sin(Math.PI * q);
+      const squash = Math.sin(Math.PI * wind) * (1 - q);
+      const size = lerp(start, SIZE * 1.08, easeOut(q));
+      if (t < BULGE + 60) Object.assign(blob, { shown: true, x: pos.x, y: pos.y, size, sx: (1 + 0.12 * squash) * (1 + 0.2 * stretch), sy: (1 - 0.14 * squash) * (1 - 0.14 * stretch), squeeze: q < 1 });
+      if (s < 1 && q > 0) {
+        const pr = 16 * (1 - 0.8 * se);
+        puddle(out, left, pr, 0.3 * (1 - se), 1 - se, m);
+        strand(out, left, pos, pr, size * 0.32, se, t / 1000, m);
+      }
     } else {
-      // Then it swells into the window, bouncing a little as it settles.
-      const q = (t - MELT) / SWELL;
-      const e = springTo(q);
-      const w = lerp(SIZE, r.w, e);
-      const h = lerp(SIZE * 0.9, r.h, e);
-      Object.assign(blob, { shown: q < 0.12, size: SIZE, sx: w / SIZE, sy: h / (SIZE * 0.9), squeeze: false });
-      picture(p, c, w, h, 1 - clamp(e, 0, 1), 1 - clamp(q / 0.55, 0, 1));
+      // Splats run together into a puddle, which rises into the blob.
+      const q = clamp(t / 120, 0, 1);
+      const rise = clamp((t - 110) / (LEAP - 110), 0, 1);
+      if (rise < 1) puddle(out, P, lerp(10, 26, easeOut(q)) * (1 - 0.7 * easeIn(rise)), 1 - easeOut(q), 1, m);
+      if (rise > 0) {
+        const e = easeOut(rise);
+        const top = { x: B.x, y: lerp(P.y, B.y, e) };
+        if (t < BULGE + 60) Object.assign(blob, { shown: true, x: top.x, y: top.y, size: lerp(SIZE * 0.5, SIZE * 1.08, e), sx: 1 - 0.15 * Math.sin(Math.PI * rise), sy: 1 + 0.2 * Math.sin(Math.PI * rise), squeeze: true });
+        if (rise < 1) strand(out, P, top, 12, SIZE * 0.3, easeIn(rise), t / 1000, m);
+      }
     }
+    // Drips hang off the swelling blob until the window bulges out.
+    const span = BULGE + 120 - LEAP * 0.6;
+    if (t > LEAP * 0.6 && t < BULGE + 120) {
+      const k = Math.sin(Math.PI * clamp((t - LEAP * 0.6) / span, 0, 1));
+      for (const dr of m.drips.slice(0, 2)) drip(out, { x: B.x + (dr.s - 0.5) * SIZE * 0.6, y: B.y + SIZE * 0.36 }, dr.len * 0.7 * k, dr.bulb * k, Math.sin(t / 160 + dr.phase) * 3);
+    }
+    if (t >= BULGE) {
+      // The window bulges out of the blob, overshooting like jelly, and settles.
+      if (!heard.bulge) {
+        heard.bulge = true;
+        sfx.goo(1);
+      }
+      const q = (t - BULGE) / GROW;
+      // A firmer spring than the bubble's: the window overshoots a few percent, not a fifth.
+      const e = q <= 0 ? 0 : 1 - Math.exp(-7.5 * q) * Math.cos(10.5 * q);
+      const w = lerp(SIZE * 1.08, r.w, e);
+      const h = lerp(SIZE * 0.95, r.h, e);
+      const at = { x: lerp(B.x, c.x, clamp(e, 0, 1)), y: lerp(B.y, c.y, clamp(e, 0, 1)) };
+      // A wobble on top of the overshoot: wider, then taller.
+      const wob = Math.sin(q * 14) * 0.03 * Math.max(0, 1 - q);
+      picture(p, at, w * (1 + wob), h * (1 - wob), 1 - clamp(e * 1.15, 0, 1), 1 - clamp(q / 0.5, 0, 1));
+      if (q > 0.08) blob.shown = false;
+    }
+    snot.replaceChildren(...out);
     drawBlob();
-    const landed = t > MELT + SWELL;
+    const landed = t > BULGE + GROW;
     return { landed, done: landed };
   };
 }
@@ -359,10 +414,7 @@ function clear() {
   pic.style.display = "none";
   blob.shown = false;
   drawBlob();
-  for (const layer of [crisp, bits]) layer.replaceChildren();
-  goo.replaceChildren(blobPath);
-  for (const s of sparks) s.node.remove();
-  sparks.length = 0;
+  snot.replaceChildren();
 }
 
 // Opening started with the window's last picture: here's how it looks now.
@@ -395,7 +447,6 @@ void listen<Play>("squish-play", async ({ payload: p }) => {
     const dt = Math.min(40, now - last);
     last = now;
     const s = step(now - t0, dt);
-    stepSparks(dt);
     if (!covered && ++drawn >= 3 && now - t0 >= COVER) {
       covered = true;
       void invoke("squish_covered", { run: p.run });
@@ -403,10 +454,10 @@ void listen<Play>("squish-play", async ({ payload: p }) => {
     if (s.landed && !landed) {
       landed = true;
       await invoke("squish_landed", { run: p.run });
-      // Give the real window a frame on screen before the picture goes.
-      if (p.phase === "open") await frames();
+      // Give the real window (or the bubble) a frame on screen before the picture goes.
+      await frames();
     }
-    if (s.done && sparks.length === 0) break;
+    if (s.done) break;
   }
   clear();
   await frames();

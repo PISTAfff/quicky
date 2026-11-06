@@ -1,6 +1,7 @@
-//! Opening and closing animations for Quicky's own windows (the main window, extension windows):
-//! the window squishes into the bubble (or its own middle) and springs back out of it. Nothing
-//! fades: it stays solid the whole way.
+//! Opening and closing animations for Quicky's own windows (the main window, extension windows),
+//! in the sticky trail's snot: closing, the window melts into a dripping blob that a lumpy strand
+//! pulls into the bubble (or the app's mini), which gulps it; with no bubble it plops into a
+//! puddle. Opening runs it back. Nothing fades: it stays solid until it's goo.
 //!
 //! A window can't be scaled, so a picture of it plays the part (`win::snapshot`) in the `squish`
 //! overlay, a click-through see-through window parked as one pixel between animations
@@ -181,17 +182,21 @@ fn showing(w: &WebviewWindow) -> bool {
     w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
 }
 
-/// Closes (hides or destroys) a window after it squishes into `target` (a point on screen,
-/// physical px; None: the window's own middle). `done` does the real hiding: right away when
-/// reduced motion is on or the window isn't showing.
-pub fn close<F>(w: &WebviewWindow, target: Option<Target>, done: F)
+/// Closes (hides or destroys) a window after it melts into goo that's pulled into `target`
+/// (None: it melts into a puddle). `done` does the real hiding, once the picture covers the
+/// window; `landed` runs when the goo has arrived (the bubble shows again then, so the blob the
+/// overlay brought it hands over to it). Both run right away with reduced motion or a window
+/// that isn't showing.
+pub fn close<F, L>(w: &WebviewWindow, target: Option<Target>, done: F, landed: L)
 where
     F: FnOnce(&WebviewWindow) + Send + 'static,
+    L: FnOnce() + Send + 'static,
 {
     let w = w.clone();
     if REDUCE.load(Ordering::Relaxed) || !showing(&w) {
         begin(None, None);
-        return done(&w);
+        done(&w);
+        return landed();
     }
     let w2 = w.clone();
     // Unseen first, so the system doesn't play its own hiding transition over ours. It stays
@@ -200,7 +205,7 @@ where
         win::set_invisible(&w2, true);
         done(&w2);
     });
-    let run = begin(Some(hide), None);
+    let run = begin(Some(hide), Some(Box::new(landed)));
     // The picture takes a moment: never on the main thread (it can be the caller's).
     std::thread::spawn(move || {
         // The overlay moves over the window first (still see-through), so it's ready to show
