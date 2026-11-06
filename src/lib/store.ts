@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { sfx } from "./sfx";
+import { ipcBytes } from "./platform";
 import {
   rollover, emptyData, dayKey, plusDays, uid, weekday, mergeData, sameData,
   type Data, type Task, type Status, type Attachment, type Repeat, type Reminder, type Step,
@@ -114,7 +115,7 @@ export function applySynced(next: Data) {
 export const syncQueued = <T>(job: () => Promise<T>) => queued(job);
 export const mediaExists = (rel: string) => invoke<boolean>("media_exists", { rel }).catch(() => false);
 export const readMedia = (rel: string) => invoke<ArrayBuffer>("read_media", { rel });
-export const writeMedia = (rel: string, bytes: ArrayBuffer) => invoke("write_media", new Uint8Array(bytes), { headers: { "x-path": rel } });
+export const writeMedia = (rel: string, bytes: ArrayBuffer) => invoke("write_media", ipcBytes(new Uint8Array(bytes)), { headers: { "x-path": rel } });
 
 /** On focus and on the reminder tick: take in another PC's changes to quicky.json. */
 export function checkDisk() {

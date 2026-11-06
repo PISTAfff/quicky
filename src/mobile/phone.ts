@@ -62,9 +62,12 @@ function snapshot(): Snapshot {
 
 // ---- reminders --------------------------------------------------------------------------
 
-/** How far ahead reminders are handed to Android (it's done again on every change and open). */
-const AHEAD_MS = 3 * 86_400_000;
-const MAX_ALARMS = 64;
+/** How far ahead reminders are handed to Android: a week (as far as `upcoming` looks), done again
+ *  on every change and each time Quicky opens, so they keep coming while it's closed. Android
+ *  allows about 500 alarms per app. */
+const AHEAD_MS = 7 * 86_400_000;
+const PER_TASK = 40;
+const MAX_ALARMS = 300;
 
 /** During quiet hours a reminder waits until they end (like the desktop's "waited for you"). */
 function afterQuiet(at: number): number {
@@ -82,7 +85,7 @@ export function comingAlarms(): Alarm[] {
   const until = now.getTime() + AHEAD_MS;
   const out: Alarm[] = [];
   for (const t of data.tasks) {
-    for (const at of upcoming(t, now, 8)) {
+    for (const at of upcoming(t, now, PER_TASK)) {
       if (at > until) break;
       out.push({ key: `t:${t.id}@${at}`, at: afterQuiet(at), title: t.title, body: t.note?.trim() || `Reminder · ${time12(new Date(at))}`, task: t.id });
     }

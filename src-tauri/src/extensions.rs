@@ -5,7 +5,7 @@
 
 use std::fs;
 use std::path::PathBuf;
-use tauri::ipc::{InvokeBody, Request};
+use tauri::ipc::Request;
 use tauri::{AppHandle, Manager};
 #[cfg(desktop)]
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -39,9 +39,7 @@ fn file(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
 /// Saves a downloaded bundle (raw body; the id in the `x-id` header), replacing any older version.
 #[tauri::command]
 pub fn extension_save(app: AppHandle, request: Request<'_>) -> Result<(), String> {
-    let InvokeBody::Raw(bytes) = request.body() else {
-        return Err("Expected raw bytes".into());
-    };
+    let bytes = &*crate::data::body_bytes(&request)?;
     let id = request.headers().get("x-id").and_then(|v| v.to_str().ok()).unwrap_or_default();
     let path = file(&app, id)?;
     let tmp = path.with_extension("html.tmp");

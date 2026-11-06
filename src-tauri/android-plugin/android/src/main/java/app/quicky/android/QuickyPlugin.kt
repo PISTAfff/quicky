@@ -36,7 +36,8 @@ fun launchIntent(ctx: Context, action: JSONObject?): Intent? {
  * - `widgets {snapshot}`: the tasks as the widgets show them; redraws every widget;
  * - `schedule {alarms}`: the coming reminders (JSON list); replaces the ones scheduled before;
  * - `actions`: what was done from widgets and notifications since last asked (emptied);
- * - `permission {ask, exact}`: whether notifications (and exact alarms) are allowed; asks first.
+ * - `permission {ask, exact}`: whether notifications (and exact alarms) are allowed; asks first;
+ * - `leave`: back with nothing open: Quicky goes to the background.
  */
 @TauriPlugin
 class QuickyPlugin(private val activity: Activity) : Plugin(activity) {
@@ -114,5 +115,11 @@ class QuickyPlugin(private val activity: Activity) : Plugin(activity) {
         out.put("notifications", notify)
         out.put("exact", exactOk)
         invoke.resolve(out)
+    }
+
+    @Command
+    fun leave(invoke: Invoke) {
+        activity.moveTaskToBack(true)
+        invoke.resolve()
     }
 }

@@ -1,6 +1,7 @@
 // The Android app's one screen: the task list (the desktop's list view and panels), a top bar
 // with sync, search, extensions and settings, and installed extensions full screen over it.
 import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { onBackButtonPress } from "@tauri-apps/api/app";
 import { checkDisk, flush, init, loadError, ready, setToast, tick, toast } from "../lib/store";
 import { startSync, syncNow, syncOn, syncStatus } from "../lib/sync";
 import { ACCOUNT_EVENT, readAccount, setExtensionOpener } from "../lib/cloud";
@@ -11,7 +12,7 @@ import { closeSheet, setSheet, sheet } from "../ui/state";
 import { Blob, IGear, ISearch } from "../ui/icons";
 import { ExtensionView } from "./ExtensionView";
 import { applyActions, onOpenExtension, refreshAlarms, startPhone } from "./phone";
-import { notifyPermission } from "./native";
+import { leaveApp, notifyPermission } from "./native";
 
 const WELCOMED = "quicky-phone-welcomed";
 
@@ -52,34 +53,15 @@ export default function App() {
   });
   onOpenExtension((id) => setExt(id));
 
-  // Android's back button walks back through the web view's history: each open panel or
-  // extension adds a step, so back closes it instead of leaving Quicky.
-  const layer = () => !!(sheet() || ext());
-  let pushed = false;
-  createEffect(
-    on(layer, (open) => {
-      if (open && !pushed) {
-        history.pushState({ quicky: 1 }, "");
-        pushed = true;
-      } else if (!open && pushed) {
-        pushed = false;
-        history.back();
-      }
-    }),
-  );
-  const onBack = () => {
-    if (!pushed) return;
-    pushed = false;
-    if (ext()) setExt(null);
+  // Android's back button comes here (a listener takes it over from the web view's history):
+  // it closes the context menu, then the extension, then the open panel (Settings' own panels go
+  // back to Settings), and with nothing open sends Quicky to the background like other apps.
+  const stopBack = onBackButtonPress(() => {
+    if (document.querySelector(".ctx-menu")) dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    else if (ext()) setExt(null);
     else if (sheet()) closeSheet();
-    // Settings' own panels go back to Settings: that's a layer again. Added after this event is
-    // done (a history entry added while it's being handled doesn't count for Android's back).
-    if (layer()) {
-      pushed = true;
-      setTimeout(() => history.pushState({ quicky: 1 }, ""), 0);
-    }
-  };
-  addEventListener("popstate", onBack);
+    else void leaveApp().catch(() => {});
+  }).catch(() => null);
 
   // Back in front (from the home screen, a widget, a notification): a new day maybe, other
   // devices' changes, and whatever was done from the widgets meanwhile.
@@ -107,7 +89,7 @@ export default function App() {
     const minute = setInterval(tick, 60_000);
     onCleanup(() => {
       removeEventListener("contextmenu", onMenu);
-      removeEventListener("popstate", onBack);
+      void stopBack.then((l) => l?.unregister());
       document.removeEventListener("visibilitychange", resume);
       clearInterval(minute);
     });

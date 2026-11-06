@@ -278,12 +278,24 @@ pub fn import_files(
     Ok(out)
 }
 
+/// The bytes of a raw-body command. The desktop sends them raw; Android's IPC can only carry
+/// JSON, so the phone sends them as one base64 string (see `ipcBytes` in `src/lib/platform.ts`).
+pub(crate) fn body_bytes<'a>(request: &'a Request<'_>) -> Result<std::borrow::Cow<'a, [u8]>, String> {
+    use base64::Engine as _;
+    match request.body() {
+        InvokeBody::Raw(bytes) => Ok(std::borrow::Cow::Borrowed(bytes)),
+        InvokeBody::Json(serde_json::Value::String(b64)) => base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .map(std::borrow::Cow::Owned)
+            .map_err(|e| e.to_string()),
+        _ => Err("Expected raw bytes".into()),
+    }
+}
+
 /// Raw-body command: pasted images and recorded voice notes arrive as bytes, not JSON arrays.
 #[tauri::command]
 pub fn save_blob(app: AppHandle, request: Request<'_>) -> Result<Attachment, String> {
-    let InvokeBody::Raw(bytes) = request.body() else {
-        return Err("Expected raw bytes".into());
-    };
+    let bytes = &*body_bytes(&request)?;
     let header = |k: &str| {
         request
             .headers()
@@ -351,9 +363,7 @@ pub async fn read_media(app: AppHandle, rel: String) -> Result<tauri::ipc::Respo
 /// Raw-body command: a downloaded attachment, saved at its relative path (header `x-path`).
 #[tauri::command]
 pub fn write_media(app: AppHandle, request: Request<'_>) -> Result<(), String> {
-    let InvokeBody::Raw(bytes) = request.body() else {
-        return Err("Expected raw bytes".into());
-    };
+    let bytes = &*body_bytes(&request)?;
     let rel = request.headers().get("x-path").and_then(|v| v.to_str().ok()).unwrap_or_default();
     let abs = resolve_media(&app, rel)?;
     if let Some(dir) = abs.parent() {

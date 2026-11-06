@@ -77,7 +77,7 @@ Everything works the same, with a few differences:
 
 Quicky for Android has the same task list (To do / Doing / Done, due dates, steps, repeats, reminders, attachments and voice notes) and the same look. Sign in with the same account and sync keeps the phone and every PC the same; the phone keeps its own copy too, so it works offline.
 
-- **Reminders** are notifications, even with Quicky closed, with *Done* and *Snooze 10 min* buttons. Quiet hours hold them until they end. Android 13 and up asks once whether Quicky may notify; Settings → Reminders shows whether exact times are allowed and has a test.
+- **Reminders** are notifications, even with Quicky closed, with *Done* and *Snooze 10 min* buttons. Quiet hours hold them until they end. They are set up a week ahead each time Quicky opens. Android 13 and up asks once whether Quicky may notify; Settings → Reminders shows whether exact times are allowed and has a test.
 - **Widgets** (long-press the home screen → Widgets → Quicky):
   - *Quicky tasks*: the open tasks; tap the ring to tick one off, the title to open it, + to add one.
   - *Quicky add*: one tap opens a small box to add a task.

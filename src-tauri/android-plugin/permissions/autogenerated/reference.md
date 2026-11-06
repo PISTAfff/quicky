@@ -8,6 +8,7 @@ Everything Quicky's page needs: widgets, reminders, queued widget and notificati
 - `allow-schedule`
 - `allow-actions`
 - `allow-permission`
+- `allow-leave`
 
 ## Permission Table
 
@@ -40,6 +41,32 @@ Enables the actions command without any pre-configured scope.
 <td>
 
 Denies the actions command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`quicky-android:allow-leave`
+
+</td>
+<td>
+
+Enables the leave command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`quicky-android:deny-leave`
+
+</td>
+<td>
+
+Denies the leave command without any pre-configured scope.
 
 </td>
 </tr>

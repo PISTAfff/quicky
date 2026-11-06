@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the actions command without any pre-configured scope."
         },
         {
+          "description": "Enables the leave command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-leave",
+          "markdownDescription": "Enables the leave command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the leave command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-leave",
+          "markdownDescription": "Denies the leave command without any pre-configured scope."
+        },
+        {
           "description": "Enables the permission command without any pre-configured scope.",
           "type": "string",
           "const": "allow-permission",
@@ -343,10 +355,10 @@
           "markdownDescription": "Denies the widgets command without any pre-configured scope."
         },
         {
-          "description": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`",
+          "description": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`\n- `allow-leave`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`"
+          "markdownDescription": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`\n- `allow-leave`"
         }
       ]
     }

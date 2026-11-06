@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { monthKey, uid, type Attachment } from "./model";
-import { IS_MOBILE } from "./platform";
+import { IS_MOBILE, ipcBytes } from "./platform";
 
 type Raw = Omit<Attachment, "id">;
 const withIds = (list: Raw[]): Attachment[] => list.map((a) => ({ ...a, id: uid() }));
@@ -37,7 +37,7 @@ export async function saveBlob(blob: Blob, name: string, kind?: Attachment["kind
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const headers: Record<string, string> = { "x-name": name, "x-month": monthKey() };
   if (kind) headers["x-kind"] = kind;
-  const raw = await invoke<Raw>("save_blob", bytes, { headers });
+  const raw = await invoke<Raw>("save_blob", ipcBytes(bytes), { headers });
   return { ...raw, id: uid() };
 }
 

@@ -2,6 +2,7 @@
 // they stay in the user's own folder. Online projects live in the PROJECT extension.
 // Plain TS (no Solid store) so the extension window's page can share it.
 import { invoke } from "@tauri-apps/api/core";
+import { ipcBytes } from "./platform";
 
 export const API = "https://quicky-api.pistasspot.com";
 const ACCOUNT_KEY = "quicky-account";
@@ -166,7 +167,7 @@ export async function installExtension(ext: Extension) {
   if (hex(await crypto.subtle.digest("SHA-256", bytes)) !== ext.sha256) {
     throw new CloudError(0, "The download didn't match the catalogue, so it wasn't installed");
   }
-  await invoke("extension_save", bytes, { headers: { "x-id": ext.id } });
+  await invoke("extension_save", ipcBytes(bytes), { headers: { "x-id": ext.id } });
   writeInstalled([...readInstalled().filter((i) => i.id !== ext.id), { id: ext.id, name: ext.name, version: ext.version, sha256: ext.sha256 }]);
 }
 
