@@ -37,10 +37,12 @@ export function SettingsSheet() {
   };
   const [startup, setStartup] = createSignal(false);
   const [bubble, setBubble] = createSignal(true);
+  const [trail, setTrail] = createSignal(true);
   // The phone has no start-up setting, bubble or minis.
   if (!IS_MOBILE) {
     isEnabled().then(setStartup).catch(() => {});
     invoke<boolean>("get_show_bubble").then(setBubble).catch(() => {});
+    invoke<boolean>("get_trail").then(setTrail).catch(() => {});
   }
   // The bubble can also be hidden from its own right-click menu or brought back from the tray.
   const stop = listen<boolean>("bubble-pref", (e) => setBubble(e.payload));
@@ -59,6 +61,11 @@ export function SettingsSheet() {
     const next = !bubble();
     await invoke("set_show_bubble", { show: next });
     setBubble(next);
+  };
+  const toggleTrail = async () => {
+    const next = !trail();
+    await invoke("set_trail", { on: next });
+    setTrail(next);
   };
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [version, setVersion] = createSignal("");
@@ -138,6 +145,10 @@ export function SettingsSheet() {
         <label class="switch-row">
           <span>Bubble on screen<small>Little Quicky that waits while the app is closed. Drag it anywhere; right-click for options</small></span>
           <input type="checkbox" role="switch" checked={bubble()} onChange={toggleBubble} />
+        </label>
+        <label class="switch-row">
+          <span>Sticky trail<small>Quicky leaves a trail of goo when you drag it or a mini</small></span>
+          <input type="checkbox" role="switch" checked={trail()} onChange={toggleTrail} />
         </label>
         <Show
           when={stuck().length}

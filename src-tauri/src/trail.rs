@@ -87,6 +87,9 @@ fn desk(app: &AppHandle, (x, y): (i32, i32)) -> Option<Desk> {
 
 /// A drag of the bubble (or a mini) began, its window centred at `center` (physical px).
 pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
+    if crate::config::read_config(app).trail_off {
+        return;
+    }
     let run = RUN.fetch_add(1, Ordering::SeqCst) + 1;
     let cursor0 = win::cursor();
     let off = (center.0 - cursor0.0, center.1 - cursor0.1);
@@ -168,6 +171,17 @@ pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
         }
         let _ = app.emit_to(LABEL, "trail-home", json!({ "run": run }));
     });
+}
+
+#[tauri::command]
+pub fn get_trail(app: AppHandle) -> bool {
+    !crate::config::read_config(&app).trail_off
+}
+
+/// Switches the sticky trail on or off (Settings).
+#[tauri::command]
+pub fn set_trail(app: AppHandle, on: bool) -> Result<(), String> {
+    crate::config::update_config(&app, |c| c.trail_off = !on)
 }
 
 /// The drag going on now (the page asks once it's loaded).

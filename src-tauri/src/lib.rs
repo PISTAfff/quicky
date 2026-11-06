@@ -239,6 +239,8 @@ pub fn run() {
             menu::menu_show,
             menu::menu_hide,
             trail::trail_state,
+            trail::get_trail,
+            trail::set_trail,
             trail::trail_done,
             fx::fx_payload,
             fx::fx_ready,

@@ -38,6 +38,8 @@ pub struct Config {
     pub(crate) bubble_pos: Option<(i32, i32)>,
     pub(crate) bubble_locked: bool,
     pub(crate) stuck_apps: Vec<StuckApp>,
+    /// The sticky trail a dragged bubble or mini leaves is switched off (on unless the user says).
+    pub(crate) trail_off: bool,
 }
 
 impl Default for Config {
@@ -49,6 +51,7 @@ impl Default for Config {
             bubble_pos: None,
             bubble_locked: false,
             stuck_apps: Vec::new(),
+            trail_off: false,
         }
     }
 }
