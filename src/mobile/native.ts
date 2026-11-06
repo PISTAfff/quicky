@@ -53,6 +53,7 @@ export interface Alarm {
 export type Action =
   | { type: "status"; id: string; status: "todo" | "doing" | "done"; at: number }
   | { type: "add"; id: string; title: string; at: number }
+  | { type: "delete"; id: string; at: number }
   | { type: "snooze"; id?: string; event?: string; minutes: number; at: number }
   | { type: "open"; id?: string; calendar?: boolean };
 

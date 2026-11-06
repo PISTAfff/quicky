@@ -1,9 +1,9 @@
 // The phone's background jobs: keeping the widgets and the scheduled reminders up to date with
-// the tasks, and taking in what was done from them (a tick on a widget, Done or Snooze on a
+// the tasks, and taking in what was done from them (a tick, start, pause or delete on a widget, Done or Snooze on a
 // notification, the widget's add box) through the store's own actions, so it's saved and synced
 // like anything done in the app.
 import { createEffect, createRoot, on } from "solid-js";
-import { addTaskTo, data, setStatus, snoozeTask, today } from "../lib/store";
+import { addTaskTo, data, removeTask, setStatus, snoozeTask, today } from "../lib/store";
 import {
   byUrgency, dueLabel, eventStarts, inQuietHours, isLater, parseDay, plusDays, stepsDone, time12, upcoming, type Task,
 } from "../lib/model";
@@ -129,6 +129,7 @@ export async function applyActions() {
   for (const a of list) {
     const task = "id" in a && a.id ? data.tasks.find((t) => t.id === a.id) : undefined;
     if (a.type === "status" && task && task.status !== a.status) setStatus(task.id, a.status);
+    else if (a.type === "delete" && task) removeTask(task.id);
     else if (a.type === "add" && !data.tasks.some((t) => t.id === a.id)) addTaskTo(null, a.title, [], undefined, { id: a.id, at: a.at });
     else if (a.type === "snooze") {
       if (task && task.status === "todo") snoozeTask(task.id, a.minutes);

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One row of a list widget: the status dot (the tick), the title and chips (due, steps). Events have
-     an accent bar instead of the dot. -->
+<!-- One row of a list widget: the status dot (the tick), the title and chips (due, steps), and on the
+     task lists start/pause and delete. Events have an accent bar instead of the dot. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -19,4 +19,6 @@
             <TextView android:id="@+id/w_chip2" style="@style/WgMeta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:background="@drawable/w_chip" android:backgroundTint="#FFEDE9FB" android:includeFontPadding="false" android:paddingStart="7dp" android:paddingTop="3dp" android:paddingEnd="7dp" android:paddingBottom="3dp" android:singleLine="true" android:textColor="#FF5E5878" android:textSize="11.5sp" />
         </LinearLayout>
     </LinearLayout>
+    <ImageView android:id="@+id/w_state" android:layout_width="34dp" android:layout_height="40dp" android:paddingStart="8dp" android:paddingTop="10dp" android:paddingEnd="6dp" android:paddingBottom="10dp" android:src="@drawable/ic_play" android:visibility="gone" android:contentDescription="Start" />
+    <ImageView android:id="@+id/w_delete" android:layout_width="34dp" android:layout_height="40dp" android:paddingStart="6dp" android:paddingTop="10dp" android:paddingEnd="8dp" android:paddingBottom="10dp" android:src="@drawable/ic_trash" android:visibility="gone" android:contentDescription="Delete" />
 </LinearLayout>

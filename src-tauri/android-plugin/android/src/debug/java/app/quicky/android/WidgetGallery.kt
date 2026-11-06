@@ -39,7 +39,7 @@ class WidgetGallery : Activity() {
                 try {
                     // Drawn as a launcher would: with a restricted context (no bundled fonts).
                     val host = createPackageContext(packageName, CONTEXT_RESTRICTED)
-                    val style = WidgetStyle(look, if (theme == "phone") "phone" else "app")
+                    val style = WidgetStyle(look, if (theme == "phone") "phone" else "app", intent.getFloatExtra("scale", 1f))
                     val view = Widgets.build(this, kind, 0, s, style, big).apply(host, frame)
                     frame.addView(view)
                     Widgets.fillRows(host, view, kind, s, style)

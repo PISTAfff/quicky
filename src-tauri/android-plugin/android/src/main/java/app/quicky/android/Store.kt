@@ -49,7 +49,8 @@ object Store {
             val a = q.optJSONObject(i) ?: continue
             val id = a.optString("id")
             when (a.optString("type")) {
-                "status" -> if (a.optString("status") == "done") markDone(ctx, id)
+                "status" -> if (a.optString("status") == "done") markDone(ctx, id) else setStatus(ctx, id, a.optString("status"))
+                "delete" -> remove(ctx, id)
                 "add" -> if (!hasTask(ctx, id)) addTask(ctx, id, a.optString("title"))
             }
         }
@@ -121,6 +122,29 @@ object Store {
             }
             s.put("week", out)
         }
+        setSnapshot(ctx, s.toString())
+    }
+
+    /** A task deleted from a widget: gone at once, like a tick but not counted as done. */
+    fun remove(ctx: Context, id: String) {
+        val done = snapshot(ctx).optJSONObject("counts")?.optInt("done") ?: 0
+        markDone(ctx, id)
+        val after = snapshot(ctx)
+        after.optJSONObject("counts")?.put("done", done)
+        setSnapshot(ctx, after.toString())
+    }
+
+    /** A task started or paused from a widget: its dot changes at once, everywhere it's shown. */
+    fun setStatus(ctx: Context, id: String, status: String) {
+        val s = snapshot(ctx)
+        fun mark(list: JSONArray?) {
+            if (list == null) return
+            for (i in 0 until list.length()) list.optJSONObject(i)?.takeIf { it.optString("id") == id }?.put("status", status)
+        }
+        mark(s.optJSONArray("tasks"))
+        mark(s.optJSONArray("today"))
+        mark(s.optJSONArray("week"))
+        s.optJSONObject("next")?.takeIf { it.optString("id") == id }?.put("status", status)
         setSnapshot(ctx, s.toString())
     }
 

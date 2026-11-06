@@ -92,8 +92,17 @@ object Widgets {
         }
     }
 
+    /**
+     * How much bigger to draw a widget so it looks its intended size: Samsung's One UI draws widgets
+     * shrunk (`hsResizeRatio`, about 0.71), which made text and icons tiny. 1 everywhere else.
+     */
+    fun scale(mgr: AppWidgetManager, id: Int): Float {
+        val ratio = mgr.getAppWidgetOptions(id).getFloat("hsResizeRatio", 1f)
+        return if (ratio in 0.3f..0.99f) (1f / ratio).coerceAtMost(1.6f) else 1f
+    }
+
     private fun views(ctx: Context, mgr: AppWidgetManager, kind: Class<*>, id: Int, s: JSONObject): RemoteViews {
-        val style = Store.widgetStyle(ctx, id)
+        val style = Store.widgetStyle(ctx, id).copy(scale = scale(mgr, id))
         val big = bigFrom(kind)
         val list = LISTS.containsKey(kind)
         if (Build.VERSION.SDK_INT >= 31) {
@@ -168,6 +177,8 @@ object Widgets {
      */
     class Look(ctx: Context, s: JSONObject, style: WidgetStyle) {
         val you = style.look == "you" && Build.VERSION.SDK_INT >= 31
+        /** Text and icon size factor (see [scale]). */
+        val k = style.scale
         val soft = style.look == "soft"
         /** The app's look: ink rings on the buttons, a hard shadow under the card. */
         val edged = !you && !soft
@@ -238,6 +249,18 @@ object Widgets {
     private fun RemoteViews.text(id: Int, c: C) = color(id, "setTextColor", c)
     private fun RemoteViews.tint(id: Int, c: C) = color(id, "setColorFilter", c)
     private fun RemoteViews.shown(id: Int, on: Boolean) = setViewVisibility(id, if (on) View.VISIBLE else View.GONE)
+
+    /** Text at its layout size times the widget's scale. */
+    private fun RemoteViews.sp(look: Look, id: Int, sp: Float) {
+        if (look.k > 1.01f) setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, sp * look.k)
+    }
+
+    /** A view at its layout size (dp) times the widget's scale (Android 12+, where it can be set). */
+    private fun RemoteViews.size(look: Look, id: Int, w: Float, h: Float) {
+        if (look.k <= 1.01f || Build.VERSION.SDK_INT < 31) return
+        if (w > 0) setViewLayoutWidth(id, w * look.k, TypedValue.COMPLEX_UNIT_DIP)
+        if (h > 0) setViewLayoutHeight(id, h * look.k, TypedValue.COMPLEX_UNIT_DIP)
+    }
 
     /** An accent button: the fill, its icon, and the ink ring in the app's look. */
     private fun RemoteViews.button(look: Look, bg: Int, ring: Int, icon: Int) {
@@ -319,10 +342,11 @@ object Widgets {
     }
 
     /** Sets a heading: the Fredoka picture where it can be drawn, else the plain text. */
-    private fun RemoteViews.heading(ctx: Context, textId: Int, imgId: Int, text: String, sp: Float, c: C) {
+    private fun RemoteViews.heading(ctx: Context, look: Look, textId: Int, imgId: Int, text: String, sp: Float, c: C) {
         setTextViewText(textId, text)
         text(textId, c)
-        val bmp = heading(ctx, text, sp)
+        sp(look, textId, sp)
+        val bmp = heading(ctx, text, sp * look.k)
         shown(textId, bmp == null)
         shown(imgId, bmp != null)
         if (bmp != null) {
@@ -394,10 +418,10 @@ object Widgets {
         val (emptyTitle, emptySub) = if (fresh || !s.has(if (which == "doing") "tasks" else which)) "Hi, I'm Quicky!" to "Open Quicky once to fill this in" else empty
         if (fresh) mood = ""
 
-        v.heading(ctx, R.id.w_title, R.id.w_title_img, title, if (big) 19f else 16f, look.ink)
+        v.heading(ctx, look, R.id.w_title, R.id.w_title_img, title, if (big) 19f else 16f, look.ink)
         v.setTextViewText(R.id.w_sub, sub)
         v.shown(R.id.w_sub, sub.isNotEmpty())
-        v.heading(ctx, R.id.w_empty_title, R.id.w_empty_title_img, emptyTitle, 16f, look.ink)
+        v.heading(ctx, look, R.id.w_empty_title, R.id.w_empty_title_img, emptyTitle, 16f, look.ink)
         v.setTextViewText(R.id.w_empty_sub, emptySub)
         v.shown(R.id.w_empty_sub, big)
         v.text(R.id.w_sub, look.muted)
@@ -405,6 +429,13 @@ object Widgets {
         v.tint(R.id.w_logo, look.accent)
         v.mascot(look, mood)
         v.shown(R.id.w_mascot, tall)
+        v.sp(look, R.id.w_sub, 12f)
+        v.sp(look, R.id.w_empty_sub, 12f)
+        val logo = if (big) 26f else 20f
+        val addSize = if (big) 36f else 30f
+        v.size(look, R.id.w_logo, logo, logo)
+        v.size(look, R.id.w_add_wrap, addSize, addSize)
+        v.size(look, R.id.w_mascot, if (big) 52f else 48f, if (big) 47f else 44f)
         v.button(look, R.id.w_add_bg, R.id.w_add_ring, R.id.w_add)
 
         // How much of today is done, on the task list (the bar is tinted, so Android 12+ only).
@@ -436,7 +467,7 @@ object Widgets {
                 val key = r.optString("id").ifEmpty { r.optString("kind") + r.optString("title") + r.optString("time") }
                 var itemId = key.hashCode().toLong()
                 if (!seen.add(itemId)) itemId = (i.toLong() shl 32) or (itemId and 0xFFFFFFFFL)
-                items.addItem(itemId, rowView(ctx, look, which, r))
+                items.addItem(itemId, rowView(ctx, look, which, r, big))
             }
             v.setRemoteAdapter(R.id.w_rows, items.build())
         } else {
@@ -456,10 +487,10 @@ object Widgets {
     }
 
     /** One row of a list widget (or a day's heading in the week widget). */
-    fun rowView(ctx: Context, look: Look, which: String, r: JSONObject): RemoteViews {
+    fun rowView(ctx: Context, look: Look, which: String, r: JSONObject, wide: Boolean = true): RemoteViews {
         if (r.optString("kind") == "day") {
             val h = RemoteViews(ctx.packageName, R.layout.w_day)
-            h.heading(ctx, R.id.w_day, R.id.w_day_img, r.optString("title"), 14f, look.accentText)
+            h.heading(ctx, look, R.id.w_day, R.id.w_day_img, r.optString("title"), 14f, look.accentText)
             return h
         }
         val v = RemoteViews(ctx.packageName, R.layout.w_row)
@@ -467,6 +498,12 @@ object Widgets {
         val title = r.optString("title")
         v.setTextViewText(R.id.w_row_title, title)
         v.text(R.id.w_row_title, look.ink)
+        v.sp(look, R.id.w_row_title, 15f)
+        v.sp(look, R.id.w_chip1, 11.5f)
+        v.sp(look, R.id.w_chip2, 11.5f)
+        v.size(look, R.id.w_tick, 38f, 42f)
+        v.size(look, R.id.w_dot, 24f, 24f)
+        v.size(look, R.id.w_dot_half, 24f, 24f)
         val isTask = id.isNotEmpty()
         val event = r.optString("kind") == "event"
         val doing = r.optString("status") == "doing"
@@ -485,6 +522,21 @@ object Widgets {
         v.chip(look, 2, r.optString("steps"), "")
         v.shown(R.id.w_row_meta, first.isNotEmpty() || r.optString("steps").isNotEmpty())
 
+        // The task lists: start or pause, and delete, right on the row (wide enough widgets only).
+        val actions = isTask && wide && (which == "tasks" || which == "doing")
+        v.shown(R.id.w_state, actions)
+        v.shown(R.id.w_delete, actions)
+        if (actions) {
+            v.setImageViewResource(R.id.w_state, if (doing) R.drawable.ic_pause else R.drawable.ic_play)
+            v.tint(R.id.w_state, if (doing) look.doing else look.muted)
+            v.tint(R.id.w_delete, look.muted)
+            v.size(look, R.id.w_state, 34f, 40f)
+            v.size(look, R.id.w_delete, 34f, 40f)
+            v.setContentDescription(R.id.w_state, if (doing) "Pause $title" else "Start $title")
+            v.setContentDescription(R.id.w_delete, "Delete $title")
+            v.setOnClickFillInIntent(R.id.w_state, Intent().putExtra("what", if (doing) "todo" else "doing").putExtra("id", id))
+            v.setOnClickFillInIntent(R.id.w_delete, Intent().putExtra("what", "delete").putExtra("id", id))
+        }
         if (isTask) {
             v.setContentDescription(R.id.w_tick, "Mark $title done")
             v.setOnClickFillInIntent(R.id.w_tick, Intent().putExtra("what", "done").putExtra("id", id))
@@ -507,6 +559,21 @@ object Widgets {
             v.text(R.id.w_done_text, look.onAccent)
         }
         v.button(look, R.id.w_done_bg, R.id.w_done_ring, R.id.w_done)
+        v.sp(look, R.id.w_label, if (big) 12.5f else 11f)
+        v.sp(look, R.id.w_task, if (big) 21f else 15f)
+        if (big) {
+            v.sp(look, R.id.w_more, 12f)
+            v.sp(look, R.id.w_done_text, 14f)
+            v.sp(look, R.id.w_chip1, 11.5f)
+            v.sp(look, R.id.w_chip2, 11.5f)
+            v.size(look, R.id.w_logo, 20f, 20f)
+            v.size(look, R.id.w_done_wrap, 0f, 38f)
+            v.size(look, R.id.w_done, 18f, 18f)
+            v.size(look, R.id.w_mascot, 58f, 52f)
+        } else {
+            v.size(look, R.id.w_done_wrap, 40f, 40f)
+            v.size(look, R.id.w_mascot, 40f, 36f)
+        }
         val t = s.optJSONObject("next")
         if (t == null) {
             v.setTextViewText(R.id.w_label, "Next up")
@@ -552,6 +619,8 @@ object Widgets {
         // No badge with nothing to do (or before the first snapshot): just Quicky, smiling.
         v.shown(R.id.w_badge, open > 0)
         v.setTextViewText(R.id.w_badge, if (open > 99) "99+" else open.toString())
+        v.sp(look, R.id.w_badge, 12f)
+        v.size(look, R.id.w_badge, 0f, 24f)
         v.setContentDescription(R.id.w_q_face, if (open > 0) "Quicky, $open to do" else "Quicky")
         v.setOnClickPendingIntent(R.id.w_root, openApp(ctx, null, 9400))
         if (big) {
@@ -571,6 +640,9 @@ object Widgets {
             }
             v.setTextViewText(R.id.w_bal_title, line)
             v.setTextViewText(R.id.w_bal_sub, sub)
+            v.sp(look, R.id.w_bal_title, 13.5f)
+            v.sp(look, R.id.w_bal_sub, 11.5f)
+            v.size(look, R.id.w_blob_box, 0f, 66f)
             v.setOnClickPendingIntent(
                 R.id.w_balloon,
                 openApp(ctx, t?.let { JSONObject().put("type", "open").put("id", it.optString("id")) }, 9401),
@@ -585,6 +657,7 @@ object Widgets {
         if (big) {
             v.setInt(BG, "setBackgroundResource", look.card)
             v.text(R.id.w_add_text, look.muted)
+            v.sp(look, R.id.w_add_text, 15f)
             v.tint(R.id.w_logo, look.accent)
             v.setOnClickPendingIntent(BG, quickAdd(ctx))
         } else {
@@ -645,15 +718,16 @@ object Widgets {
 
 /** How one placed widget looks: "quicky" (the app's cards), "soft" or "you" (Material You); and
  *  its colours: "app" (like the app's theme), "light", "dark" or "phone". */
-data class WidgetStyle(val look: String = "quicky", val theme: String = "app")
+data class WidgetStyle(val look: String = "quicky", val theme: String = "app", val scale: Float = 1f)
 
 /** All the widgets: redrawn on update, on resize (before Android 12), and their settings dropped when removed. */
 open class QuickyWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.update(ctx, mgr, javaClass, ids)
 
     override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, options: Bundle) {
-        // Android 12+ picks the layout for the size itself.
-        if (Build.VERSION.SDK_INT < 31) Widgets.update(ctx, mgr, javaClass, intArrayOf(id))
+        // Android 12+ picks the layout for the size itself, but One UI's shrink factor can change with
+        // the home screen grid, so redraw there too.
+        if (Build.VERSION.SDK_INT < 31 || options.containsKey("hsResizeRatio")) Widgets.update(ctx, mgr, javaClass, intArrayOf(id))
     }
 
     override fun onDeleted(ctx: Context, ids: IntArray) {
@@ -683,7 +757,7 @@ class Rows(private val ctx: Context, private val which: String, private val widg
     override fun onDestroy() {}
     override fun onDataSetChanged() {
         val s = Store.snapshot(ctx)
-        look = Widgets.Look(ctx, s, Store.widgetStyle(ctx, widgetId))
+        look = Widgets.Look(ctx, s, Store.widgetStyle(ctx, widgetId).copy(scale = Widgets.scale(AppWidgetManager.getInstance(ctx), widgetId)))
         rows = Widgets.rows(s, which)
     }
 
@@ -697,8 +771,8 @@ class Rows(private val ctx: Context, private val which: String, private val widg
 }
 
 /**
- * A tap on a widget: ticks the task off (queued for the page, gone from the widgets at once) or
- * opens Quicky on it. An activity, not a broadcast, because Android only lets activities open
+ * A tap on a widget: ticks the task off, starts or pauses it, or deletes it (queued for the page and
+ * shown on the widgets at once), or opens Quicky on it. An activity, not a broadcast, because Android only lets activities open
  * other screens.
  */
 class WidgetTapActivity : Activity() {
@@ -709,6 +783,17 @@ class WidgetTapActivity : Activity() {
             "done" -> if (id.isNotEmpty()) {
                 Store.enqueue(this, JSONObject().put("type", "status").put("id", id).put("status", "done").put("at", System.currentTimeMillis()))
                 Store.markDone(this, id)
+                Widgets.refresh(this)
+            }
+            "doing", "todo" -> if (id.isNotEmpty()) {
+                val status = intent.getStringExtra("what")!!
+                Store.enqueue(this, JSONObject().put("type", "status").put("id", id).put("status", status).put("at", System.currentTimeMillis()))
+                Store.setStatus(this, id, status)
+                Widgets.refresh(this)
+            }
+            "delete" -> if (id.isNotEmpty()) {
+                Store.enqueue(this, JSONObject().put("type", "delete").put("id", id).put("at", System.currentTimeMillis()))
+                Store.remove(this, id)
                 Widgets.refresh(this)
             }
             "open" -> launchIntent(this, JSONObject().put("type", "open").put("id", id))?.let { startActivity(it) }
