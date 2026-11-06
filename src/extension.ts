@@ -8,8 +8,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { readAccount, readInstalled } from "./lib/cloud";
 import { followTheme } from "./lib/theme-colors";
 import { hostExtension, TASKS_ALLOWED, type TaskAnswer } from "./lib/ext-host";
+import { followWindowAnim } from "./lib/winanim";
+import { sendExtensionIcon } from "./lib/ext-icon";
 
 followTheme();
+followWindowAnim();
 const win = getCurrentWindow();
 document.getElementById("wb-min")!.onclick = () => void win.minimize();
 document.getElementById("wb-max")!.onclick = () => void win.toggleMaximize();
@@ -22,6 +25,14 @@ document.querySelector(".titlebar")!.addEventListener("dblclick", (e) => {
 const id = win.label.replace(/^ext-/, "");
 const installed = readInstalled().find((i) => i.id === id);
 if (installed) document.title = document.getElementById("ext-name")!.textContent = installed.name;
+// Its own taskbar and window icon: the blob with this extension's badge.
+void sendExtensionIcon(installed ?? { id, name: id });
+// The window starts hidden: once this page has painted it springs open (a hidden page gets its
+// frames late, so a short timeout stands in for them).
+void new Promise<void>((painted) => {
+  requestAnimationFrame(() => requestAnimationFrame(() => painted()));
+  setTimeout(painted, 150);
+}).then(() => invoke("extension_ready"));
 
 let taskReq = 0;
 const taskReplies = new Map<number, (r: TaskAnswer) => void>();

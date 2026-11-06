@@ -15,7 +15,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use tauri::WebviewWindow;
 
-pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, Mover, HOST, PLACING};
+pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, Mover, HOST, PLACING, place_overlay};
 
 pub type Hwnd = isize;
 
@@ -376,6 +376,19 @@ pub fn set_big_icon(w: &WebviewWindow, rgba: &[u8], width: u32, height: u32) {
         }
     });
 }
+
+/// No picture of a window here: `anim` squishes the page's own content instead.
+pub const CAN_SNAPSHOT: bool = false;
+
+pub fn snapshot(_w: &WebviewWindow) -> Option<(Vec<u8>, Rect)> {
+    None
+}
+
+/// Only needed alongside `snapshot`.
+pub fn set_invisible(_w: &WebviewWindow, _invisible: bool) {}
+
+/// macOS has one Dock icon per app, whatever its windows: nothing to group.
+pub fn set_window_group(_w: &WebviewWindow, _id: Option<&str>) {}
 
 /// The app in front fills its whole screen (a full-screen app, game, video or presentation).
 pub fn busy() -> bool {

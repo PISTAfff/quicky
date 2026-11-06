@@ -39,6 +39,14 @@ pub fn show(w: &WebviewWindow, visible: bool) {
     let _ = if visible { w.show() } else { w.hide() };
 }
 
+/// Puts the animation overlay at a spot and size, shown (`anim`; only used where there's a
+/// window snapshot, but every system has it).
+pub fn place_overlay(w: &WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+    let _ = w.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
+    let _ = w.show();
+}
+
 /// The window was made always-on-top when it was created; nothing to renew here.
 pub fn keep_topmost(_w: &WebviewWindow) {}
 

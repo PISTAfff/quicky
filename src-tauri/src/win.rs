@@ -466,8 +466,9 @@ pub fn set_big_icon(w: &tauri::WebviewWindow, rgba: &[u8], width: u32, height: u
         CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, DestroyIcon, SendMessageW, ICONINFO, ICON_BIG, WM_SETICON};
-    /// The icon we set last, destroyed once it's replaced.
-    static LAST: AtomicIsize = AtomicIsize::new(0);
+    /// The icons we made and handed to a window: one is destroyed once its window has a newer one
+    /// (several windows have icons of their own, so only what that window gives back).
+    static OURS: std::sync::Mutex<Vec<isize>> = std::sync::Mutex::new(Vec::new());
     let Some(hwnd) = own(w) else { return };
     if rgba.len() < (width * height * 4) as usize {
         return;
@@ -497,11 +498,190 @@ pub fn set_big_icon(w: &tauri::WebviewWindow, rgba: &[u8], width: u32, height: u
         if icon.is_null() {
             return;
         }
-        SendMessageW(h(hwnd), WM_SETICON, ICON_BIG as usize, icon as isize);
-        let old = LAST.swap(icon as isize, Ordering::Relaxed);
-        if old != 0 {
+        // WM_SETICON hands back the window's previous big icon.
+        let old = SendMessageW(h(hwnd), WM_SETICON, ICON_BIG as usize, icon as isize);
+        let mut ours = OURS.lock().unwrap_or_else(|e| e.into_inner());
+        ours.push(icon as isize);
+        if let Some(i) = ours.iter().position(|&o| o == old && old != 0) {
+            ours.swap_remove(i);
             DestroyIcon(old as _);
         }
+    }
+}
+
+/// A picture of one of Quicky's windows exists here (`snapshot`), so `anim` squishes it.
+pub const CAN_SNAPSHOT: bool = true;
+
+/// Keeps one of Quicky's own windows on screen but unseen (`anim`: it paints and takes focus
+/// while a picture of it springs open), or makes it seen again. DWM cloaking: the window is
+/// shown and drawn as usual, the screen just doesn't show it (and Tauri never resets it, unlike
+/// the window styles it keeps a copy of).
+pub fn set_invisible(w: &tauri::WebviewWindow, invisible: bool) {
+    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CLOAK};
+    let Some(hwnd) = own(w) else { return };
+    let on: BOOL = invisible.into();
+    unsafe { DwmSetWindowAttribute(h(hwnd), DWMWA_CLOAK as u32, &on as *const BOOL as *const _, std::mem::size_of::<BOOL>() as u32) };
+}
+
+/// Puts the animation overlay (`anim`) at a spot and size, shown, on top, without taking focus
+/// and out of Alt+Tab, in one go and without waiting on the main thread. Between animations it
+/// stays shown as one see-through pixel, so its page never counts as hidden (hidden pages get
+/// their frames late).
+pub fn place_overlay(w: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, SWP_SHOWWINDOW};
+    let Some(hwnd) = own(w) else { return };
+    unsafe {
+        let ex = GetWindowLongPtrW(h(hwnd), GWL_EXSTYLE);
+        let want = ex | (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) as isize;
+        if want != ex {
+            SetWindowLongPtrW(h(hwnd), GWL_EXSTYLE, want);
+        }
+        SetWindowPos(h(hwnd), HWND_TOPMOST, x, y, width.max(1), height.max(1), SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER);
+    }
+}
+
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn PrintWindow(hwnd: HWND, hdc: windows_sys::Win32::Graphics::Gdi::HDC, flags: u32) -> BOOL;
+}
+
+/// A picture of one of Quicky's own windows as it looks now (RGBA, its visible frame only, web
+/// view included), and where that frame is. Works while it's unseen (`set_invisible`) too.
+pub fn snapshot(w: &tauri::WebviewWindow) -> Option<(Vec<u8>, Rect)> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS, SRCCOPY,
+    };
+    /// Draws the web view's content too, not just the frame.
+    const PW_RENDERFULLCONTENT: u32 = 2;
+    let hwnd = own(w)?;
+    let visible = frame(hwnd)?;
+    let mut wr: RECT = unsafe { std::mem::zeroed() };
+    if unsafe { GetWindowRect(h(hwnd), &mut wr) } == 0 {
+        return None;
+    }
+    let (ww, wh) = (wr.right - wr.left, wr.bottom - wr.top);
+    let (fx, fy) = (visible.left - wr.left, visible.top - wr.top);
+    let (fw, fh) = (visible.right - visible.left, visible.bottom - visible.top);
+    if ww <= 0 || wh <= 0 || fw <= 0 || fh <= 0 || fx < 0 || fy < 0 || fx + fw > ww || fy + fh > wh {
+        return None;
+    }
+    unsafe {
+        let mut bi: BITMAPINFO = std::mem::zeroed();
+        bi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bi.bmiHeader.biWidth = ww;
+        bi.bmiHeader.biHeight = -wh; // top-down rows
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        let dc = CreateCompatibleDC(std::ptr::null_mut());
+        if dc.is_null() {
+            return None;
+        }
+        let mut bits = std::ptr::null_mut();
+        let bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0);
+        if bmp.is_null() || bits.is_null() {
+            DeleteDC(dc);
+            return None;
+        }
+        let old = SelectObject(dc, bmp);
+        // In front, it's exactly what the screen shows there: copying that is much quicker than
+        // asking the window to draw itself again.
+        let ok = if GetForegroundWindow() == h(hwnd) && IsWindowVisible(h(hwnd)) != 0 && !cloaked(hwnd) {
+            let screen = GetDC(std::ptr::null_mut());
+            let done = BitBlt(dc, fx, fy, fw, fh, screen, visible.left, visible.top, SRCCOPY) != 0;
+            ReleaseDC(std::ptr::null_mut(), screen);
+            done || PrintWindow(h(hwnd), dc, PW_RENDERFULLCONTENT) != 0
+        } else {
+            PrintWindow(h(hwnd), dc, PW_RENDERFULLCONTENT) != 0
+        };
+        let src = std::slice::from_raw_parts(bits as *const u8, (ww * wh * 4) as usize);
+        let mut out = Vec::with_capacity((fw * fh * 4) as usize);
+        for y in fy..fy + fh {
+            let row = &src[((y * ww + fx) * 4) as usize..][..(fw * 4) as usize];
+            for p in row.chunks(4) {
+                out.extend_from_slice(&[p[2], p[1], p[0], 255]);
+            }
+        }
+        SelectObject(dc, old);
+        DeleteObject(bmp);
+        DeleteDC(dc);
+        // A failed print leaves it all black: no picture beats a black one.
+        let blank = out.chunks(4).all(|p| p[0] == 0 && p[1] == 0 && p[2] == 0);
+        (ok && !blank).then_some((out, visible))
+    }
+}
+
+/// Gives one of Quicky's windows a taskbar button of its own (`Some(id)`: an AppUserModelID),
+/// so it shows its own icon even when the taskbar combines an app's windows; `None` takes it back
+/// (Windows asks for that before the window goes away). Pinning it is turned off: there's no
+/// shortcut that would start it again. Runs on the main thread (the shell's property store is COM).
+pub fn set_window_group(w: &tauri::WebviewWindow, id: Option<&str>) {
+    let Some(hwnd) = own(w) else { return };
+    let id: Option<Vec<u16>> = id.map(|s| s.encode_utf16().chain(Some(0)).collect());
+    let _ = w.run_on_main_thread(move || unsafe { taskbar_group(hwnd, id.as_deref()) });
+}
+
+#[repr(C)]
+struct Guid(u32, u16, u16, [u8; 8]);
+#[repr(C)]
+struct PropKey {
+    fmtid: Guid,
+    pid: u32,
+}
+/// A PROPVARIANT holding nothing, a string or a bool (24 bytes, like the real one on 64-bit).
+#[repr(C)]
+struct PropVar {
+    vt: u16,
+    reserved: [u16; 3],
+    data: [usize; 2],
+}
+#[repr(C)]
+struct PropStoreVtbl {
+    query_interface: usize,
+    add_ref: usize,
+    release: unsafe extern "system" fn(*mut std::ffi::c_void) -> u32,
+    get_count: usize,
+    get_at: usize,
+    get_value: usize,
+    set_value: unsafe extern "system" fn(*mut std::ffi::c_void, *const PropKey, *const PropVar) -> i32,
+    commit: unsafe extern "system" fn(*mut std::ffi::c_void) -> i32,
+}
+
+#[link(name = "shell32")]
+unsafe extern "system" {
+    fn SHGetPropertyStoreForWindow(hwnd: HWND, riid: *const Guid, ppv: *mut *mut std::ffi::c_void) -> i32;
+}
+
+unsafe fn taskbar_group(hwnd: Hwnd, id: Option<&[u16]>) {
+    unsafe {
+        const IID_IPROPERTYSTORE: Guid = Guid(0x886d8eeb, 0x8cf2, 0x4446, [0x8d, 0x02, 0xcd, 0xba, 0x1d, 0xbd, 0xcf, 0x99]);
+        const AUMID: Guid = Guid(0x9f4c2855, 0x9f79, 0x4b39, [0xa8, 0xd0, 0xe1, 0xd4, 0x2d, 0xe1, 0xd5, 0xf3]);
+        const VT_EMPTY: u16 = 0;
+        const VT_BOOL: u16 = 11;
+        const VT_LPWSTR: u16 = 31;
+        let mut store: *mut std::ffi::c_void = std::ptr::null_mut();
+        if SHGetPropertyStoreForWindow(h(hwnd), &IID_IPROPERTYSTORE, &mut store) < 0 || store.is_null() {
+            return;
+        }
+        let vtbl = &**(store as *mut *const PropStoreVtbl);
+        let key = |pid| PropKey { fmtid: Guid(AUMID.0, AUMID.1, AUMID.2, AUMID.3), pid };
+        let empty = PropVar { vt: VT_EMPTY, reserved: [0; 3], data: [0; 2] };
+        match id {
+            Some(id) => {
+                // PreventPinning (9) first: it must be set before the id.
+                let yes = PropVar { vt: VT_BOOL, reserved: [0; 3], data: [0xffff, 0] };
+                (vtbl.set_value)(store, &key(9), &yes);
+                let s = PropVar { vt: VT_LPWSTR, reserved: [0; 3], data: [id.as_ptr() as usize, 0] };
+                (vtbl.set_value)(store, &key(5), &s);
+            }
+            None => {
+                (vtbl.set_value)(store, &key(5), &empty);
+                (vtbl.set_value)(store, &key(9), &empty);
+            }
+        }
+        (vtbl.commit)(store);
+        (vtbl.release)(store);
     }
 }
 

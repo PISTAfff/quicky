@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quicky</title>
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; pointer-events: none; }
+      svg { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; }
+      #pic { position: fixed; display: none; overflow: hidden; transform-origin: 50% 50%; will-change: transform; box-shadow: 0 10px 32px rgba(20, 14, 40, 0.28); }
+      #pic canvas { display: block; width: 100%; height: 100%; }
+      #tint { position: absolute; inset: 0; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="pic"><canvas id="shot"></canvas><div id="tint"></div></div>
+    <svg id="stage" aria-hidden="true">
+      <defs>
+        <!-- The same goo as fx.html: shapes that touch melt into one body, outlined and shadowed like the bubble. -->
+        <filter id="goo" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+          <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="goo" />
+          <feMorphology in="goo" operator="dilate" radius="2.2" result="fat" />
+          <feFlood flood-color="#2b2540" result="ink" />
+          <feComposite in="ink" in2="fat" operator="in" result="edge" />
+          <feOffset in="edge" dx="2.6" dy="2.6" result="shadow" />
+          <feMerge><feMergeNode in="shadow" /><feMergeNode in="edge" /><feMergeNode in="goo" /></feMerge>
+        </filter>
+      </defs>
+    </svg>
+    <script type="module" src="/src/squish.ts"></script>
+  </body>
+</html>

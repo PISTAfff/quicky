@@ -9,7 +9,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, KeyButMask, MapState, Window};
 use x11rb::rust_connection::RustConnection;
 
-pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, Mover, HOST, PLACING};
+pub use crate::own::{force_foreground, keep_inside_host, keep_topmost, move_to, own_frame, show, Mover, HOST, PLACING, place_overlay};
 
 pub type Hwnd = isize;
 
@@ -234,6 +234,20 @@ fn pointer() -> Option<(i32, i32, u16)> {
 
 /// The window icon set with `set_icon` is the one taskbars and docks show on Linux.
 pub fn set_big_icon(_w: &WebviewWindow, _rgba: &[u8], _width: u32, _height: u32) {}
+
+/// No picture of a window here: `anim` squishes the page's own content instead.
+pub const CAN_SNAPSHOT: bool = false;
+
+pub fn snapshot(_w: &WebviewWindow) -> Option<(Vec<u8>, Rect)> {
+    None
+}
+
+/// Only needed alongside `snapshot`.
+pub fn set_invisible(_w: &WebviewWindow, _invisible: bool) {}
+
+/// Docks group windows by their WM_CLASS, which GTK sets once when the window is made; each
+/// window's own icon (Tauri's `set_icon`) still shows. Nothing more to do here.
+pub fn set_window_group(_w: &WebviewWindow, _id: Option<&str>) {}
 
 /// The window in front is full screen (a game, video or presentation).
 pub fn busy() -> bool {

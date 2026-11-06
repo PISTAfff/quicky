@@ -11,8 +11,14 @@ const INSTALLED_KEY = "quicky-extensions";
 /** `verified`: the emailed code was entered (projects and extensions need that). */
 export interface User { id: string; email: string; name: string; verified: boolean }
 export interface Account { token: string; user: User }
-export interface Extension { id: string; name: string; version: string; description: string; type: string; sha256: string; size: number }
-export interface Installed { id: string; name: string; version: string; sha256: string }
+/** `icon`: the catalogue's picture for it (a PNG or SVG data URL), when it has one: its windows'
+ *  taskbar badge (`lib/ext-icon.ts`). */
+export interface Extension { id: string; name: string; version: string; description: string; type: string; sha256: string; size: number; icon?: string }
+export interface Installed { id: string; name: string; version: string; sha256: string; icon?: string }
+
+/** A catalogue picture Quicky will draw: a small PNG or SVG data URL. */
+const iconOf = (e: Extension) =>
+  typeof e.icon === "string" && e.icon.length <= 64_000 && /^data:image\/(png|svg\+xml)[;,]/.test(e.icon) ? e.icon : undefined;
 
 export class CloudError extends Error {
   status: number;
@@ -201,7 +207,7 @@ export async function installExtension(ext: Extension) {
     throw new CloudError(0, "The download didn't match the catalogue, so it wasn't installed");
   }
   await invoke("extension_save", ipcBytes(bytes), { headers: { "x-id": ext.id } });
-  writeInstalled([...readInstalled().filter((i) => i.id !== ext.id), { id: ext.id, name: ext.name, version: ext.version, sha256: ext.sha256 }]);
+  writeInstalled([...readInstalled().filter((i) => i.id !== ext.id), { id: ext.id, name: ext.name, version: ext.version, sha256: ext.sha256, icon: iconOf(ext) }]);
 }
 
 export async function removeExtension(id: string) {

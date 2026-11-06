@@ -7,6 +7,8 @@ mod extensions;
 // Everything below is the desktop's: the bubble and its windows, the tray, the shortcut. The
 // Android app (`mobile.rs`) is one window and shares only the data and extension files.
 #[cfg(desktop)]
+mod anim;
+#[cfg(desktop)]
 mod balloon;
 #[cfg(desktop)]
 mod bubble;
@@ -152,6 +154,7 @@ pub fn run() {
             bubble::housekeeping(&handle);
 
             tray::create(app)?;
+            anim::prewarm(&handle);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -163,9 +166,17 @@ pub fn run() {
                     reminder::dismiss(app);
                 }
                 WindowEvent::Destroyed if window.label() == "reminder" => reminder::destroyed(app),
+                // An extension window squishes away before it really closes (its own close button
+                // and Alt+F4 both come here).
+                WindowEvent::CloseRequested { api, .. } if window.label().starts_with(extensions::LABEL_PREFIX) => {
+                    api.prevent_close();
+                    if let Some(w) = app.get_webview_window(window.label()) {
+                        extensions::close_window(&w);
+                    }
+                }
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
                 // closing the bubble (Alt+F4) just switches the bubble off.
-                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu") && !window.label().starts_with(extensions::LABEL_PREFIX) => {
+                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu" | "squish") => {
                     api.prevent_close();
                     if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) {
                         // Only when the user closed one (Alt+F4 on it, so it's in front): closing the
@@ -173,6 +184,8 @@ pub fn run() {
                         if window.is_focused().unwrap_or(false) {
                             let _ = bubble::set_show_bubble(app.clone(), false);
                         }
+                    } else if window.label() == "main" {
+                        main_window::tuck(app);
                     } else {
                         let _ = window.emit("flush", ());
                         main_window::remember_app_window(app);
@@ -207,6 +220,12 @@ pub fn run() {
             data::open_data_dir,
             main_window::hide_main,
             main_window::set_pinned,
+            anim::set_reduced_motion,
+            anim::squish_frame,
+            anim::squish_visible,
+            anim::squish_covered,
+            anim::squish_landed,
+            anim::squish_done,
             icons::set_icon_color,
             system_busy,
             bubble::get_show_bubble,
@@ -255,6 +274,8 @@ pub fn run() {
             extensions::extension_remove,
             extensions::extension_file,
             extensions::open_extension,
+            extensions::extension_ready,
+            icons::extension_icon,
             picker::pick_screen_color
         ])
         .build(tauri::generate_context!())

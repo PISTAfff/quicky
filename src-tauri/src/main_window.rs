@@ -1,6 +1,7 @@
 //! The main window, a popover: where it opens (next to the bubble, by the tray, inside or over
 //! the app it's for) and when it tucks itself away. Its size never goes below `MAIN_MIN`.
 
+use crate::anim;
 use crate::bubble::{self, SIZE};
 use crate::config::update_config;
 use crate::win::{self, Rect};
@@ -35,13 +36,43 @@ fn placement() -> MutexGuard<'static, Placement> {
     PLACEMENT.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Shows the main window, springing out of the bubble (or the app's mini) unless it's already open.
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
+        anim::open(&w, anim_target(app), |w| {
+            let _ = w.show();
+            let _ = w.set_focus();
+        });
     }
     bubble::sync(app);
+}
+
+/// Tucks the main window away: saves, remembers its spot inside an app, then squishes it into
+/// the bubble and hides it; the bubble (or the app's mini) comes back once it's gone.
+pub fn tuck(app: &AppHandle) {
+    let Some(main) = app.get_webview_window("main") else { return };
+    let _ = app.emit_to("main", "flush", ());
+    // While it's still on screen (it only remembers a visible window's spot).
+    remember_app_window(app);
+    let handle = app.clone();
+    anim::close(&main, anim_target(app), move |w| {
+        let _ = w.hide();
+        bubble::sync(&handle);
+    });
+}
+
+/// The bubble the main window's droplets fly into and out of: Quicky's own, or the app's mini
+/// when it's open as that app's Quicky (None: the bubble is off; they scatter instead).
+fn anim_target(app: &AppHandle) -> Option<anim::Target> {
+    let in_space = placement().space.is_some();
+    let (b, label) = if in_space {
+        (bubble::mini_window(app)?, bubble::MINI_LABEL)
+    } else {
+        (bubble::window(app).filter(|_| bubble::SHOW.load(Ordering::Relaxed))?, bubble::BUBBLE_LABEL)
+    };
+    let (p, s) = (b.outer_position().ok()?, b.outer_size().ok()?);
+    Some(anim::Target { at: (p.x + s.width as i32 / 2, p.y + s.height as i32 / 2), label })
 }
 
 pub fn main_on_screen(app: &AppHandle) -> bool {
@@ -52,21 +83,14 @@ pub fn main_on_screen(app: &AppHandle) -> bool {
 /// Title-bar close: hide to the tray and bring the bubble back straight away.
 #[tauri::command]
 pub fn hide_main(app: AppHandle) {
-    remember_app_window(&app);
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.hide();
-    }
-    bubble::sync(&app);
+    tuck(&app);
 }
 
 /// Tray click: show the general list by the tray, or tuck it away if it's already in front.
 pub fn toggle_main(app: &AppHandle, at: (i32, i32)) {
     let Some(main) = app.get_webview_window("main") else { return };
     if main_on_screen(app) && main.is_focused().unwrap_or(false) {
-        let _ = app.emit("flush", ());
-        remember_app_window(app);
-        let _ = main.hide();
-        bubble::sync(app);
+        tuck(app);
     } else {
         open_from_tray(app, at);
     }
@@ -313,10 +337,7 @@ pub fn on_main_blur(app: &AppHandle) {
         if win::foreground_is_related(&main) {
             return;
         }
-        let _ = app.emit_to("main", "flush", ());
-        remember_app_window(&app);
-        let _ = main.hide();
-        bubble::sync(&app);
+        tuck(&app);
     });
 }
 

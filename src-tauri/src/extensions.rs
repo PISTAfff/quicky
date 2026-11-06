@@ -51,6 +51,7 @@ pub fn extension_save(app: AppHandle, request: Request<'_>) -> Result<(), String
 pub fn extension_remove(app: AppHandle, id: String) -> Result<(), String> {
     #[cfg(desktop)]
     if let Some(w) = app.get_webview_window(&format!("{LABEL_PREFIX}{id}")) {
+        gone(&w);
         let _ = w.destroy();
     }
     let path = file(&app, &id)?;
@@ -68,7 +69,8 @@ pub fn extension_file(app: AppHandle, id: String) -> Result<Option<String>, Stri
 }
 
 /// Opens (or brings forward) an extension's own window, framed like Quicky's (its own title bar in
-/// `extension.html`, no system frame), that really closes.
+/// `extension.html`, no system frame), that really closes. It has a taskbar button of its own,
+/// whose icon its page sends (`extension_icon`), and springs open once its page has painted.
 /// Async: making a window from a sync command deadlocks on Windows.
 #[cfg(desktop)]
 #[tauri::command]
@@ -83,7 +85,7 @@ pub async fn open_extension(app: AppHandle, id: String, title: String) -> Result
         let _ = w.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("extension.html".into()))
+    let w = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("extension.html".into()))
         .title(title)
         // Must match the other windows' args (one shared WebView2 environment).
         .additional_browser_args(crate::reminder::BROWSER_ARGS)
@@ -92,9 +94,48 @@ pub async fn open_extension(app: AppHandle, id: String, title: String) -> Result
         .inner_size(1180.0, 760.0)
         .min_inner_size(640.0, 420.0)
         .center()
+        .visible(false)
         .build()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let group = format!("{}.ext.{id}", app.config().identifier);
+    crate::win::set_window_group(&w, Some(&group));
+    // Shown once its page has painted (`extension_ready`); this is only the safety net.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        if !w.is_visible().unwrap_or(true) {
+            let _ = w.show();
+        }
+    });
+    Ok(())
+}
+
+/// An extension window's page has painted: it springs open.
+#[cfg(desktop)]
+#[tauri::command]
+pub fn extension_ready(window: tauri::WebviewWindow) {
+    if window.label().starts_with(LABEL_PREFIX) && !window.is_visible().unwrap_or(true) {
+        crate::anim::open(&window, None, |w| {
+            let _ = w.show();
+            let _ = w.set_focus();
+        });
+    }
+}
+
+/// The user closed an extension's window: it squishes away, then really closes.
+#[cfg(desktop)]
+pub fn close_window(w: &tauri::WebviewWindow) {
+    crate::anim::close(w, None, |w| {
+        gone(w);
+        let _ = w.destroy();
+    });
+}
+
+/// What has to happen before an extension's window goes away: Windows wants its taskbar group
+/// let go of, and its badge is forgotten.
+#[cfg(desktop)]
+fn gone(w: &tauri::WebviewWindow) {
+    crate::win::set_window_group(w, None);
+    crate::icons::forget_badge(w.label());
 }
 
 #[cfg(test)]

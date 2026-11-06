@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "bubble", "mini", "reminder", "fx", "balloon", "menu", "trail", "ext-*"],
+  "windows": ["main", "bubble", "mini", "reminder", "fx", "balloon", "menu", "trail", "squish", "ext-*"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
