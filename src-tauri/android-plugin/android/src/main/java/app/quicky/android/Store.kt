@@ -65,11 +65,11 @@ object Store {
     /** One placed widget's own settings (see [WidgetStyle]); the defaults are the app's look. */
     fun widgetStyle(ctx: Context, id: Int): WidgetStyle = try {
         val o = JSONObject(prefs(ctx).getString("widget_$id", null) ?: "{}")
-        WidgetStyle(o.optString("look", "quicky"), o.optString("theme", "app"))
+        WidgetStyle(o.optString("look", "quicky"), o.optString("theme", "app"), o.optDouble("text", 1.0).toFloat().coerceIn(0.7f, 1.6f))
     } catch (_: Exception) { WidgetStyle() }
 
     fun setWidgetStyle(ctx: Context, id: Int, style: WidgetStyle) =
-        prefs(ctx).edit().putString("widget_$id", JSONObject().put("look", style.look).put("theme", style.theme).toString()).apply()
+        prefs(ctx).edit().putString("widget_$id", JSONObject().put("look", style.look).put("theme", style.theme).put("text", style.text.toDouble()).toString()).apply()
 
     fun forgetWidget(ctx: Context, id: Int) = prefs(ctx).edit().remove("widget_$id").apply()
 

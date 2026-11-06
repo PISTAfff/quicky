@@ -177,8 +177,8 @@ object Widgets {
      */
     class Look(ctx: Context, s: JSONObject, style: WidgetStyle) {
         val you = style.look == "you" && Build.VERSION.SDK_INT >= 31
-        /** Text and icon size factor (see [scale]). */
-        val k = style.scale
+        /** Text and icon size factor: the launcher's shrink made up for (see [scale]) times the widget's own text size. */
+        val k = style.scale * style.text
         val soft = style.look == "soft"
         /** The app's look: ink rings on the buttons, a hard shadow under the card. */
         val edged = !you && !soft
@@ -252,12 +252,12 @@ object Widgets {
 
     /** Text at its layout size times the widget's scale. */
     private fun RemoteViews.sp(look: Look, id: Int, sp: Float) {
-        if (look.k > 1.01f) setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, sp * look.k)
+        if (Math.abs(look.k - 1f) > 0.01f) setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, sp * look.k)
     }
 
     /** A view at its layout size (dp) times the widget's scale (Android 12+, where it can be set). */
     private fun RemoteViews.size(look: Look, id: Int, w: Float, h: Float) {
-        if (look.k <= 1.01f || Build.VERSION.SDK_INT < 31) return
+        if (Math.abs(look.k - 1f) <= 0.01f || Build.VERSION.SDK_INT < 31) return
         if (w > 0) setViewLayoutWidth(id, w * look.k, TypedValue.COMPLEX_UNIT_DIP)
         if (h > 0) setViewLayoutHeight(id, h * look.k, TypedValue.COMPLEX_UNIT_DIP)
     }
@@ -716,9 +716,10 @@ object Widgets {
     }
 }
 
-/** How one placed widget looks: "quicky" (the app's cards), "soft" or "you" (Material You); and
- *  its colours: "app" (like the app's theme), "light", "dark" or "phone". */
-data class WidgetStyle(val look: String = "quicky", val theme: String = "app", val scale: Float = 1f)
+/** How one placed widget looks: "quicky" (the app's cards), "soft" or "you" (Material You); its
+ *  colours: "app" (like the app's theme), "light", "dark" or "phone"; its text size (1 = normal);
+ *  and `scale`, the launcher's shrink made up for (worked out on each update, not saved). */
+data class WidgetStyle(val look: String = "quicky", val theme: String = "app", val text: Float = 1f, val scale: Float = 1f)
 
 /** All the widgets: redrawn on update, on resize (before Android 12), and their settings dropped when removed. */
 open class QuickyWidget : AppWidgetProvider() {

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A widget's settings (on placing it, or long-press and the pencil): its look and colours, with a preview. -->
+<!-- A widget's settings (on placing it, or long-press and the pencil): its look, colours and text size, with a preview. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -37,6 +37,13 @@
             <TextView android:id="@+id/ws_theme_light" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Light" android:textSize="13.5sp" />
             <TextView android:id="@+id/ws_theme_dark" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Dark" android:textSize="13.5sp" />
             <TextView android:id="@+id/ws_theme_phone" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="0dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Like phone" android:textSize="13.5sp" />
+            </LinearLayout>
+            <TextView android:id="@+id/ws_text_label" style="@style/WMeta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Text size" android:textSize="13sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="horizontal">
+            <TextView android:id="@+id/ws_text_s" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Small" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_text_m" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Normal" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_text_l" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Large" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_text_xl" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="0dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Huge" android:textSize="13.5sp" />
             </LinearLayout>
             <TextView android:id="@+id/ws_note" style="@style/WMeta" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="12sp" />
             <TextView android:id="@+id/ws_done" style="@style/WBody" android:layout_width="wrap_content" android:layout_height="44dp" android:layout_gravity="end" android:layout_marginTop="14dp" android:background="@drawable/w_round" android:gravity="center" android:paddingStart="26dp" android:paddingEnd="26dp" android:text="Done" android:textSize="15sp" />

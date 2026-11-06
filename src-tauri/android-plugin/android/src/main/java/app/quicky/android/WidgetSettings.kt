@@ -12,8 +12,8 @@ import org.json.JSONObject
 
 /**
  * A widget's settings: shown when one is placed on Android 11 and older (optional from 12, where it
- * is the widget's pencil after a long-press). The look (the app's cards, soft, or Material You) and
- * whose light or dark it follows, with a live preview. Backing out keeps the widget as it was.
+ * is the widget's pencil after a long-press). The look (the app's cards, soft, or Material You),
+ * whose light or dark it follows, and its text size, with a live preview. Backing out keeps the widget as it was.
  */
 class WidgetSettingsActivity : Activity() {
     private var id = AppWidgetManager.INVALID_APPWIDGET_ID
@@ -24,6 +24,7 @@ class WidgetSettingsActivity : Activity() {
 
     private val looks = listOf(R.id.ws_look_quicky to "quicky", R.id.ws_look_soft to "soft", R.id.ws_look_you to "you")
     private val themes = listOf(R.id.ws_theme_app to "app", R.id.ws_theme_light to "light", R.id.ws_theme_dark to "dark", R.id.ws_theme_phone to "phone")
+    private val texts = listOf(R.id.ws_text_s to 0.85f, R.id.ws_text_m to 1f, R.id.ws_text_l to 1.2f, R.id.ws_text_xl to 1.4f)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,10 +47,11 @@ class WidgetSettingsActivity : Activity() {
         findViewById<View>(R.id.ws_outside).setOnClickListener { finish() }
         findViewById<View>(R.id.ws_card).setBackgroundResource(if (look.dark) R.drawable.w_card_q_dark else R.drawable.w_card_q_light)
         findViewById<TextView>(R.id.ws_title).setTextColor(look.ink.int)
-        for (label in listOf(R.id.ws_look_label, R.id.ws_theme_label, R.id.ws_note)) findViewById<TextView>(label).setTextColor(look.muted.int)
+        for (label in listOf(R.id.ws_look_label, R.id.ws_theme_label, R.id.ws_text_label, R.id.ws_note)) findViewById<TextView>(label).setTextColor(look.muted.int)
         if (Build.VERSION.SDK_INT < 31) findViewById<View>(R.id.ws_look_you).visibility = View.GONE
         for ((view, value) in looks) findViewById<View>(view).setOnClickListener { style = style.copy(look = value); draw() }
         for ((view, value) in themes) findViewById<View>(view).setOnClickListener { if (style.look != "you") { style = style.copy(theme = value); draw() } }
+        for ((view, value) in texts) findViewById<View>(view).setOnClickListener { style = style.copy(text = value); draw() }
         val done = findViewById<TextView>(R.id.ws_done)
         done.setTextColor(look.onAccent.int)
         done.background.mutate().setTint(look.accent.int)
@@ -80,6 +82,7 @@ class WidgetSettingsActivity : Activity() {
         val you = style.look == "you"
         for ((view, value) in looks) pill(view, style.look == value)
         for ((view, value) in themes) pill(view, !you && style.theme == value, !you)
+        for ((view, value) in texts) pill(view, Math.abs(style.text - value) < 0.01f)
         findViewById<TextView>(R.id.ws_note).text = when {
             you -> "Material You takes the wallpaper's colours and the phone's light or dark."
             style.theme == "app" -> "Light or dark as set in Quicky's settings."
