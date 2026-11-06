@@ -21,14 +21,24 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * The four home-screen widgets, all drawn from the page's last snapshot (`Store.snapshot`):
+ * The home-screen widgets, all drawn from the page's last snapshot (`Store.snapshot`):
  * - [TaskListWidget]: the open tasks, each with a tick;
  * - [QuickAddWidget]: one button that opens the small add box;
  * - [NextUpWidget]: the pinned task, or else the most urgent one, with Done;
- * - [TodayWidget]: today's calendar events and the tasks due today.
+ * - [TodayWidget]: today's calendar events and the tasks due today;
+ * - [BlobWidget]: the Quicky blob in the accent, with how many tasks are open;
+ * - [DoingWidget]: the tasks in progress (the snapshot's tasks marked doing), each with a tick;
+ * - [WeekWidget]: the next 7 days' events and due tasks, under a heading per day.
  */
 object Widgets {
-    private val KINDS = listOf(TaskListWidget::class.java, QuickAddWidget::class.java, NextUpWidget::class.java, TodayWidget::class.java)
+    private val KINDS = listOf(
+        TaskListWidget::class.java, QuickAddWidget::class.java, NextUpWidget::class.java, TodayWidget::class.java,
+        BlobWidget::class.java, DoingWidget::class.java, WeekWidget::class.java,
+    )
+    private val LISTS = mapOf(
+        TaskListWidget::class.java to "tasks", TodayWidget::class.java to "today",
+        DoingWidget::class.java to "doing", WeekWidget::class.java to "week",
+    )
 
     fun refresh(ctx: Context) {
         val mgr = AppWidgetManager.getInstance(ctx)
@@ -42,19 +52,29 @@ object Widgets {
     fun update(ctx: Context, mgr: AppWidgetManager, kind: Class<*>, ids: IntArray) {
         val s = Store.snapshot(ctx)
         for (id in ids) {
-            val views = when (kind) {
-                TaskListWidget::class.java -> list(ctx, s, id, "tasks")
-                TodayWidget::class.java -> list(ctx, s, id, "today")
-                NextUpWidget::class.java -> next(ctx, s)
+            val which = LISTS[kind]
+            val views = when {
+                which != null -> list(ctx, s, id, which)
+                kind == NextUpWidget::class.java -> next(ctx, s)
+                kind == BlobWidget::class.java -> blob(ctx, s)
                 else -> add(ctx, s)
             }
             mgr.updateAppWidget(id, views)
             // Android 12 and up get their rows inside the update; older ones read them from RowsService.
-            if (Build.VERSION.SDK_INT < 31 && (kind == TaskListWidget::class.java || kind == TodayWidget::class.java)) {
+            if (Build.VERSION.SDK_INT < 31 && which != null) {
                 @Suppress("DEPRECATION")
                 mgr.notifyAppWidgetViewDataChanged(id, R.id.w_rows)
             }
         }
+    }
+
+    /** The rows a list widget shows: the snapshot's list, or for "doing" the tasks in progress. */
+    fun rows(s: JSONObject, which: String): JSONArray {
+        if (which != "doing") return s.optJSONArray(which) ?: JSONArray()
+        val all = s.optJSONArray("tasks") ?: JSONArray()
+        val out = JSONArray()
+        for (i in 0 until all.length()) all.optJSONObject(i)?.takeIf { it.optString("status") == "doing" }?.let { out.put(it) }
+        return out
     }
 
     /** The colours: the accent, text on it, and the card's own (light or dark). */
@@ -66,6 +86,7 @@ object Widgets {
         val muted = if (dark) 0xFFA59FBF.toInt() else 0xFF7A7392.toInt()
         val late = 0xFFE5484D.toInt()
         val card = if (dark) R.drawable.w_card_dark else R.drawable.w_card_light
+        val badge = if (dark) R.drawable.w_badge_dark else R.drawable.w_badge
 
         private fun parse(c: String, fallback: Int) = try { Color.parseColor(c) } catch (_: Exception) { fallback }
     }
@@ -87,14 +108,30 @@ object Widgets {
         val v = RemoteViews(ctx.packageName, R.layout.w_list)
         v.setInt(R.id.w_root, "setBackgroundResource", look.card)
         val counts = s.optJSONObject("counts")
-        if (which == "tasks") {
-            v.setTextViewText(R.id.w_title, "Quicky")
-            v.setTextViewText(R.id.w_sub, if (counts != null) "${counts.optInt("open")} to do" else "")
-            v.setTextViewText(R.id.w_empty, if (s.has("tasks")) "All clear!" else "Open Quicky once to fill this in")
-        } else {
-            v.setTextViewText(R.id.w_title, "Today")
-            v.setTextViewText(R.id.w_sub, s.optString("date"))
-            v.setTextViewText(R.id.w_empty, if (s.has("today")) "Nothing on today" else "Open Quicky once to fill this in")
+        val fresh = "Open Quicky once to fill this in"
+        when (which) {
+            "tasks" -> {
+                v.setTextViewText(R.id.w_title, "Quicky")
+                v.setTextViewText(R.id.w_sub, if (counts != null) "${counts.optInt("open")} to do" else "")
+                v.setTextViewText(R.id.w_empty, if (s.has("tasks")) "All clear!" else fresh)
+            }
+            "doing" -> {
+                val n = rows(s, "doing").length()
+                v.setTextViewText(R.id.w_title, "Doing now")
+                v.setTextViewText(R.id.w_sub, if (s.has("tasks")) (if (n == 1) "1 task" else "$n tasks") else "")
+                v.setTextViewText(R.id.w_empty, if (s.has("tasks")) "Nothing in progress" else fresh)
+            }
+            "week" -> {
+                v.setTextViewText(R.id.w_title, "This week")
+                v.setTextViewText(R.id.w_sub, s.optString("date"))
+                // Snapshots from before this widget have no week: the app sends one on its next change.
+                v.setTextViewText(R.id.w_empty, if (s.has("week")) "Nothing on this week" else fresh)
+            }
+            else -> {
+                v.setTextViewText(R.id.w_title, "Today")
+                v.setTextViewText(R.id.w_sub, s.optString("date"))
+                v.setTextViewText(R.id.w_empty, if (s.has("today")) "Nothing on today" else fresh)
+            }
         }
         v.setTextColor(R.id.w_title, look.accent)
         v.setTextColor(R.id.w_sub, look.muted)
@@ -107,8 +144,8 @@ object Widgets {
         if (Build.VERSION.SDK_INT >= 31) {
             // The rows travel with the update itself, so a full update always shows them (some
             // launchers keep the old views when only a row service's data changes).
-            val rows = s.optJSONArray(which) ?: JSONArray()
-            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(1)
+            val rows = rows(s, which)
+            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(2)
             for (i in 0 until rows.length()) items.addItem(i.toLong(), rowView(ctx, look, which, rows.optJSONObject(i) ?: JSONObject()))
             v.setRemoteAdapter(R.id.w_rows, items.build())
         } else {
@@ -127,22 +164,29 @@ object Widgets {
         return v
     }
 
-    /** One row of the task list or today widget. */
+    /** One row of a list widget (or a day's heading in the week widget). */
     fun rowView(ctx: Context, look: Look, which: String, r: JSONObject): RemoteViews {
+        if (r.optString("kind") == "day") {
+            val h = RemoteViews(ctx.packageName, R.layout.w_day)
+            h.setTextViewText(R.id.w_day, r.optString("title"))
+            h.setTextColor(R.id.w_day, look.accent)
+            return h
+        }
         val v = RemoteViews(ctx.packageName, R.layout.w_row)
         val id = r.optString("id", "")
         v.setTextViewText(R.id.w_row_title, r.optString("title"))
         v.setTextColor(R.id.w_row_title, look.ink)
-        if (which == "today") {
+        val timed = which == "today" || which == "week"
+        if (timed) {
             // Events show their time; tasks due today get a tick like the task list's.
             v.setTextViewText(R.id.w_row_meta, r.optString("time"))
-            v.setTextColor(R.id.w_row_meta, if (r.optString("kind") == "event") look.accent else look.muted)
+            v.setTextColor(R.id.w_row_meta, if (r.optString("kind") == "event") look.accent else if (r.optBoolean("late")) look.late else look.muted)
         } else {
             val meta = listOf(r.optString("due"), r.optString("steps")).filter { it.isNotEmpty() }.joinToString("  ·  ")
             v.setTextViewText(R.id.w_row_meta, meta)
             v.setTextColor(R.id.w_row_meta, if (r.optBoolean("late")) look.late else look.muted)
         }
-        val hasMeta = if (which == "today") r.optString("time").isNotEmpty() else r.optString("due").isNotEmpty() || r.optString("steps").isNotEmpty()
+        val hasMeta = if (timed) r.optString("time").isNotEmpty() else r.optString("due").isNotEmpty() || r.optString("steps").isNotEmpty()
         v.setViewVisibility(R.id.w_row_meta, if (hasMeta) View.VISIBLE else View.GONE)
         val isTask = id.isNotEmpty()
         v.setViewVisibility(R.id.w_tick, if (isTask) View.VISIBLE else View.INVISIBLE)
@@ -154,6 +198,22 @@ object Widgets {
         } else {
             v.setOnClickFillInIntent(R.id.w_row_text, Intent().putExtra("what", "calendar"))
         }
+        return v
+    }
+
+    private fun blob(ctx: Context, s: JSONObject): RemoteViews {
+        val look = Look(s)
+        val v = RemoteViews(ctx.packageName, R.layout.w_blob)
+        v.setInt(R.id.w_blob_body, "setColorFilter", look.accent)
+        v.setInt(R.id.w_blob_face, "setColorFilter", look.onAccent)
+        val open = s.optJSONObject("counts")?.optInt("open") ?: 0
+        // No badge with nothing to do (or before the first snapshot): just Quicky, smiling.
+        v.setViewVisibility(R.id.w_badge, if (open > 0) View.VISIBLE else View.GONE)
+        v.setTextViewText(R.id.w_badge, if (open > 99) "99+" else open.toString())
+        v.setInt(R.id.w_badge, "setBackgroundResource", look.badge)
+        v.setTextColor(R.id.w_badge, look.accent)
+        v.setContentDescription(R.id.w_blob_face, if (open > 0) "Quicky, $open to do" else "Quicky")
+        v.setOnClickPendingIntent(R.id.w_root, openApp(ctx, null, 9400))
         return v
     }
 
@@ -219,7 +279,19 @@ class TodayWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.update(ctx, mgr, javaClass, ids)
 }
 
-/** The rows of the task list and today widgets. */
+class BlobWidget : AppWidgetProvider() {
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.update(ctx, mgr, javaClass, ids)
+}
+
+class DoingWidget : AppWidgetProvider() {
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.update(ctx, mgr, javaClass, ids)
+}
+
+class WeekWidget : AppWidgetProvider() {
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = Widgets.update(ctx, mgr, javaClass, ids)
+}
+
+/** The rows of the list widgets on Android 11 and older. */
 class RowsService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory = Rows(applicationContext, intent.getStringExtra("which") ?: "tasks")
 }
@@ -233,11 +305,11 @@ class Rows(private val ctx: Context, private val which: String) : RemoteViewsSer
     override fun onDataSetChanged() {
         val s = Store.snapshot(ctx)
         look = Widgets.Look(s)
-        rows = s.optJSONArray(which) ?: JSONArray()
+        rows = Widgets.rows(s, which)
     }
 
     override fun getCount() = rows.length()
-    override fun getViewTypeCount() = 1
+    override fun getViewTypeCount() = 2
     override fun getItemId(position: Int) = position.toLong()
     override fun hasStableIds() = false
     override fun getLoadingView(): RemoteViews? = null

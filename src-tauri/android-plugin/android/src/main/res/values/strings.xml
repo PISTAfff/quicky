@@ -4,6 +4,12 @@
     <string name="w_add">Quicky add</string>
     <string name="w_next">Quicky next up</string>
     <string name="w_today">Quicky today</string>
+    <string name="w_blob">Quicky</string>
+    <string name="w_doing">Quicky doing now</string>
+    <string name="w_week">Quicky this week</string>
+    <string name="w_blob_desc">Quicky on your home screen, with how many tasks are open</string>
+    <string name="w_doing_desc">The tasks in progress; tick them off when done</string>
+    <string name="w_week_desc">The next 7 days: calendar events and tasks due, day by day</string>
     <string name="w_list_desc">Your open tasks; tick them off right here</string>
     <string name="w_add_desc">One tap to add a task</string>
     <string name="w_next_desc">The pinned task, or the most urgent one</string>

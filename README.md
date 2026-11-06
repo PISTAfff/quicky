@@ -84,6 +84,9 @@ Quicky for Android has the same task list (To do / Doing / Done, due dates, step
   - *Quicky add*: one tap opens a small box to add a task.
   - *Quicky next up*: the pinned task (long-press a task → *Pin to next up*), or else the most urgent one, with a Done button.
   - *Quicky today*: today's calendar events and the tasks due today.
+  - *Quicky this week*: the next 7 days' events and tasks due, under a heading per day.
+  - *Quicky doing now*: the tasks in progress, each with a tick.
+  - *Quicky*: the Quicky blob in your accent colour, with how many tasks are open; tap it to open the app. Resize it up to 2 × 2.
 
   Widgets show the tasks as the app last saw them. A tick or a task added from a widget shows on the widget at once and reaches your other devices the next time you open Quicky.
 - **Extensions** open full screen. On the Projects board, one finger moves the board, two fingers pan and pinch to zoom.

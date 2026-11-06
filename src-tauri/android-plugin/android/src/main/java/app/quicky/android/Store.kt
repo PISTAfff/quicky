@@ -95,6 +95,16 @@ object Store {
             if (r.optString("id") != id) keep.put(r)
         }
         s.put("today", keep)
+        // The week widget: the task's row goes, and so does a day's heading left with nothing under it.
+        s.optJSONArray("week")?.let { week ->
+            val rows = (0 until week.length()).mapNotNull { week.optJSONObject(it) }.filter { it.optString("id") != id }
+            val out = JSONArray()
+            rows.forEachIndexed { i, r ->
+                val heading = r.optString("kind") == "day"
+                if (!heading || (i + 1 < rows.size && rows[i + 1].optString("kind") != "day")) out.put(r)
+            }
+            s.put("week", out)
+        }
         setSnapshot(ctx, s.toString())
     }
 

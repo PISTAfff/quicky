@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the widget picker shows for "Quicky doing now" (the real one is w_list). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/w_card_light"
+    android:orientation="vertical"
+    android:padding="14dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <LinearLayout
+            android:id="@+id/w_head"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView android:id="@+id/w_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Doing now" android:textColor="#FF7B61FF" android:textSize="18sp" android:fontFamily="sans-serif-medium" />
+            <TextView android:id="@+id/w_sub" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FF7A7392" android:textSize="12sp" />
+        </LinearLayout>
+        <FrameLayout
+            android:id="@+id/w_add_wrap"
+            android:layout_width="36dp"
+            android:layout_height="36dp">
+            <ImageView android:id="@+id/w_add_bg" android:tint="#FF6D4CFF" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_circle" android:contentDescription="@null" />
+            <ImageView android:id="@+id/w_add" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="9dp" android:src="@drawable/ic_add" android:contentDescription="Add a task" />
+        </FrameLayout>
+    </LinearLayout>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/w_rows"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@null"
+            android:dividerHeight="0dp" />
+        <TextView
+            android:id="@+id/w_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="Tasks in progress show here"
+            android:textColor="#FF7A7392"
+            android:textSize="14sp" />
+    </FrameLayout>
+</LinearLayout>

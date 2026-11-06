@@ -4,7 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 const call = <T>(cmd: string, args?: Record<string, unknown>) => invoke<T>(`plugin:quicky-android|${cmd}`, args);
 
-/** One row of the task list widget (or the today widget, which adds `time` and `kind`). */
+/** One row of the task list widget (the today and week widgets add `time` and `kind`; the week
+ *  widget's `kind: "day"` rows are the day headings). */
 export interface Row {
   id?: string;
   title: string;
@@ -16,7 +17,7 @@ export interface Row {
   steps?: string;
   /** Today widget: "9:00 AM", "All day", "Due today". */
   time?: string;
-  kind?: "event" | "task";
+  kind?: "event" | "task" | "day";
 }
 
 /** What the widgets draw (kept by Android until the next one). */
@@ -29,6 +30,8 @@ export interface Snapshot {
   tasks: Row[];
   next: (Row & { pinned: boolean }) | null;
   today: Row[];
+  /** The week widget: the next 7 days' events and due tasks, under a heading per day. */
+  week: Row[];
   counts: { open: number; done: number };
 }
 

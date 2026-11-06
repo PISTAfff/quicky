@@ -5,7 +5,7 @@
 import { createEffect, createRoot, on } from "solid-js";
 import { addTaskTo, data, setStatus, snoozeTask, today } from "../lib/store";
 import {
-  byUrgency, dueLabel, eventStarts, inQuietHours, isLater, parseDay, stepsDone, time12, upcoming, type Task,
+  byUrgency, dueLabel, eventStarts, inQuietHours, isLater, parseDay, plusDays, stepsDone, time12, upcoming, type Task,
 } from "../lib/model";
 import { calendarEvents, CALENDAR_ID, snoozeAlarm, startEvents, upcomingAlarms } from "../lib/events";
 import { readQuiet } from "../lib/reminders";
@@ -31,6 +31,31 @@ const row = (t: Task, day: string): Row => {
   };
 };
 
+/** The calendar's events on one day, by time ("All day" first). */
+const eventRows = (day: string): Row[] =>
+  calendarEvents()
+    .filter((e) => eventStarts(e, day, day).length)
+    .map((e) => ({ e, at: e.allDay || !e.time ? "" : e.time }))
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .map(({ e, at }): Row => ({ title: e.title, time: at ? time12(at) : "All day", kind: "event" }));
+
+/** The week widget: today (with what's late) and the next six days, only days with something on. */
+function week(open: Task[], day: string): Row[] {
+  const out: Row[] = [];
+  for (let i = 0; i < 7 && out.length < 60; i++) {
+    const d = plusDays(i, parseDay(day));
+    const tasks = open
+      .filter((t) => t.due && (i === 0 ? t.due <= d : t.due === d))
+      .map((t): Row => ({ ...row(t, day), time: t.due! < day ? "Overdue" : "", kind: "task" }));
+    const rows = [...eventRows(d), ...tasks];
+    if (!rows.length) continue;
+    const date = parseDay(d);
+    const name = i === 0 ? "Today" : i === 1 ? "Tomorrow" : WEEK_LONG[date.getDay()];
+    out.push({ title: `${name} ${date.getDate()}`, kind: "day" }, ...rows);
+  }
+  return out.slice(0, 60);
+}
+
 function snapshot(): Snapshot {
   const day = today();
   const tasks = data.tasks;
@@ -38,11 +63,6 @@ function snapshot(): Snapshot {
   const focus = data.focus && tasks.find((t) => t.id === data.focus!.id && t.status !== "done");
   const nextTask = focus || open[0];
   // Today: the calendar's events (by time), then the tasks due today or late.
-  const events = calendarEvents()
-    .filter((e) => eventStarts(e, day, day).length)
-    .map((e) => ({ e, at: e.allDay || !e.time ? "" : e.time }))
-    .sort((a, b) => a.at.localeCompare(b.at))
-    .map(({ e, at }): Row => ({ title: e.title, time: at ? time12(at) : "All day", kind: "event" }));
   const dueToday = open
     .filter((t) => t.due && t.due <= day)
     .map((t): Row => ({ ...row(t, day), time: t.due! < day ? "Overdue" : "Due today", kind: "task" }));
@@ -55,7 +75,8 @@ function snapshot(): Snapshot {
     date: `${WEEK_LONG[d.getDay()]} ${d.getDate()}`,
     tasks: open.slice(0, 40).map((t) => row(t, day)),
     next: nextTask ? { ...row(nextTask, day), pinned: !!focus } : null,
-    today: [...events, ...dueToday],
+    today: [...eventRows(day), ...dueToday],
+    week: week(open, day),
     counts: { open: open.length, done: tasks.filter((t) => t.status === "done" && t.doneDay === day && !t.space).length },
   };
 }
