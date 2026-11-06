@@ -828,6 +828,26 @@ class QuickAddActivity : Activity() {
         button.setTextColor(look.onAccent.int)
         button.background.mutate().setTint(look.accent.int)
         findViewById<TextView>(R.id.qa_title).setTextColor(look.ink.int)
+        findViewById<android.widget.ImageView>(R.id.qa_logo).setColorFilter(look.accent.int)
+        val cancel = findViewById<TextView>(R.id.qa_cancel)
+        cancel.setTextColor(look.ink.int)
+        cancel.background.mutate().setTint(look.soft2.int)
+        cancel.setOnClickListener { finish() }
+        // A tap outside the box cancels too.
+        val outside = findViewById<View>(R.id.qa_outside)
+        outside.setOnClickListener { finish() }
+        // The box sits just above the keyboard and the navigation bar (Android 15 draws behind them).
+        val pad = outside.paddingBottom
+        outside.setOnApplyWindowInsetsListener { v, insets ->
+            val bottom = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom
+            }
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, pad + bottom)
+            insets
+        }
         var added = false
         val add = {
             val title = field.text.toString().trim()
