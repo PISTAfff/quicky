@@ -1,7 +1,7 @@
-// Settings → Reminders on the phone: whether Android lets Quicky notify (and at exact times),
-// and a test notification.
+// Settings on the phone: Reminders (whether Android lets Quicky notify, and at exact times, and a
+// test notification) and the quick-add tile for Android's Quick Settings panel.
 import { createSignal, onCleanup, Show } from "solid-js";
-import { notifyPermission, scheduleAlarms } from "./native";
+import { addTile, notifyPermission, scheduleAlarms } from "./native";
 import { comingAlarms, refreshAlarms } from "./phone";
 import { showToast } from "../lib/store";
 
@@ -42,6 +42,31 @@ export function PhoneReminders() {
         </Show>
         <button class="btn small" onClick={() => void test()}>Test one</button>
       </span>
+    </>
+  );
+}
+
+/** Settings → Quick add: puts Quicky's tile in Android's Quick Settings panel (swipe down, tap, type). */
+export function PhoneQuickTile() {
+  const [manual, setManual] = createSignal(false);
+  const add = async () => {
+    const r = await addTile().catch(() => null);
+    if (!r) return;
+    if (!r.supported) setManual(true);
+    else if (r.already) showToast("Quicky add is already in Quick Settings");
+    else if (r.added) showToast("Added: swipe down from the top to find it");
+  };
+  return (
+    <>
+      <div class="box-row">
+        <span class="box-label">Quick add</span>
+        <button class="btn small" onClick={() => void add()}>Add to Quick Settings</button>
+      </div>
+      <small class="muted">
+        {manual()
+          ? "Swipe down twice from the top, tap the pencil, and drag Quicky add into your tiles."
+          : "A tile in the panel you swipe down from the top: one tap opens a small box to add a task, from any app."}
+      </small>
     </>
   );
 }

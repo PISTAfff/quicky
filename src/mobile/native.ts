@@ -63,5 +63,7 @@ export const takeActions = () => call<{ actions: Action[] }>("actions").then((r)
  *  opens the exact-alarm switch in Android's settings when it's off. */
 export const notifyPermission = (ask = false, exact = false) =>
   call<{ notifications: boolean; exact: boolean }>("permission", { ask, exact });
+/** Asks Android to add Quicky's quick-add tile to Quick Settings (Android 13+). */
+export const addTile = () => call<{ supported: boolean; added?: boolean; already?: boolean }>("tile");
 /** Back with nothing open: Quicky goes to the background (as Android's own back does). */
 export const leaveApp = () => call("leave");

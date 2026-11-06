@@ -14,4 +14,5 @@
     <string name="w_add_desc">One tap to add a task. Stretch it into a bar</string>
     <string name="w_next_desc">The pinned task, or the most urgent one, with Done</string>
     <string name="w_today_desc">Today\'s calendar events and tasks due today</string>
+    <string name="tile_add">Quicky add</string>
 </resources>

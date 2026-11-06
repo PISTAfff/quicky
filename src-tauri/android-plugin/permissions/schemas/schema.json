@@ -343,6 +343,18 @@
           "markdownDescription": "Denies the schedule command without any pre-configured scope."
         },
         {
+          "description": "Enables the tile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tile",
+          "markdownDescription": "Enables the tile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tile",
+          "markdownDescription": "Denies the tile command without any pre-configured scope."
+        },
+        {
           "description": "Enables the widgets command without any pre-configured scope.",
           "type": "string",
           "const": "allow-widgets",
@@ -355,10 +367,10 @@
           "markdownDescription": "Denies the widgets command without any pre-configured scope."
         },
         {
-          "description": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`\n- `allow-leave`",
+          "description": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions, the Quick Settings tile\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`\n- `allow-leave`\n- `allow-tile`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`\n- `allow-leave`"
+          "markdownDescription": "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions, the Quick Settings tile\n#### This default permission set includes:\n\n- `allow-widgets`\n- `allow-schedule`\n- `allow-actions`\n- `allow-permission`\n- `allow-leave`\n- `allow-tile`"
         }
       ]
     }

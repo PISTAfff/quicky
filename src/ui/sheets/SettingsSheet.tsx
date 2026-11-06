@@ -9,7 +9,7 @@ import { ACCENTS, setTheme, theme } from "../../lib/theme";
 import { onAccent } from "../../lib/theme-colors";
 import { chooseDataDir, dataDir, showToast } from "../../lib/store";
 import { IS_MOBILE, OS, SYSTEM_NAME } from "../../lib/platform";
-import { PhoneReminders } from "../../mobile/PhoneSettings";
+import { PhoneQuickTile, PhoneReminders } from "../../mobile/PhoneSettings";
 import { readQuiet, writeQuiet } from "../../lib/reminders";
 import { showTour } from "../Tour";
 import { previewReminder } from "../../lib/reminders";
@@ -245,6 +245,11 @@ export function SettingsSheet() {
         </Show>
         <QuietHours />
       </div>
+      <Show when={IS_MOBILE}>
+        <div class="box">
+          <PhoneQuickTile />
+        </div>
+      </Show>
       <div class="box">
         <div class="box-row">
           <span class="box-label">Bugs &amp; requests</span>
