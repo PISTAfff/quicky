@@ -96,15 +96,19 @@ pub fn toggle_main(app: &AppHandle, at: (i32, i32)) {
     }
 }
 
-/// The quick-add shortcut (Ctrl+Space, Option+Space on macOS). In Quicky itself: add to the list
-/// it shows. In an app with a mini Quicky: that app's tasks (the app in front right now, not a
+/// The quick-add shortcut (Ctrl+Space, Option+Space on macOS). With Quicky open in front it closes
+/// Quicky. Otherwise it opens Quicky on the add box:
+/// in an app with a mini Quicky, that app's tasks (the app in front right now, not a
 /// moment ago); anywhere else: the general list.
 pub fn quick_add(app: &AppHandle) {
-    let in_quicky = app.get_webview_window("main").is_some_and(|m| m.is_focused().unwrap_or(false));
-    if !in_quicky {
-        bubble::note_focus();
-        open_for_context(app, false);
+    let in_quicky = app.get_webview_window("main").is_some_and(|m| m.is_focused().unwrap_or(false) && m.is_visible().unwrap_or(false));
+    // Pressed again while Quicky is open in front: it tucks away (the key opens and closes it).
+    if in_quicky {
+        tuck(app);
+        return;
     }
+    bubble::note_focus();
+    open_for_context(app, false);
     let _ = app.emit("quick-add", ());
 }
 

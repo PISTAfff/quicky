@@ -100,6 +100,12 @@ pub fn run() {
     let quick_keys = [Shortcut::new(Some(Modifiers::ALT), Code::Space), ctrl_space];
     #[cfg(not(target_os = "macos"))]
     let quick_keys = [ctrl_space];
+    // Ctrl+Shift+Space shows or hides the bubble (macOS also Option+Shift+Space, like quick add).
+    let ctrl_shift_space = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
+    #[cfg(target_os = "macos")]
+    let bubble_keys = [Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space), ctrl_shift_space];
+    #[cfg(not(target_os = "macos"))]
+    let bubble_keys = [ctrl_shift_space];
 
     tauri::Builder::default()
         // Launched by Windows at sign-in: start tucked away (tray + bubble only).
@@ -116,8 +122,15 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if quick_keys.contains(shortcut) && event.state() == ShortcutState::Pressed {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if quick_keys.contains(shortcut) {
                         main_window::quick_add(app);
+                    } else if bubble_keys.contains(shortcut) {
+                        // The saved choice, not what's on screen: a goodbye still playing counts as hidden.
+                        let show = !read_config(app).show_bubble;
+                        let _ = bubble::set_show_bubble(app.clone(), show);
                     }
                 })
                 .build(),
@@ -131,6 +144,11 @@ pub fn run() {
             for key in quick_keys {
                 if let Err(e) = app.global_shortcut().register(key) {
                     eprintln!("The quick-add shortcut {key:?} is taken by another app: {e}");
+                }
+            }
+            for key in bubble_keys {
+                if let Err(e) = app.global_shortcut().register(key) {
+                    eprintln!("The show/hide bubble shortcut {key:?} is taken by another app: {e}");
                 }
             }
 

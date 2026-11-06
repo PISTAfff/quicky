@@ -8,6 +8,8 @@ export const IS_MOBILE = /Android/.test(ua);
 
 /** The global quick-add shortcut (Ctrl+Space switches input sources on macOS). */
 export const QUICK_KEY = OS === "mac" ? "⌥ Space" : "Ctrl+Space";
+/** The global shortcut that shows or hides the bubble. */
+export const BUBBLE_KEY = OS === "mac" ? "⌥⇧ Space" : "Ctrl+Shift+Space";
 /** Ctrl on Windows and Linux, ⌘ on macOS, as shown in tips. */
 export const MOD_KEY = OS === "mac" ? "⌘" : "Ctrl+";
 /** The command key pressed with a shortcut letter. */

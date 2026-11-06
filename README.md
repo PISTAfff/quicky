@@ -27,7 +27,8 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 
 | | |
 |---|---|
-| **Ctrl+Space** (also **⌥ Space** on macOS) | Open Quicky from anywhere and jump to the add box (in an app with a mini, that app's list) |
+| **Ctrl+Space** (also **⌥ Space** on macOS) | Open Quicky from anywhere and jump to the add box (in an app with a mini, that app's list); press it again to close Quicky |
+| **Ctrl+Shift+Space** (also **⌥⇧ Space** on macOS) | Show or hide the bubble |
 | **Enter** | Add the task |
 | **Click the circle** | To do → Doing → Done |
 | **Right-click the circle** | Step back |

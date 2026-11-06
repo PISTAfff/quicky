@@ -8,7 +8,7 @@ import { autoCheck, checkForUpdate, installUpdate, setAutoCheck, updateState } f
 import { ACCENTS, setTheme, theme } from "../../lib/theme";
 import { onAccent } from "../../lib/theme-colors";
 import { chooseDataDir, dataDir, showToast } from "../../lib/store";
-import { IS_MOBILE, OS, SYSTEM_NAME } from "../../lib/platform";
+import { IS_MOBILE, OS, SYSTEM_NAME, BUBBLE_KEY } from "../../lib/platform";
 import { PhoneQuickTile, PhoneReminders } from "../../mobile/PhoneSettings";
 import { readQuiet, writeQuiet } from "../../lib/reminders";
 import { showTour } from "../Tour";
@@ -144,7 +144,7 @@ export function SettingsSheet() {
           <input type="checkbox" role="switch" checked={startup()} onChange={toggleStartup} />
         </label>
         <label class="switch-row">
-          <span>Bubble on screen<small>Little Quicky that waits while the app is closed. Drag it anywhere; right-click for options</small></span>
+          <span>Bubble on screen<small>Little Quicky that waits while the app is closed. Drag it anywhere; right-click for options; {BUBBLE_KEY} shows or hides it</small></span>
           <input type="checkbox" role="switch" checked={bubble()} onChange={toggleBubble} />
         </label>
         <label class="switch-row">
