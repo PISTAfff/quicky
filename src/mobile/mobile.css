@@ -1,7 +1,8 @@
 /* The Android app, on top of styles.css: room for fingers, the system bars, the top bar, and
    extensions full screen. */
 
-html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+/* Nothing on the phone pinch-zooms the page (the Projects board zooms itself, inside its frame). */
+html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; touch-action: pan-x pan-y; }
 body.phone { background: var(--bg); }
 /* The app draws under Android's bars: keep clear of them. Some web views report no bottom inset
    under the gesture bar, so there's always a little room there. */
