@@ -1,7 +1,8 @@
 name: Build
 
-# Every push to a branch: test and build Quicky for Windows, macOS and Linux (no release). The
-# installers are kept for a week under the run's Artifacts.
+# Every push to a branch: test and build Quicky for Windows, macOS and Linux (no release), and check
+# that the Android app still builds. The desktop installers are kept for a week under the run's
+# Artifacts.
 on:
   push:
     branches: ["**"]
@@ -70,3 +71,40 @@ jobs:
           path: ${{ matrix.bundle }}
           retention-days: 7
           if-no-files-found: error
+
+  # The Android app still builds (a debug APK for arm64 phones; not kept: it's a few hundred MB).
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm tauri android build --debug --apk --target aarch64 --ci

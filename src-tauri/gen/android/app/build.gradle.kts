@@ -14,6 +14,26 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// The release signing key: from the environment in CI (the keystore decoded from a repository
+// secret), else this PC's own files in ~/.quicky/android/ (never in the repo). Without either, a
+// release build comes out unsigned. Losing the key means new APKs can't update installed ones.
+val releaseKey: Map<String, String>? = run {
+    val env = System.getenv()
+    if (!env["ANDROID_KEYSTORE_FILE"].isNullOrEmpty()) {
+        return@run mapOf(
+            "storeFile" to env.getValue("ANDROID_KEYSTORE_FILE"),
+            "storePassword" to (env["ANDROID_KEYSTORE_PASSWORD"] ?: ""),
+            "keyAlias" to (env["ANDROID_KEY_ALIAS"] ?: "quicky"),
+            "keyPassword" to (env["ANDROID_KEY_PASSWORD"] ?: env["ANDROID_KEYSTORE_PASSWORD"] ?: ""),
+        )
+    }
+    val home = System.getProperty("user.home")
+    val local = file("$home/.quicky/android/keystore.properties")
+    if (!local.exists()) return@run null
+    val p = Properties().apply { local.inputStream().use { load(it) } }
+    p.stringPropertyNames().associateWith { p.getProperty(it) }
+}
+
 android {
     compileSdk = 37
     namespace = "app.quicky.mobile"
@@ -24,6 +44,16 @@ android {
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (releaseKey != null) {
+            create("release") {
+                storeFile = file(releaseKey.getValue("storeFile"))
+                storePassword = releaseKey.getValue("storePassword")
+                keyAlias = releaseKey.getValue("keyAlias")
+                keyPassword = releaseKey.getValue("keyPassword")
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -39,6 +69,7 @@ android {
             }
         }
         getByName("release") {
+            if (releaseKey != null) signingConfig = signingConfigs.getByName("release")
             optimization {
                enable = true
             }

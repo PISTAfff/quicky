@@ -13,6 +13,7 @@ Get it from **[quicky.pistasspot.com](https://quicky.pistasspot.com)**, or open 
 - **Windows:** **`Quicky_x.y.z_x64-setup.exe`**. Run it: it installs for your user only, no admin needed, and adds Quicky to the Start menu (and a desktop shortcut). If Windows shows *"Windows protected your PC"*, click **More info**, then **Run anyway**: the installer isn't code-signed yet.
 - **macOS** (11 or newer, Apple silicon and Intel): **`Quicky_x.y.z_universal.dmg`**. Open it and drag Quicky into Applications. Quicky isn't notarized by Apple yet, so the first time you open it macOS says it can't check it for malware: open **System Settings**, **Privacy & Security**, and click **Open Anyway** next to Quicky.
 - **Linux** (x86-64): the **`.AppImage`** (make it executable and run it) or the **`.deb`**.
+- **Android** (7 or newer): **`Quicky_x.y.z_android.apk`**. Open it on the phone and allow installing from your browser or files app when Android asks. Later versions install over it, keeping your tasks.
 
 Or on Windows, from a terminal, with the [GitHub CLI](https://cli.github.com):
 
@@ -136,7 +137,7 @@ pnpm tauri android build --debug --apk --target x86_64
 pnpm tauri android dev
 ```
 
-The Android app is `mobile.html` (`src/mobile/`), set as its window in `src-tauri/tauri.android.conf.json`; notifications and widgets are Kotlin in `src-tauri/android-plugin/`. Release builds for the Play Store need an upload key of your own, kept out of the repo.
+The Android app is `mobile.html` (`src/mobile/`), set as its window in `src-tauri/tauri.android.conf.json`; notifications and widgets are Kotlin in `src-tauri/android-plugin/`. A tagged release also builds the signed APK (`Quicky_<version>_android.apk`, arm64, armv7 and x86_64 in one). The release key never goes in the repo: CI takes it from the repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, and a local `pnpm tauri android build --apk` signs with `~/.quicky/android/keystore.properties` when it's there. Keep the keystore safe: every update has to be signed with the same key, or Android won't install it over the old app.
 
 **Releasing:** bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a tag. GitHub Actions builds Windows, macOS and Linux into one release, signs the update files with the `TAURI_SIGNING_PRIVATE_KEY` repository secret (its password secret is empty), and publishes the release with `latest.json`, which installed copies read to update themselves. Keep the private key safe: without it, existing installs can't trust new versions.
 

@@ -1,7 +1,7 @@
 name: Release
 
-# Push a tag like v0.1.0 (or run it by hand) to build Quicky for Windows, macOS and Linux and
-# publish them as one GitHub Release, with a signed latest.json for the in-app updater.
+# Push a tag like v0.1.0 (or run it by hand) to build Quicky for Windows, macOS, Linux and Android
+# and publish them as one GitHub Release, with a signed latest.json for the desktop's updater.
 on:
   push:
     tags: ["v*"]
@@ -82,9 +82,73 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
+  # The Android app: one signed APK (arm64, armv7 and x86_64) in the same draft release, named
+  # Quicky_<version>_android.apk (the website's download card looks for that ending).
+  android:
+    needs: draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # The release key from the repository secrets (see README, Android). Losing it means new APKs
+      # can't update the installed app.
+      - name: Release key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/quicky-release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/quicky-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 --ci
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ needs.draft.outputs.tag }}"
+          apk="Quicky_${tag#v}_android.apk"
+          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "$apk"
+          # Never ship an unsigned or wrongly signed APK.
+          "$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)/apksigner" verify "$apk"
+          gh release upload "$tag" "$apk" --clobber
+
   # Once every build is in: write latest.json from their signatures and publish the release.
   publish:
-    needs: [draft, build]
+    needs: [draft, build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
