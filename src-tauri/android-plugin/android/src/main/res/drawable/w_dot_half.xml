@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Inside the dot of a task in progress: the right half filled (the app's .dot.doing). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M12,3C17.2,3 21,6.6 21,11.8C21,17.2 17.4,21 12,21C6.6,21 3,17.4 3,12C3,6.8 6.8,3 12,3Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12.6,5.2a6.8,6.8 0,0 1,0 13.6z" />
 </vector>

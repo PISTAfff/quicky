@@ -1,29 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Quicky blob in the accent, smiling, with how many tasks are open on a badge. -->
+<!-- Quicky on the home screen, with how many tasks are open on a badge. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/w_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="4dp">
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_margin="6dp">
-        <ImageView android:id="@+id/w_blob_body" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:tint="#FF7B61FF" android:src="@drawable/w_blob_body" android:contentDescription="@null" />
-        <ImageView android:id="@+id/w_blob_face" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitCenter" android:src="@drawable/w_blob_face" android:contentDescription="Quicky" />
-    </FrameLayout>
-    <TextView
-        android:id="@+id/w_badge"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:background="@drawable/w_badge"
-        android:fontFamily="sans-serif-medium"
-        android:gravity="center"
-        android:minWidth="24dp"
-        android:paddingHorizontal="6dp"
-        android:paddingVertical="1dp"
-        android:text="3"
-        android:textColor="#FF7B61FF"
-        android:textSize="13sp" />
+    <include layout="@layout/w_mascot" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_margin="6dp" />
+    <TextView android:id="@+id/w_badge" style="@style/WgMeta" android:layout_width="wrap_content" android:layout_height="24dp" android:layout_gravity="top|end" android:background="@drawable/w_badge" android:gravity="center" android:includeFontPadding="false" android:minWidth="24dp" android:paddingStart="6dp" android:paddingEnd="6dp" android:text="3" android:textColor="#FFFFFFFF" android:textSize="12sp" />
 </FrameLayout>

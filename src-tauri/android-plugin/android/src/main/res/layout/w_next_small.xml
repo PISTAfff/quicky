@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Next up, 1 cell tall: the task and a round Done. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/w_card_q_light"
+    android:paddingStart="14dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="9dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical" android:orientation="horizontal">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/w_label" style="@style/WgMeta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:includeFontPadding="false" android:singleLine="true" android:text="Next up" android:textColor="#FF6D4CFF" android:textSize="11sp" />
+            <TextView android:id="@+id/w_task" style="@style/WgBody" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:ellipsize="end" android:singleLine="true" android:text="Write the report" android:textColor="#FF2B2540" android:textSize="15sp" />
+        </LinearLayout>
+        <FrameLayout android:id="@+id/w_done_wrap" android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="8dp">
+            <ImageView android:id="@+id/w_done_bg" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_round" android:tint="#FF6D4CFF" android:contentDescription="@null" />
+            <ImageView android:id="@+id/w_done_ring" android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/w_ring" android:contentDescription="@null" />
+            <ImageView android:id="@+id/w_done" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="10dp" android:src="@drawable/ic_check" android:contentDescription="Done" />
+        </FrameLayout>
+        <include layout="@layout/w_mascot" android:layout_width="40dp" android:layout_height="36dp" android:layout_marginStart="8dp" />
+    </LinearLayout>
+</FrameLayout>

@@ -5,4 +5,14 @@
         <item name="android:backgroundDimEnabled">true</item>
         <item name="android:backgroundDimAmount">0.35</item>
     </style>
+    <!-- The app's type in Quicky's own screens (add box, widget settings): Fredoka for headings,
+         Nunito for text. Android 8+ (values-v26) uses the bundled fonts; older ones the system's. -->
+    <style name="WTitle"><item name="android:fontFamily">sans-serif-medium</item></style>
+    <style name="WBody"><item name="android:fontFamily">sans-serif-medium</item></style>
+    <style name="WMeta"><item name="android:fontFamily">sans-serif</item><item name="android:textStyle">bold</item></style>
+    <!-- In widgets: launchers draw them with a restricted context that ignores bundled fonts, so
+         system fonts here, and headings drawn in Fredoka from code (Widgets.heading). -->
+    <style name="WgTitle"><item name="android:fontFamily">sans-serif</item><item name="android:textStyle">bold</item></style>
+    <style name="WgBody"><item name="android:fontFamily">sans-serif-medium</item></style>
+    <style name="WgMeta"><item name="android:fontFamily">sans-serif-medium</item></style>
 </resources>

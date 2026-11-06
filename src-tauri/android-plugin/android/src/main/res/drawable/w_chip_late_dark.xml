@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A chip's background before Android 12 (later ones tint w_chip). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF45202B" />
+    <corners android:radius="8dp" />
+</shape>

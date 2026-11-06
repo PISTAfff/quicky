@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M12,3C17.2,3 21,6.6 21,11.8C21,17.2 17.4,21 12,21C6.6,21 3,17.4 3,12C3,6.8 6.8,3 12,3ZM9,8.7C9.7,8.7 10.3,9.4 10.3,10.2C10.3,11 9.7,11.7 9,11.7C8.3,11.7 7.7,11 7.7,10.2C7.7,9.4 8.3,8.7 9,8.7ZM15,8.7C15.7,8.7 16.3,9.4 16.3,10.2C16.3,11 15.7,11.7 15,11.7C14.3,11.7 13.7,11 13.7,10.2C13.7,9.4 14.3,8.7 15,8.7Z" />
+<!-- Quicky as one shape with the eyes cut out (the widgets' small logo, tinted the accent). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="42dp" android:height="38dp" android:viewportWidth="42" android:viewportHeight="38">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M20,1C31,1 39,9 39,20c0,9 -6,15 -19,15S1,29 1,20C1,9 9,1 20,1zM12,15a2,2 0,0 1,4 0v3a2,2 0,0 1,-4 0zM24,15a2,2 0,0 1,4 0v3a2,2 0,0 1,-4 0z" />
 </vector>

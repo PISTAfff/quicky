@@ -64,5 +64,14 @@
             android:taskAffinity=""
             android:windowSoftInputMode="stateVisible|adjustResize"
             android:theme="@style/QuickyDialog" />
+        <!-- A widget's settings (look and colours): on placing it before Android 12, then its pencil. -->
+        <activity
+            android:name=".WidgetSettingsActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/QuickyDialog">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
     </application>
 </manifest>

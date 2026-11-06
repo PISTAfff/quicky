@@ -25,6 +25,8 @@ export interface Snapshot {
   accent: string;
   onAccent: string;
   dark: boolean;
+  /** The app's theme setting: "auto" lets the widgets follow the phone's dark mode by themselves. */
+  mode: "light" | "dark" | "auto";
   /** "Fri 6" */
   date: string;
   tasks: Row[];

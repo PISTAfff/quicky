@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quicky's ink outline. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="42dp" android:height="38dp" android:viewportWidth="42" android:viewportHeight="38">
+    <path android:strokeColor="#FF2B2540" android:strokeWidth="1.6" android:strokeLineJoin="round" android:pathData="M20,1C31,1 39,9 39,20c0,9 -6,15 -19,15S1,29 1,20C1,9 9,1 20,1z" />
+</vector>

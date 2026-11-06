@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cards that follow the phone's dark mode (values-night swaps them). -->
+<resources>
+    <drawable name="w_card_q">@drawable/w_card_q_light</drawable>
+    <drawable name="w_card_s">@drawable/w_card_s_light</drawable>
+</resources>

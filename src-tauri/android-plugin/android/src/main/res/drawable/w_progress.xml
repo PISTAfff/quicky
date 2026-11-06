@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The list header's "done today" bar (tinted from code on Android 12+). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape><solid android:color="#FFEDE9FB" /><corners android:radius="99dp" /></shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip><shape><solid android:color="#FF6D4CFF" /><corners android:radius="99dp" /></shape></clip>
+    </item>
+</layer-list>

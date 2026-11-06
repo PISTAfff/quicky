@@ -61,6 +61,22 @@ object Store {
         return false
     }
 
+    /** One placed widget's own settings (see [WidgetStyle]); the defaults are the app's look. */
+    fun widgetStyle(ctx: Context, id: Int): WidgetStyle = try {
+        val o = JSONObject(prefs(ctx).getString("widget_$id", null) ?: "{}")
+        WidgetStyle(o.optString("look", "quicky"), o.optString("theme", "app"))
+    } catch (_: Exception) { WidgetStyle() }
+
+    fun setWidgetStyle(ctx: Context, id: Int, style: WidgetStyle) =
+        prefs(ctx).edit().putString("widget_$id", JSONObject().put("look", style.look).put("theme", style.theme).toString()).apply()
+
+    fun forgetWidget(ctx: Context, id: Int) = prefs(ctx).edit().remove("widget_$id").apply()
+
+    /** What the widget picker's preview of a kind was last drawn with (Android 15+). */
+    fun previewSig(ctx: Context, kind: String): String? = prefs(ctx).getString("preview_$kind", null)
+
+    fun setPreviewSig(ctx: Context, kind: String, sig: String) = prefs(ctx).edit().putString("preview_$kind", sig).apply()
+
     fun alarms(ctx: Context): JSONArray =
         try { JSONArray(prefs(ctx).getString("alarms", null) ?: "[]") } catch (_: Exception) { JSONArray() }
 

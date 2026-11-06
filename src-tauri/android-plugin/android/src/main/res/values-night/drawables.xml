@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <drawable name="w_card_q">@drawable/w_card_q_dark</drawable>
+    <drawable name="w_card_s">@drawable/w_card_s_dark</drawable>
+</resources>

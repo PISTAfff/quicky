@@ -10,6 +10,7 @@ import {
 import { calendarEvents, CALENDAR_ID, snoozeAlarm, startEvents, upcomingAlarms } from "../lib/events";
 import { readQuiet } from "../lib/reminders";
 import { readInstalled } from "../lib/cloud";
+import { theme } from "../lib/theme";
 import { setSheet, WEEK_LONG } from "../ui/state";
 import { pushWidgets, scheduleAlarms, takeActions, type Alarm, type Row, type Snapshot } from "./native";
 
@@ -72,6 +73,7 @@ function snapshot(): Snapshot {
     accent: css.getPropertyValue("--accent").trim(),
     onAccent: css.getPropertyValue("--on-accent").trim(),
     dark: document.documentElement.dataset.mode === "dark",
+    mode: theme().mode,
     date: `${WEEK_LONG[d.getDay()]} ${d.getDate()}`,
     tasks: open.slice(0, 40).map((t) => row(t, day)),
     next: nextTask ? { ...row(nextTask, day), pinned: !!focus } : null,
@@ -160,7 +162,7 @@ export function startPhone() {
   });
   createRoot(() => {
     // Any change to the tasks, the day, the calendar or the look redraws the widgets.
-    createEffect(on(() => [JSON.stringify(data), today(), calendarEvents()], refreshWidgets));
+    createEffect(on(() => [JSON.stringify(data), today(), calendarEvents(), theme()], refreshWidgets));
     createEffect(on(() => [JSON.stringify(data.tasks), calendarEvents()], refreshAlarms));
   });
   new MutationObserver(refreshWidgets).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-mode"] });

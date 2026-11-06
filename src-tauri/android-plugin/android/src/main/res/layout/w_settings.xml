@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A widget's settings (on placing it, or long-press and the pencil): its look and colours, with a preview. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+    <FrameLayout
+        android:id="@+id/ws_outside"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="18dp"
+        android:paddingTop="72dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="24dp">
+        <LinearLayout
+            android:id="@+id/ws_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/w_card_q_light"
+            android:clickable="true"
+            android:orientation="vertical"
+            android:paddingStart="18dp"
+            android:paddingTop="16dp"
+            android:paddingEnd="21dp"
+            android:paddingBottom="19dp">
+            <TextView android:id="@+id/ws_title" style="@style/WTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Widget style" android:textSize="20sp" />
+            <FrameLayout android:id="@+id/ws_preview" android:layout_width="match_parent" android:layout_height="200dp" android:layout_marginTop="12dp" android:background="@drawable/w_wall" android:padding="12dp" />
+            <TextView android:id="@+id/ws_look_label" style="@style/WMeta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Look" android:textSize="13sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="horizontal">
+            <TextView android:id="@+id/ws_look_quicky" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Quicky" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_look_soft" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Soft" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_look_you" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="0dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Material You" android:textSize="13.5sp" />
+            </LinearLayout>
+            <TextView android:id="@+id/ws_theme_label" style="@style/WMeta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Colours" android:textSize="13sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="horizontal">
+            <TextView android:id="@+id/ws_theme_app" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Like app" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_theme_light" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Light" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_theme_dark" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Dark" android:textSize="13.5sp" />
+            <TextView android:id="@+id/ws_theme_phone" style="@style/WBody" android:layout_width="0dp" android:layout_height="40dp" android:layout_marginEnd="0dp" android:layout_weight="1" android:background="@drawable/w_round" android:gravity="center" android:singleLine="true" android:text="Like phone" android:textSize="13.5sp" />
+            </LinearLayout>
+            <TextView android:id="@+id/ws_note" style="@style/WMeta" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="12sp" />
+            <TextView android:id="@+id/ws_done" style="@style/WBody" android:layout_width="wrap_content" android:layout_height="44dp" android:layout_gravity="end" android:layout_marginTop="14dp" android:background="@drawable/w_round" android:gravity="center" android:paddingStart="26dp" android:paddingEnd="26dp" android:text="Done" android:textSize="15sp" />
+        </LinearLayout>
+    </FrameLayout>
+</ScrollView>

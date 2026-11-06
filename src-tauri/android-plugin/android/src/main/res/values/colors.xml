@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widgets' colours, from src/tokens.css (light, and dark under data-mode="dark"). The plain
+     names follow the phone's dark mode (values-night); Kotlin uses the _light/_dark ones when the
+     app's theme is set to one of them. -->
+<resources>
+    <color name="w_card_light">#FFFFFFFF</color>
+    <color name="w_ink_light">#FF2B2540</color>
+    <color name="w_muted_light">#FF5E5878</color>
+    <color name="w_soft_light">#FFEDE9FB</color>
+    <color name="w_ring_light">#FF2B2540</color>
+    <color name="w_doing_light">#FF3D5BD9</color>
+    <color name="w_late_light">#FFC0264A</color>
+    <color name="w_late_soft_light">#FFFFE3E8</color>
+
+    <color name="w_card_dark">#FF231F2D</color>
+    <color name="w_ink_dark">#FFEFEAF8</color>
+    <color name="w_muted_dark">#FFAAA3C0</color>
+    <color name="w_soft_dark">#FF2F2A3C</color>
+    <color name="w_ring_dark">#FF8A83A3</color>
+    <color name="w_doing_dark">#FF8EA4FF</color>
+    <color name="w_late_dark">#FFFF7A98</color>
+    <color name="w_late_soft_dark">#FF45202B</color>
+
+    <color name="w_card">@color/w_card_light</color>
+    <color name="w_ink">@color/w_ink_light</color>
+    <color name="w_muted">@color/w_muted_light</color>
+    <color name="w_soft">@color/w_soft_light</color>
+    <color name="w_ring">@color/w_ring_light</color>
+    <color name="w_doing">@color/w_doing_light</color>
+    <color name="w_late">@color/w_late_light</color>
+    <color name="w_late_soft">@color/w_late_soft_light</color>
+
+    <!-- Material You (Android 12+ overrides these with the wallpaper's colours). -->
+    <color name="w_you_card">@color/w_card_light</color>
+    <color name="w_you_ink">@color/w_ink_light</color>
+    <color name="w_you_muted">@color/w_muted_light</color>
+    <color name="w_you_soft">@color/w_soft_light</color>
+    <color name="w_you_ring">@color/w_ring_light</color>
+    <color name="w_you_doing">@color/w_doing_light</color>
+    <color name="w_you_accent">#FF6D4CFF</color>
+    <color name="w_you_on_accent">#FFFFFFFF</color>
+
+    <!-- Quicky himself: the outline and shadow are ink in both themes (as on the desktop bubble). -->
+    <color name="w_edge">#FF2B2540</color>
+</resources>
