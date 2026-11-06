@@ -90,7 +90,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # Only platform-tools: the action's default list still names the retired `tools` package,
+      # which sdkmanager no longer has, and the step fails.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Android NDK
         run: |
