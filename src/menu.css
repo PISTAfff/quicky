@@ -9,9 +9,10 @@
 }
 .qmenu.in { animation: qmenu-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
 @keyframes qmenu-in { from { opacity: 0; transform: scale(0.88); } }
+/* An item too long for the menu's widest wraps onto a second line instead of running past its edge. */
 .qmenu button {
-  position: relative; display: block; width: 100%; height: 32px; padding: 0 14px; border: 0; border-radius: 9px;
-  background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; outline: 0;
+  position: relative; display: block; width: 100%; min-height: 32px; padding: 7px 14px; border: 0; border-radius: 9px;
+  background: transparent; color: inherit; font: inherit; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; outline: 0;
 }
 .qmenu.checks button { padding-left: 32px; }
 /* Hover moves the focus too (like a system menu), so one highlight serves mouse and keys. */

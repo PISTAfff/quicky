@@ -223,6 +223,8 @@ pub fn run() {
             bubble::stick_bubble,
             bubble::unstick_bubble,
             bubble::stuck_apps,
+            bubble::minis_get,
+            bubble::minis_set,
             bubble::mini_drag_start,
             bubble::pointer_track_start,
             bubble::mini_drag_end,

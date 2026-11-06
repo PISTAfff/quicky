@@ -1,4 +1,4 @@
-**New:** sign in (Settings, Online) and your tasks, repeats, app lists, attachments and your look, sounds and quiet hours stay the same on every PC on your account. Add extensions: **Projects**, a shared whiteboard, and **Calendar**, shared calendars that also show and edit your tasks by due date and remind you on Quicky's own reminder screen. Right-click the bubble for an **Extensions** menu, and each extension can check for its own updates. Dragging the bubble or a mini now leaves a sticky trail of goo (with squelchy sounds), and dividing, popping and hiding a mini play smoothly.
+**New:** your mini Quickys sync too. Which apps have a mini, where it sits and whether it's locked now follow your account, so every PC signed in to it gets the same minis (apps are matched by where they're installed). Also fixed: a long item in the bubble's right-click menu running past its edge.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

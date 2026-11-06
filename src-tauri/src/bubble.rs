@@ -964,6 +964,26 @@ pub fn stuck_apps(app: AppHandle) -> Vec<StuckInfo> {
     read_config(&app).stuck_apps.into_iter().map(|s| StuckInfo { exe: s.exe, name: s.name }).collect()
 }
 
+/// Every app's mini as it's saved (for online sync, which keeps them the same on every PC).
+#[tauri::command]
+pub fn minis_get(app: AppHandle) -> Vec<StuckApp> {
+    read_config(&app).stuck_apps
+}
+
+/// The minis another PC on the account has: they replace this PC's (apps are matched by their
+/// .exe path). Changes nothing when they're the same.
+#[tauri::command]
+pub fn minis_set(app: AppHandle, list: Vec<StuckApp>) -> Result<(), String> {
+    let same = |a: &[StuckApp], b: &[StuckApp]| serde_json::to_string(a).ok() == serde_json::to_string(b).ok();
+    if same(&read_config(&app).stuck_apps, &list) {
+        return Ok(());
+    }
+    update_config(&app, |c| c.stuck_apps = list)?;
+    let _ = app.emit("stuck-apps", ());
+    apply(&app, true);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
