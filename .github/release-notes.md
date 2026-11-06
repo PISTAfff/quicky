@@ -1,6 +1,8 @@
-**Delete your account any time.** Settings, Online, Delete account removes your account and everything Quicky's server holds for it (synced tasks, files, projects, calendars and requests). Tasks on your devices stay. You can also do it on the web at quicky.pistasspot.com/delete-account.
+**New shortcuts.** Ctrl+Shift+Space (also Option+Shift+Space on macOS) shows or hides the bubble, and Ctrl+Space now closes Quicky too when it's open in front.
 
-**Privacy policy:** linked in Settings, Online, and at quicky.pistasspot.com/privacy.
+**The bubble waves goodbye.** Hiding it plays a little squash, hop and shrink before it goes.
+
+**Fixes:** the goo trail snaps away when a mini is pushed out of its app instead of staying behind, and on PCs where Windows drags only window outlines (lite and "best performance" setups) the bubble now moves for real instead of as an empty box.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 
