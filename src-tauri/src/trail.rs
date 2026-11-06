@@ -115,7 +115,14 @@ pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
         let held: fn() -> bool = if right { win::right_button_down } else { win::left_button_down };
         let mut at = center;
         let mut sent = None;
+        // A mini pushed out of its app pops (and is gone) while the button is still held.
+        let pops = bubble::MINI_POPS.load(Ordering::SeqCst);
+        let mut popped = false;
         while held() && RUN.load(Ordering::SeqCst) == run {
+            if matches!(drag, Drag::Mini { .. }) && bubble::MINI_POPS.load(Ordering::SeqCst) != pops {
+                popped = true;
+                break;
+            }
             // Where it really is when Quicky moves it (a carried bubble, a mini held in by its
             // app's walls); a left drag of the bubble on Windows is the system's, so the cursor.
             let (cx, cy) = win::cursor();
@@ -146,6 +153,10 @@ pub fn start(app: &AppHandle, center: (i32, i32), drag: Drag) {
                     win::show(&w, false);
                 }
             });
+        }
+        if popped {
+            let _ = app.emit_to(LABEL, "trail-end", json!({ "run": run, "mode": "pop", "at": page(at) }));
+            return;
         }
         if drag != Drag::Carry {
             let _ = app.emit_to(LABEL, "trail-end", json!({ "run": run, "mode": "merge", "at": page(at) }));

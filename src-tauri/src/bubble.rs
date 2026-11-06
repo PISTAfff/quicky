@@ -718,7 +718,8 @@ pub fn bubble_drag_start(app: AppHandle) -> bool {
     if let Some(center) = window(&app).and_then(|b| center_of(&b)) {
         trail::start(&app, center, Drag::Move);
     }
-    if cfg!(windows) {
+    // Windows' own move, unless it only drags an outline (window contents hidden while dragging).
+    if cfg!(windows) && win::live_window_drag() {
         state().dragging = true;
         return true;
     }
@@ -869,8 +870,12 @@ pub fn mini_drag_end(app: AppHandle) {
 
 /// Pushed hard enough against the wall: the mini pops out and that app no longer has one
 /// (drop Quicky on the app again to bring it back).
+/// Counts minis popped out of their apps (the sticky trail ends its strand when this moves).
+pub(crate) static MINI_POPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 #[tauri::command]
 pub fn mini_pop(app: AppHandle) {
+    MINI_POPS.fetch_add(1, Ordering::SeqCst);
     let wall = state().wall.take();
     let push = wall.as_ref().map_or((0.0, 0.0), |w| w.push);
     let exe = wall.map(|w| w.exe).or_else(|| active_stuck(&app).map(|(e, _, _)| e.exe));

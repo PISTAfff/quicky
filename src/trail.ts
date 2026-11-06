@@ -36,7 +36,7 @@ let run = 0;
 let from: Pt | null = null;
 let to: Pt | null = null;
 let k = 1;
-type Mode = "drag" | "merge" | "back" | "split" | "gone";
+type Mode = "drag" | "merge" | "back" | "split" | "pop" | "gone";
 let mode: Mode = "gone";
 let since = 0;
 let frame = 0;
@@ -180,6 +180,15 @@ function tick(now: number) {
       out.push(circle(b.x, b.y, end, color));
     });
     if (age > 1.4) return done();
+  } else if (mode === "pop") {
+    // The mini popped out of its app: the strand snaps back into the puddle, which shrinks away.
+    const q = Math.min(1, age / 0.42);
+    const e = ease(q);
+    const tip = { x: lerp(b.x, a.x, e), y: lerp(b.y, a.y, e) };
+    paint(a, puddle * (1 - 0.85 * e), 1 - e, (out) => {
+      if (e < 0.95) strand(out, a, tip, puddle * (1 - 0.85 * e), Math.max(THIN, end * (1 - e)), e, t);
+    });
+    if (q >= 1) return done();
   } else if (mode === "split") {
     // The twin heads home along the strand; the strand to the new mini stretches and snaps.
     const snap = Math.min(1, age / 0.45);
@@ -229,7 +238,7 @@ void listen<{ run: number; at: Pt }>("trail-move", ({ payload: p }) => {
   to = p.at;
   kick();
 });
-void listen<{ run: number; mode: "merge" | "back" | "split"; at: Pt }>("trail-end", ({ payload: p }) => {
+void listen<{ run: number; mode: "merge" | "back" | "split" | "pop"; at: Pt }>("trail-end", ({ payload: p }) => {
   if (p.run !== run || mode === "gone") return;
   to = p.at;
   mode = p.mode;
