@@ -175,4 +175,8 @@ export async function removeExtension(id: string) {
   writeInstalled(readInstalled().filter((i) => i.id !== id));
 }
 
-export const openExtension = (i: Installed) => invoke("open_extension", { id: i.id, title: i.name });
+/** The phone opens extensions inside its one window instead (set by `mobile/App.tsx`). */
+let opener: ((id: string) => void) | null = null;
+export const setExtensionOpener = (fn: (id: string) => void) => void (opener = fn);
+
+export const openExtension = async (i: Installed) => (opener ? opener(i.id) : invoke("open_extension", { id: i.id, title: i.name }));

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "app.quicky.mobile",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Quicky",
+        "url": "mobile.html",
+        "backgroundColor": "#F4F1FF"
+      }
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ACCENTS, isHex } from "../lib/theme-colors";
 import { pinned } from "./state";
+import { IS_MOBILE } from "../lib/platform";
 
 type HSV = { h: number; s: number; v: number };
 
@@ -119,6 +120,8 @@ export function ColorPicker(p: { value: string; onChange: (hex: string) => void;
         <i class="cpick-knob" style={{ left: `${(hsv().h / 360) * 100}%`, background: hsvToHex({ h: hsv().h, s: 1, v: 1 }) }} />
       </div>
       <div class="cpick-row">
+        {/* No screen to pick from on a phone. */}
+        <Show when={!IS_MOBILE}>
         <button
           class="cpick-drop"
           classList={{ on: picking() }}
@@ -131,6 +134,7 @@ export function ColorPicker(p: { value: string; onChange: (hex: string) => void;
             <path d="M14 7l-9 9-1 4 4-1 9-9" />
           </svg>
         </button>
+        </Show>
         <span class="cpick-preview" style={{ background: hsvToHex(hsv()) }} />
         <input
           id="cpick-hex"

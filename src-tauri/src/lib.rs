@@ -1,42 +1,65 @@
 //! Quicky's backend: wires the plugins, windows, tray, shortcut and commands together. Each job
 //! lives in a module of its own; this file only connects them.
 
-mod balloon;
-mod bubble;
 mod config;
 mod data;
 mod extensions;
+// Everything below is the desktop's: the bubble and its windows, the tray, the shortcut. The
+// Android app (`mobile.rs`) is one window and shares only the data and extension files.
+#[cfg(desktop)]
+mod balloon;
+#[cfg(desktop)]
+mod bubble;
+#[cfg(desktop)]
 mod fx;
+#[cfg(desktop)]
 mod trail;
+#[cfg(desktop)]
 mod icons;
+#[cfg(desktop)]
 mod main_window;
+#[cfg(desktop)]
 mod menu;
+#[cfg(desktop)]
 mod picker;
+#[cfg(desktop)]
 mod reminder;
+#[cfg(desktop)]
 mod tray;
 // Native window calls behind one set of functions: Win32 on Windows, AppKit and CoreGraphics on
 // macOS, X11 on Linux.
+#[cfg(desktop)]
 #[cfg_attr(windows, path = "win.rs")]
 #[cfg_attr(target_os = "macos", path = "mac.rs")]
 #[cfg_attr(target_os = "linux", path = "linux.rs")]
 mod win;
-#[cfg(not(windows))]
+#[cfg(all(desktop, not(windows)))]
 mod own;
+#[cfg(mobile)]
+mod mobile;
 
+#[cfg(desktop)]
 use crate::config::{read_config, update_config};
+#[cfg(desktop)]
 use std::sync::atomic::Ordering;
+#[cfg(desktop)]
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+#[cfg(desktop)]
 use tauri_plugin_autostart::ManagerExt as _;
+#[cfg(desktop)]
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+#[cfg(desktop)]
 const STARTUP_ARG: &str = "--startup";
 
 /// Reminders wait while this is true (when the user asked for that): a full-screen app is in front.
+#[cfg(desktop)]
 #[tauri::command]
 fn system_busy() -> bool {
     win::busy()
 }
 
+#[cfg(desktop)]
 pub(crate) fn quit(app: &AppHandle) {
     // Let the page flush its pending save before the process goes away.
     let _ = app.emit("flush", ());
@@ -47,7 +70,13 @@ pub(crate) fn quit(app: &AppHandle) {
     });
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+pub fn run() {
+    mobile::run()
+}
+
+#[cfg(desktop)]
 pub fn run() {
     // Linux: GTK on X11 even in a Wayland session (through XWayland), because Wayland doesn't let
     // an app place its own windows and the bubble lives by placing itself. WebKitGTK's DMA-BUF

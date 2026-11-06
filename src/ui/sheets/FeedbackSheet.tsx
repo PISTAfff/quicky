@@ -1,7 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import { getVersion } from "@tauri-apps/api/app";
 import { readAccount, sendFeedback } from "../../lib/cloud";
-import { OS } from "../../lib/platform";
+import { IS_MOBILE, OS } from "../../lib/platform";
 import { showToast } from "../../lib/store";
 import { setSheet } from "../state";
 import { Panel } from "./Panel";
@@ -24,7 +24,7 @@ export function FeedbackSheet() {
     setBusy(true);
     setError("");
     try {
-      await sendFeedback({ kind: kind(), title: title().trim(), body: body().trim(), email: email().trim() || undefined, appVersion: version(), os: OS });
+      await sendFeedback({ kind: kind(), title: title().trim(), body: body().trim(), email: email().trim() || undefined, appVersion: version(), os: IS_MOBILE ? "android" : OS });
       showToast(kind() === "bug" ? "Thanks! Your bug report was sent" : "Thanks! Your idea was sent");
       setSheet({ kind: "settings" });
     } catch (err) {
@@ -52,7 +52,7 @@ export function FeedbackSheet() {
             id="fb-title"
             maxLength={120}
             minLength={3}
-            placeholder={kind() === "bug" ? "The bubble hides behind the taskbar" : "Let me colour tasks"}
+            placeholder={kind() === "bug" ? (IS_MOBILE ? "The widget doesn't update" : "The bubble hides behind the taskbar") : "Let me colour tasks"}
             value={title()}
             onInput={(e) => setTitle(e.currentTarget.value)}
             required
@@ -79,7 +79,7 @@ export function FeedbackSheet() {
             <input id="fb-email" type="email" autocomplete="email" value={email()} onInput={(e) => setEmail(e.currentTarget.value)} />
           </label>
         </Show>
-        <small class="muted">Quicky {version()} on {OS === "windows" ? "Windows" : OS === "mac" ? "macOS" : "Linux"} is added so we can reproduce it. Your tasks are never sent.</small>
+        <small class="muted">Quicky {version()} on {IS_MOBILE ? "Android" : OS === "windows" ? "Windows" : OS === "mac" ? "macOS" : "Linux"} is added so we can reproduce it. Your tasks are never sent.</small>
         <Show when={error()}>
           <p class="error" role="alert">{error()}</p>
         </Show>

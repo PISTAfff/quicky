@@ -6,9 +6,12 @@
 use std::fs;
 use std::path::PathBuf;
 use tauri::ipc::{InvokeBody, Request};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 /// Window labels are `ext-<id>`; capabilities match them with `ext-*`.
+#[cfg(desktop)]
 pub const LABEL_PREFIX: &str = "ext-";
 
 fn valid_id(id: &str) -> bool {
@@ -48,6 +51,7 @@ pub fn extension_save(app: AppHandle, request: Request<'_>) -> Result<(), String
 
 #[tauri::command]
 pub fn extension_remove(app: AppHandle, id: String) -> Result<(), String> {
+    #[cfg(desktop)]
     if let Some(w) = app.get_webview_window(&format!("{LABEL_PREFIX}{id}")) {
         let _ = w.destroy();
     }
@@ -68,6 +72,7 @@ pub fn extension_file(app: AppHandle, id: String) -> Result<Option<String>, Stri
 /// Opens (or brings forward) an extension's own window, framed like Quicky's (its own title bar in
 /// `extension.html`, no system frame), that really closes.
 /// Async: making a window from a sync command deadlocks on Windows.
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn open_extension(app: AppHandle, id: String, title: String) -> Result<(), String> {
     if !file(&app, &id)?.is_file() {

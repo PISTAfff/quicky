@@ -13,6 +13,7 @@ import { RemindBox } from "../RemindBox";
 import { setSheet } from "../state";
 import { Panel } from "./Panel";
 import { laterDay } from "./dates";
+import { IS_MOBILE } from "../../lib/platform";
 
 export function TaskSheet(p: { id: string; edit?: boolean }) {
   const task = createMemo(() => data.tasks.find((t) => t.id === p.id));
@@ -73,8 +74,12 @@ export function TaskSheet(p: { id: string; edit?: boolean }) {
               onClick={() => setFocus(data.focus?.id === p.id ? null : p.id)}
             >
               <ITarget size={15} />
-              <Show when={data.focus?.id === p.id} fallback={<span>Pin to the bubble<small>Keeps it in front of you while you work on it</small></span>}>
-                <span>Pinned to the bubble<small>Finish it to make Quicky cheer. Click to unpin</small></span>
+              {/* The phone has no bubble: the pin heads its "next up" widget instead. */}
+              <Show
+                when={data.focus?.id === p.id}
+                fallback={IS_MOBILE ? <span>Pin to next up<small>Keeps it on the next up widget while you work on it</small></span> : <span>Pin to the bubble<small>Keeps it in front of you while you work on it</small></span>}
+              >
+                {IS_MOBILE ? <span>Pinned to next up<small>Tap to unpin</small></span> : <span>Pinned to the bubble<small>Finish it to make Quicky cheer. Click to unpin</small></span>}
               </Show>
             </button>
           </Show>

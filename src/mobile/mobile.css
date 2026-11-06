@@ -1,0 +1,77 @@
+/* The Android app, on top of styles.css: room for fingers, the system bars, the top bar, and
+   extensions full screen. */
+
+html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+body.phone { background: var(--bg); }
+/* The app draws under Android's bars: keep clear of them. Some web views report no bottom inset
+   under the gesture bar, so there's always a little room there. */
+:root { --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: max(env(safe-area-inset-bottom, 0px), 14px); }
+.app.phone { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+
+/* ---- top bar ---- */
+.m-top { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 2px 16px; }
+.m-brand { display: flex; align-items: center; gap: 8px; font: 600 18px "Fredoka", sans-serif; }
+.m-acts { display: flex; gap: 2px; }
+.m-acts .ib { width: 42px; height: 42px; border-radius: 14px; color: var(--ink); }
+.sync-dot { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 2px solid var(--edge); background: var(--soft); }
+.sync-dot.ok { background: var(--mint); }
+.sync-dot.syncing { background: var(--accent); animation: pulse 0.8s infinite alternate; }
+.sync-dot.error { background: var(--danger); }
+
+/* ---- the list, for fingers ---- */
+.phone .header { padding: 4px 18px 12px; }
+.phone .date { font-size: 36px; }
+.phone .quick-box { height: 52px; }
+.phone .quick-box input { font-size: 16px; } /* 16px keeps Android from zooming in */
+.phone .add-btn { width: 52px; height: 52px; }
+.phone .ib { width: 40px; height: 40px; }
+.phone .kbd { display: none; }
+.phone .pills button { min-height: 36px; }
+.phone .scroll { padding-bottom: 20px; }
+.phone .dot { width: 30px; height: 30px; }
+.phone .quick-acts { opacity: 1; transform: none; }
+.phone .qa { width: 38px; height: 38px; border-radius: 12px; }
+.phone .card-title { font-size: 16px; }
+.phone .drawer-btn { min-height: 44px; }
+.phone .drawers { padding-bottom: 6px; }
+.phone input, .phone textarea, .phone select { font-size: 16px; }
+
+/* No hover on a touch screen: keep only the press feedback. */
+@media (hover: none) {
+  .phone .card:hover { transform: none; }
+  .phone .add-btn:hover, .phone .btn:hover:not(:disabled), .phone .drawer-btn:hover { transform: none; box-shadow: var(--shadow); }
+  .phone .ib:hover { background: transparent; }
+  .phone .dot:hover { transform: none; }
+}
+
+/* ---- panels: bottom sheets, full width ---- */
+.phone .sheet-backdrop { padding: 0; position: fixed; padding-top: var(--safe-top); }
+.phone .sheet {
+  max-height: 94%; border-radius: 24px 24px 0 0; border-bottom: 0;
+  padding-bottom: var(--safe-bottom);
+}
+.phone .sheet-head { padding: 16px 14px 6px 20px; }
+.phone .sheet-head .ib.soft { width: 42px; height: 42px; }
+.phone .btn.small { min-height: 38px; padding-left: 14px; padding-right: 14px; }
+.phone .switch-row { min-height: 48px; }
+.phone .toast { bottom: calc(18px + var(--safe-bottom)); white-space: normal; }
+
+.welcome .sheet-body { align-items: center; text-align: center; padding: 28px 24px 24px; }
+.welcome h2 { margin: 0; font: 600 26px "Fredoka", sans-serif; }
+.welcome p { margin: 0; max-width: 340px; }
+.welcome .sheet-actions { width: 100%; }
+.welcome .sheet-actions .btn { flex: 1; min-height: 46px; }
+
+/* ---- an extension, full screen ---- */
+.ext-view {
+  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg);
+  padding-top: var(--safe-top); padding-bottom: var(--safe-bottom);
+  animation: up 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.ext-bar { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.ext-name { font: 600 18px "Fredoka", sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ext-stage { flex: 1; min-height: 0; position: relative; }
+.ext-stage iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--bg); }
+.ext-note { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 24px; }
+.ext-note h1 { margin: 0; font: 700 24px "Fredoka", sans-serif; }
+.ext-note p { margin: 0; max-width: 320px; color: var(--muted); }

@@ -13,6 +13,8 @@ const SNOOZE_KEY = "quicky-event-snooze";
 export interface Alarm { key: string; at: number; title: string; note: string; event: CalEvent }
 
 const [events, setEvents] = createSignal<CalEvent[]>([]);
+/** The calendar's events as last read (the phone's widgets and notifications use them). */
+export const calendarEvents = events;
 
 const read = <T>(key: string, fallback: T): T => {
   try {
@@ -69,6 +71,13 @@ export function dueAlarm(now: Date): Alarm | null {
   const t = now.getTime();
   const due = alarms(now).filter((a) => a.at <= t && t - a.at < CATCH_UP_MS && !(a.key in f && f[a.key] >= a.at));
   return due.sort((a, b) => a.at - b.at)[0] ?? null;
+}
+
+/** Event reminders still to come and not shown yet (the phone schedules them as notifications). */
+export function upcomingAlarms(now: Date): Alarm[] {
+  const f = fired();
+  const t = now.getTime();
+  return alarms(now).filter((a) => a.at > t && !(a.key in f && f[a.key] >= a.at));
 }
 
 /** When the next event reminder is due (ms), for Rust's wake-up tick. */

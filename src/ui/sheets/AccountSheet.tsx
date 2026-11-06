@@ -3,6 +3,7 @@ import { forgotPassword, readAccount, refreshAccount, resendVerification, resetP
 import { showToast } from "../../lib/store";
 import { setSheet } from "../state";
 import { Panel } from "./Panel";
+import { IS_MOBILE } from "../../lib/platform";
 
 type Mode = "signin" | "signup" | "forgot" | "reset";
 
@@ -76,7 +77,7 @@ export function AccountSheet() {
           <form class="box account-form" onSubmit={submit}>
             <p class="muted">
               <Switch>
-                <Match when={mode() === "signin" || mode() === "signup"}>An account is for online projects and extensions. Your tasks stay on this computer.</Match>
+                <Match when={mode() === "signin" || mode() === "signup"}>{IS_MOBILE ? "An account keeps your tasks the same on this phone and your PCs, and is for online projects and extensions." : "An account is for online projects and extensions. Your tasks stay on this computer."}</Match>
                 <Match when={mode() === "forgot"}>We'll email you a 6-digit code to choose a new password.</Match>
                 <Match when={mode() === "reset"}>Type the code we emailed to {email()} and your new password. The code works for 30 minutes.</Match>
               </Switch>

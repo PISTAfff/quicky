@@ -8,7 +8,8 @@ import { autoCheck, checkForUpdate, installUpdate, setAutoCheck, updateState } f
 import { ACCENTS, setTheme, theme } from "../../lib/theme";
 import { onAccent } from "../../lib/theme-colors";
 import { chooseDataDir, dataDir, showToast } from "../../lib/store";
-import { OS, SYSTEM_NAME } from "../../lib/platform";
+import { IS_MOBILE, OS, SYSTEM_NAME } from "../../lib/platform";
+import { PhoneReminders } from "../../mobile/PhoneSettings";
 import { readQuiet, writeQuiet } from "../../lib/reminders";
 import { showTour } from "../Tour";
 import { previewReminder } from "../../lib/reminders";
@@ -36,14 +37,17 @@ export function SettingsSheet() {
   };
   const [startup, setStartup] = createSignal(false);
   const [bubble, setBubble] = createSignal(true);
-  isEnabled().then(setStartup).catch(() => {});
-  invoke<boolean>("get_show_bubble").then(setBubble).catch(() => {});
+  // The phone has no start-up setting, bubble or minis.
+  if (!IS_MOBILE) {
+    isEnabled().then(setStartup).catch(() => {});
+    invoke<boolean>("get_show_bubble").then(setBubble).catch(() => {});
+  }
   // The bubble can also be hidden from its own right-click menu or brought back from the tray.
   const stop = listen<boolean>("bubble-pref", (e) => setBubble(e.payload));
   onCleanup(() => void stop.then((u) => u()));
   const [stuck, setStuck] = createSignal<{ exe: string; name: string }[]>([]);
   const loadStuck = () => invoke<{ exe: string; name: string }[]>("stuck_apps").then(setStuck).catch(() => {});
-  void loadStuck();
+  if (!IS_MOBILE) void loadStuck();
   const stopStuck = listen("stuck-apps", loadStuck);
   onCleanup(() => void stopStuck.then((u) => u()));
   const toggleStartup = async () => {
@@ -125,6 +129,7 @@ export function SettingsSheet() {
           </For>
         </div>
       </div>
+      <Show when={!IS_MOBILE}>
       <div class="box">
         <label class="switch-row">
           <span>{OS === "windows" ? "Start with Windows" : "Open at login"}<small>Opens quietly in the {OS === "mac" ? "menu bar" : "tray"} when you sign in</small></span>
@@ -153,9 +158,10 @@ export function SettingsSheet() {
           </div>
         </Show>
       </div>
+      </Show>
       <div class="box">
         <label class="switch-row">
-          <span>Sounds<small>Little sound effects for adding, finishing, the bubble and reminders</small></span>
+          <span>Sounds<small>{IS_MOBILE ? "Little sound effects for adding, finishing and recording" : "Little sound effects for adding, finishing, the bubble and reminders"}</small></span>
           <input type="checkbox" role="switch" checked={sounds().on} onChange={() => setSounds({ ...sounds(), on: !sounds().on })} />
         </label>
         <Show when={sounds().on}>
@@ -175,6 +181,8 @@ export function SettingsSheet() {
           </label>
         </Show>
       </div>
+      {/* The phone app is updated by installing a new APK. */}
+      <Show when={!IS_MOBILE}>
       <div class="box">
         <div class="box-row">
           <span class="box-label">Updates · Quicky {version()}</span>
@@ -205,6 +213,7 @@ export function SettingsSheet() {
           />
         </label>
       </div>
+      </Show>
       <div class="box">
         <div class="box-row wrap">
           <span class="box-label">Online</span>
@@ -216,7 +225,7 @@ export function SettingsSheet() {
         <small class="muted online-who">{readAccount() ? `Signed in as ${readAccount()!.user.email}` : "Not signed in"}</small>
         <Show
           when={readAccount()}
-          fallback={<small class="muted">Sign in to keep your tasks and settings the same on every PC, and for online projects you share with others.</small>}
+          fallback={<small class="muted">Sign in to keep your tasks and settings the same on every {IS_MOBILE ? "PC and phone" : "PC"}, and for online projects you share with others.</small>}
         >
           <SyncRow />
         </Show>
@@ -226,9 +235,14 @@ export function SettingsSheet() {
           <span class="box-label"><IBell size={14} /> Reminders</span>
           <span class="row-gap">
             <button class="btn small" onClick={() => setSheet({ kind: "reminders" })}>See all</button>
-            <button class="btn small" onClick={previewReminder}>Preview one</button>
+            <Show when={!IS_MOBILE}>
+              <button class="btn small" onClick={previewReminder}>Preview one</button>
+            </Show>
           </span>
         </div>
+        <Show when={IS_MOBILE}>
+          <PhoneReminders />
+        </Show>
         <QuietHours />
       </div>
       <div class="box">
@@ -238,6 +252,8 @@ export function SettingsSheet() {
         </div>
         <small class="muted">Found something broken, or wish Quicky did something? Tell us.</small>
       </div>
+      {/* The tour is about the bubble and minis: desktop only. */}
+      <Show when={!IS_MOBILE}>
       <div class="box">
         <div class="box-row">
           <span class="box-label">Tips</span>
@@ -252,12 +268,18 @@ export function SettingsSheet() {
           </button>
         </div>
       </div>
-      <p class="muted">Tasks and media live in this folder on this computer:</p>
-      <code class="path">{dataDir()}</code>
-      <div class="sheet-actions">
-        <button class="btn ghost" onClick={() => invoke("open_data_dir")}><IFolder size={15} /> Open folder</button>
-        <button class="btn ghost" onClick={change}>Change…</button>
-      </div>
+      </Show>
+      <Show
+        when={!IS_MOBILE}
+        fallback={<p class="muted">Tasks and media live on this phone{readAccount() && syncOn() ? ", and in your account so every PC and phone signed in has them" : ""}.</p>}
+      >
+        <p class="muted">Tasks and media live in this folder on this computer:</p>
+        <code class="path">{dataDir()}</code>
+        <div class="sheet-actions">
+          <button class="btn ghost" onClick={() => invoke("open_data_dir")}><IFolder size={15} /> Open folder</button>
+          <button class="btn ghost" onClick={change}>Change…</button>
+        </div>
+      </Show>
     </Panel>
   );
 }
@@ -282,10 +304,12 @@ function QuietHours() {
           <span>to <TimeField label="Quiet hours to" value={q().to} onChange={(hm) => set({ to: hm })} /></span>
         </div>
       </Show>
+      <Show when={!IS_MOBILE}>
       <label class="switch-row">
         <span>Wait during full-screen apps<small>Games, videos and presentations aren't interrupted</small></span>
         <input type="checkbox" role="switch" checked={q().busy} onChange={() => set({ busy: !q().busy })} />
       </label>
+      </Show>
     </>
   );
 }

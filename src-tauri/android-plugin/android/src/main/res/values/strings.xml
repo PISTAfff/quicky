@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="w_list">Quicky tasks</string>
+    <string name="w_add">Quicky add</string>
+    <string name="w_next">Quicky next up</string>
+    <string name="w_today">Quicky today</string>
+    <string name="w_list_desc">Your open tasks; tick them off right here</string>
+    <string name="w_add_desc">One tap to add a task</string>
+    <string name="w_next_desc">The pinned task, or the most urgent one</string>
+    <string name="w_today_desc">Today\'s calendar events and tasks due today</string>
+</resources>

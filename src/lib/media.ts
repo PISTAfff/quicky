@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { monthKey, uid, type Attachment } from "./model";
+import { IS_MOBILE } from "./platform";
 
 type Raw = Omit<Attachment, "id">;
 const withIds = (list: Raw[]): Attachment[] => list.map((a) => ({ ...a, id: uid() }));
@@ -12,9 +13,23 @@ export async function importPaths(paths: string[]): Promise<Attachment[]> {
 }
 
 export async function pickFiles(): Promise<Attachment[]> {
+  // Android's picker hands out content:// links, not paths: read the files here and save their bytes.
+  if (IS_MOBILE) return Promise.all((await chooseFiles()).map((f) => saveBlob(f, f.name || "file")));
   const picked = await open({ multiple: true, title: "Attach to task" });
   if (!picked) return [];
   return importPaths(Array.isArray(picked) ? picked : [picked]);
+}
+
+/** The system's file picker through a file input (the phone's). Empty when nothing was picked. */
+function chooseFiles(): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.onchange = () => resolve([...(input.files ?? [])]);
+    input.oncancel = () => resolve([]);
+    input.click();
+  });
 }
 
 /** Sends raw bytes (pasted image, voice note) straight to disk without JSON-encoding them. */

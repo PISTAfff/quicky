@@ -1,0 +1,6 @@
+/.tauri
+/target
+Cargo.lock
+/android/.tauri
+/android/build
+/android/.gradle

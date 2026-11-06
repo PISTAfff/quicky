@@ -6,6 +6,7 @@ import { openMenu, type MenuItem } from "./ContextMenu";
 import { IBell, IChecks, ICalendar, IRepeat, ITarget } from "./icons";
 import { Thumb } from "./Media";
 import { ordinal, setSheet } from "./state";
+import { IS_MOBILE } from "../lib/platform";
 
 export function StatusDot(p: { task: Task }) {
   const label = () => ({ todo: "To do", doing: "Doing", done: "Done" })[p.task.status];
@@ -41,7 +42,9 @@ function taskMenu(t: Task): MenuItem[] {
   if (t.status !== "done") {
     items.push({ label: "Finish", run: () => setStatus(t.id, "done") });
     if (t.status === "doing") items.push({ label: "Back to To do", run: () => setStatus(t.id, "todo") });
-    items.push({ label: pinned ? "Unpin from the bubble" : "Pin to the bubble", run: () => setFocus(pinned ? null : t.id) });
+    // The phone has no bubble: a pinned task heads its "next up" widget instead.
+    const where = IS_MOBILE ? "next up" : "the bubble";
+    items.push({ label: pinned ? `Unpin from ${where}` : `Pin to ${where}`, run: () => setFocus(pinned ? null : t.id) });
     items.push({ label: "Not today", run: () => putOff(t.id, plusDays(1)) });
   } else items.push({ label: "Not done yet", run: () => setStatus(t.id, "todo") });
   items.push("sep", { label: "Delete", danger: true, run: () => removeTask(t.id) });
@@ -71,7 +74,7 @@ export function TaskCard(p: { task: Task; onPointerDown?: (e: PointerEvent) => v
         <Show when={carriedDays() > 0 || p.task.repeatId || p.task.attachments.length || nextReminder(p.task, new Date(clock())) || due() || steps() || pinned()}>
           <span class="card-meta">
             <Show when={pinned()}>
-              <span class="chip focus" title="Pinned to the bubble"><ITarget size={11} />On the bubble</span>
+              <span class="chip focus" title={IS_MOBILE ? "Pinned as next up" : "Pinned to the bubble"}><ITarget size={11} />{IS_MOBILE ? "Pinned" : "On the bubble"}</span>
             </Show>
             <Show when={due()}>
               {(d) => <span class={`chip due ${d().tone}`}><ICalendar size={11} />{d().text}</span>}

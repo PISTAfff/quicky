@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager};
+#[cfg(desktop)]
 use tauri_plugin_opener::OpenerExt;
 
 const DATA_FILE: &str = "quicky.json";
@@ -194,6 +195,8 @@ fn quicky_folder(picked: PathBuf) -> PathBuf {
     }
 }
 
+// Desktop only: the phone has no folder to pick or open, and its files come from a picker.
+#[cfg(desktop)]
 #[tauri::command]
 pub fn default_data_dir(app: AppHandle) -> Result<String, String> {
     let docs = app.path().document_dir().map_err(|e| e.to_string())?;
@@ -245,6 +248,7 @@ fn changed_on_disk(file: &Path) -> Result<bool, String> {
     Ok(known.is_none_or(|k| k != Some(hash(&text))))
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub fn import_files(
     app: AppHandle,
@@ -310,6 +314,7 @@ fn resolve_media(app: &AppHandle, rel: &str) -> Result<PathBuf, String> {
     Ok(data_dir(app)?.join(rel))
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub fn open_media(app: AppHandle, rel: String) -> Result<(), String> {
     let abs = resolve_media(&app, &rel)?;
@@ -357,6 +362,7 @@ pub fn write_media(app: AppHandle, request: Request<'_>) -> Result<(), String> {
     write_atomic(&abs, bytes)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub fn open_data_dir(app: AppHandle) -> Result<(), String> {
     let dir = data_dir(&app)?;

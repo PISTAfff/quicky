@@ -73,6 +73,21 @@ Everything works the same, with a few differences:
 - **macOS:** the quick-add shortcut is **⌥ Space**, and **Ctrl+Space** too unless macOS uses it to switch keyboard input sources (then macOS keeps it). The first voice note asks for the microphone. Quicky lives in the menu bar and the Dock; clicking the Dock icon opens it. Minis work with any app.
 - **Linux:** Quicky runs on X11 (through XWayland in a Wayland session), because Wayland doesn't let an app place its own windows. Minis work with apps that run on X11 too; apps running natively on Wayland get the normal bubble. The tray icon opens a menu (*Show Quicky*, *Show bubble*, *Quit*) rather than toggling Quicky with a click.
 
+## On Android
+
+Quicky for Android has the same task list (To do / Doing / Done, due dates, steps, repeats, reminders, attachments and voice notes) and the same look. Sign in with the same account and sync keeps the phone and every PC the same; the phone keeps its own copy too, so it works offline.
+
+- **Reminders** are notifications, even with Quicky closed, with *Done* and *Snooze 10 min* buttons. Quiet hours hold them until they end. Android 13 and up asks once whether Quicky may notify; Settings → Reminders shows whether exact times are allowed and has a test.
+- **Widgets** (long-press the home screen → Widgets → Quicky):
+  - *Quicky tasks*: the open tasks; tap the ring to tick one off, the title to open it, + to add one.
+  - *Quicky add*: one tap opens a small box to add a task.
+  - *Quicky next up*: the pinned task (long-press a task → *Pin to next up*), or else the most urgent one, with a Done button.
+  - *Quicky today*: today's calendar events and the tasks due today.
+
+  Widgets show the tasks as the app last saw them. A tick or a task added from a widget shows on the widget at once and reaches your other devices the next time you open Quicky.
+- **Extensions** open full screen. On the Projects board, one finger moves the board, two fingers pan and pinch to zoom.
+- No bubble, minis, tray or quick-add shortcut on a phone; the widgets take their place. Long-press a task for its menu, and Android's back button closes panels.
+
 ## Your data
 
 ```
@@ -104,6 +119,24 @@ pnpm tauri build
 ```
 
 The installer lands in `src-tauri/target/release/bundle/` (`nsis/` on Windows, `dmg/` on macOS, `appimage/` and `deb/` on Linux). Builds also sign the update files, so set `TAURI_SIGNING_PRIVATE_KEY` to the private key (see Releasing) first. Every push to a branch builds all three on GitHub Actions (the *Build* workflow keeps the installers for a week).
+
+**Android:** needs Android Studio's SDK (with an NDK) and its bundled JDK 21. Set `ANDROID_HOME` (e.g. `%LOCALAPPDATA%\Android\Sdk`), `NDK_HOME` (a folder in `$ANDROID_HOME/ndk`) and `JAVA_HOME` (Android Studio's `jbr`), then once:
+
+```bash
+rustup target add aarch64-linux-android x86_64-linux-android
+```
+
+A debug APK for an emulator (`x86_64`) or a phone (`aarch64`) lands in `src-tauri/gen/android/app/build/outputs/apk/`:
+
+```bash
+pnpm tauri android build --debug --apk --target x86_64
+```
+
+```bash
+pnpm tauri android dev
+```
+
+The Android app is `mobile.html` (`src/mobile/`), set as its window in `src-tauri/tauri.android.conf.json`; notifications and widgets are Kotlin in `src-tauri/android-plugin/`. Release builds for the Play Store need an upload key of your own, kept out of the repo.
 
 **Releasing:** bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a tag. GitHub Actions builds Windows, macOS and Linux into one release, signs the update files with the `TAURI_SIGNING_PRIVATE_KEY` repository secret (its password secret is empty), and publishes the release with `latest.json`, which installed copies read to update themselves. Keep the private key safe: without it, existing installs can't trust new versions.
 

@@ -1,0 +1,3 @@
+[default]
+description = "Everything Quicky's page needs: widgets, reminders, queued widget and notification actions"
+permissions = ["allow-widgets", "allow-schedule", "allow-actions", "allow-permission"]

@@ -15,7 +15,7 @@ interface Request { from: string; reqId: number; op: string; args: Record<string
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
 
 /** A task as the calendar sees it. */
-const view = () =>
+export const taskView = () =>
   data.tasks.map((t) => ({
     id: t.id,
     title: t.title,
@@ -36,7 +36,7 @@ function onceAt(day: string, time: string | null): Reminder | undefined {
 }
 
 function run(op: string, a: Record<string, unknown>): unknown {
-  if (op === "list") return view();
+  if (op === "list") return taskView();
   const due = a.due === null ? null : typeof a.due === "string" && DAY.test(a.due) ? a.due : undefined;
   const time = a.time === null ? null : typeof a.time === "string" && TIME.test(a.time) ? a.time : undefined;
   if (op === "add") {
@@ -70,23 +70,26 @@ function run(op: string, a: Record<string, unknown>): unknown {
   throw new Error("Unknown request");
 }
 
+/** Answers one request (the phone's extension view calls this directly). */
+export function runTask(op: string, args: Record<string, unknown>): { ok: boolean; data?: unknown; error?: string } {
+  try {
+    return { ok: true, data: run(op, args) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 export async function startBridge() {
   await listen<Request>("ext-tasks", ({ payload: r }) => {
     if (!r || typeof r.from !== "string" || !r.from.startsWith("ext-")) return;
-    let reply: object;
-    try {
-      reply = { reqId: r.reqId, ok: true, data: run(String(r.op), r.args ?? {}) };
-    } catch (e) {
-      reply = { reqId: r.reqId, ok: false, error: (e as Error).message };
-    }
-    void emitTo(r.from, "ext-tasks-reply", reply);
+    void emitTo(r.from, "ext-tasks-reply", { reqId: r.reqId, ...runTask(String(r.op), r.args ?? {}) });
   });
   // Changes from anywhere (this window, a reminder, another PC) show in an open calendar.
   let timer: number | undefined;
   createRoot(() =>
     createEffect(
       on(
-        () => JSON.stringify(view()),
+        () => JSON.stringify(taskView()),
         () => {
           clearTimeout(timer);
           timer = window.setTimeout(() => void emitTo("ext-calendar", "tasks-changed").catch(() => {}), 300);

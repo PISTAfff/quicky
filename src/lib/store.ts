@@ -244,14 +244,14 @@ export function addTask(title: string, attachments: Attachment[], repeatDays?: n
   sfx.add();
 }
 
-/** A task made somewhere else (something dropped on the bubble or a mini, the calendar), into a
- *  given list. Returns its id. */
-export function addTaskTo(key: string | null, title: string, attachments: Attachment[], note?: string): string | undefined {
+/** A task made somewhere else (something dropped on the bubble or a mini, the calendar, a phone
+ *  widget, which brings its own id and time), into a given list. Returns its id. */
+export function addTaskTo(key: string | null, title: string, attachments: Attachment[], note?: string, made?: { id: string; at: number }): string | undefined {
   title = title.trim() || attachments[0]?.name || "";
   if (!title) return;
   const t = today();
   const task: Task = {
-    id: uid(), title, status: "todo", day: t, since: t, attachments, created: Date.now(),
+    id: made?.id ?? uid(), title, status: "todo", day: t, since: t, attachments, created: made?.at ?? Date.now(),
     ...(note ? { note } : {}),
     ...(key ? { space: key } : {}),
   };

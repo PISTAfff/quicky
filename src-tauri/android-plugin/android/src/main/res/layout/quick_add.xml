@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="96dp">
+    <LinearLayout
+        android:id="@+id/qa_root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@drawable/w_card_light"
+        android:orientation="vertical"
+        android:padding="18dp">
+        <TextView android:id="@+id/qa_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="New task" android:textSize="18sp" android:fontFamily="sans-serif-medium" />
+        <EditText
+            android:id="@+id/qa_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/w_field"
+            android:hint="Add a mini task"
+            android:imeOptions="actionDone"
+            android:inputType="textCapSentences"
+            android:maxLength="500"
+            android:padding="14dp"
+            android:textSize="16sp" />
+        <TextView
+            android:id="@+id/qa_add"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_gravity="end"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/w_pill"
+            android:gravity="center"
+            android:paddingHorizontal="22dp"
+            android:text="Add"
+            android:textSize="15sp"
+            android:fontFamily="sans-serif-medium" />
+    </LinearLayout>
+</FrameLayout>

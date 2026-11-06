@@ -1,0 +1,7 @@
+{
+  "identifier": "mobile-capability",
+  "description": "The Android app: reminders, widgets and widget actions",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": ["quicky-android:default"]
+}

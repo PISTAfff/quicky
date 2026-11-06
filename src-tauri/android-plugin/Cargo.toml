@@ -1,0 +1,15 @@
+[package]
+name = "tauri-plugin-quicky-android"
+version = "0.1.0"
+authors = ["PISTA"]
+description = "Quicky's Android side: reminder notifications and home-screen widgets"
+license = "MIT"
+edition = "2024"
+publish = false
+links = "tauri-plugin-quicky-android"
+
+[dependencies]
+tauri = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
