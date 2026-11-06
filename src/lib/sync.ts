@@ -8,7 +8,7 @@
 // another PC got there first the server answers 409 with its newer copy, which is merged again.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ACCOUNT_EVENT, API, CloudError, api, readAccount, mediaDown, mediaList, mediaUp } from "./cloud";
+import { ACCOUNT_EVENT, API, CloudError, FEEDBACK_EVENT, api, readAccount, mediaDown, mediaList, mediaUp } from "./cloud";
 import { dayKey, planSync, type Attachment, type Data, type SyncBase } from "./model";
 import { applySynced, isLoaded, onLocalChange, snapshot, syncQueued, mediaExists, readMedia, writeMedia, showToast } from "./store";
 import { THEME_KEY, setTheme, type Theme } from "./theme";
@@ -198,12 +198,13 @@ const TYPES: Record<string, string> = {
 };
 const typeOf = (path: string) => TYPES[path.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
 
-/** Big pictures are scaled down and re-saved (same format) so they cost the server less. */
-export async function shrink(blob: Blob, type: string): Promise<Blob> {
+/** Big pictures are scaled down (to `maxSide` pixels on the long side) and re-saved (same format)
+ *  so they cost the server less. */
+export async function shrink(blob: Blob, type: string, maxSide = MAX_SIDE): Promise<Blob> {
   if (!["image/jpeg", "image/png", "image/webp"].includes(type)) return blob;
   const bmp = await createImageBitmap(blob).catch(() => null);
   if (!bmp) return blob;
-  const scale = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   if (scale === 1 && blob.size < SHRINK_FROM) return blob;
   const w = Math.max(1, Math.round(bmp.width * scale));
   const h = Math.max(1, Math.round(bmp.height * scale));
@@ -298,6 +299,8 @@ function openSocket() {
     if (!userId) return;
     if (m.type === "sync" && m.rev !== read<{ rev: number }>(stateKey(userId))?.rev) void syncNow();
     else if (m.type === "sync-settings") void syncNow();
+    // The maker changed one of this user's bugs or requests: Settings → Bugs & requests reloads.
+    else if (m.type === "feedback") dispatchEvent(new Event(FEEDBACK_EVENT));
   };
   sock.onclose = (e) => {
     if (ws === sock) ws = null;

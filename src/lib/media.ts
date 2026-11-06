@@ -20,12 +20,14 @@ export async function pickFiles(): Promise<Attachment[]> {
   return importPaths(Array.isArray(picked) ? picked : [picked]);
 }
 
-/** The system's file picker through a file input (the phone's). Empty when nothing was picked. */
-function chooseFiles(): Promise<File[]> {
+/** The system's file picker through a file input (the phone's, and pictures for a bug report).
+ *  `accept` narrows it (e.g. "image/*"). Empty when nothing was picked. */
+export function chooseFiles(accept?: string): Promise<File[]> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
+    if (accept) input.accept = accept;
     input.onchange = () => resolve([...(input.files ?? [])]);
     input.oncancel = () => resolve([]);
     input.click();

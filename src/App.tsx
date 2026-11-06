@@ -14,6 +14,7 @@ import { TitleBar } from "./ui/TitleBar";
 import { FolderSetup } from "./ui/FolderSetup";
 import { BoardView, ListView, MiniView } from "./ui/Views";
 import { Sheets } from "./ui/Sheets";
+import { feedbackDrop } from "./ui/sheets/FeedbackSheet";
 import { Tour } from "./ui/Tour";
 import { ContextMenu } from "./ui/ContextMenu";
 import { closeSheet, dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
@@ -158,6 +159,8 @@ export default function App() {
         else if (p.type === "drop") {
           setDropping(false);
           if (!dataDir() || !p.paths.length) return;
+          // Pictures for a bug report or idea.
+          if (sheet()?.kind === "feedback") return feedbackDrop(p.paths);
           try {
             const atts = await importPaths(p.paths);
             const s = sheet();
@@ -237,7 +240,7 @@ export default function App() {
       <Show when={dropping()}>
         <div class="drop-overlay">
           <Blob size={56} />
-          <span>{sheet()?.kind === "task" ? "Drop to attach to this task" : "Drop to add to a new task"}</span>
+          <span>{sheet()?.kind === "task" ? "Drop to attach to this task" : sheet()?.kind === "feedback" ? "Drop pictures to send with it" : "Drop to add to a new task"}</span>
         </div>
       </Show>
     </div>

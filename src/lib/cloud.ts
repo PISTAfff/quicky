@@ -104,9 +104,42 @@ export async function refreshAccount() {
 
 export const resendVerification = () => api("POST", "/api/auth/verify/resend");
 
-/** A bug report or feature request. Signed in, the server adds who sent it. */
-export const sendFeedback = (f: { kind: "bug" | "request"; title: string; body: string; email?: string; appVersion: string; os: string }) =>
-  api("POST", "/api/feedback", f);
+// ---- bugs and requests -----------------------------------------------------------------------
+
+/** What the maker did with a request. Requests sent before the states read as one of them. */
+export type FeedbackState = "open" | "fixed" | "dismissed" | "added";
+/** One of the signed-in user's own requests. `images` is how many pictures it has. */
+export interface MyFeedback {
+  id: string;
+  kind: "bug" | "request";
+  title: string;
+  body: string;
+  status: FeedbackState;
+  reply: string | null;
+  images: number;
+  createdAt: string;
+  updatedAt: string;
+}
+/** At most this many pictures, each at most this big once shrunk (the server checks both). */
+export const FEEDBACK_IMAGES = 3;
+export const FEEDBACK_IMAGE_MAX = 4 * 1024 * 1024;
+/** Fired in this window when the admin changed one of this user's requests (from sync's socket). */
+export const FEEDBACK_EVENT = "quicky-feedback-changed";
+
+/** A bug report or feature request, with up to three pictures (base64). Signed in, the server adds who sent it. */
+export const sendFeedback = (f: { kind: "bug" | "request"; title: string; body: string; email?: string; appVersion: string; os: string; images?: { data: string }[] }) =>
+  api<{ feedback: MyFeedback }>("POST", "/api/feedback", f);
+
+/** The signed-in user's own requests, newest first. */
+export const myFeedback = async () => (await api<{ feedback: MyFeedback[] }>("GET", "/api/feedback/mine")).feedback;
+
+/** Picture `n` of one of the user's requests, as a blob URL (it needs the session, so no plain <img src>). */
+export async function feedbackPicture(id: string, n: number): Promise<string> {
+  const token = readAccount()?.token ?? "";
+  const res = await fetch(`${API}/api/feedback/mine/${id}/images/${n}`, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
+  if (!res?.ok) throw new CloudError(res?.status ?? 0, "Couldn't load the picture");
+  return URL.createObjectURL(await res.blob());
+}
 
 export async function resetPassword(email: string, code: string, password: string) {
   const a = await api<Account>("POST", "/api/auth/reset", { email, code, password });

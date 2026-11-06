@@ -57,7 +57,7 @@ export default function App() {
   // it closes the context menu, then the extension, then the open panel (Settings' own panels go
   // back to Settings), and with nothing open sends Quicky to the background like other apps.
   const stopBack = onBackButtonPress(() => {
-    if (document.querySelector(".ctx-menu")) dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    if (document.querySelector(".ctx-menu, .fb-zoom")) dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     else if (ext()) setExt(null);
     else if (sheet()) closeSheet();
     else void leaveApp().catch(() => {});
