@@ -1,8 +1,6 @@
-**Windows open and close in goo.** Hiding Quicky and closing its windows play a short squishy animation (Windows), and opening them springs in.
+**Delete your account any time.** Settings, Online, Delete account removes your account and everything Quicky's server holds for it (synced tasks, files, projects, calendars and requests). Tasks on your devices stay. You can also do it on the web at quicky.pistasspot.com/delete-account.
 
-**Each extension has its own icon.** Projects, Calendar and other extension windows show their own badge on the taskbar instead of Quicky's.
-
-**Android:** pinching no longer zooms the whole app. Projects on the phone has new touch controls (update it from Extensions).
+**Privacy policy:** linked in Settings, Online, and at quicky.pistasspot.com/privacy.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 

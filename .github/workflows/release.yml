@@ -137,7 +137,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 --ci
+        run: pnpm tauri android build --apk --aab --target aarch64 --target armv7 --target x86_64 --ci
 
       - name: Upload
         env:
@@ -149,6 +149,10 @@ jobs:
           # Never ship an unsigned or wrongly signed APK.
           "$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)/apksigner" verify "$apk"
           gh release upload "$tag" "$apk" --clobber
+          # The same build as an app bundle for Google Play (signed with the same key, the upload key there).
+          aab="Quicky_${tag#v}_android.aab"
+          cp "$(find src-tauri/gen/android/app/build/outputs/bundle -name '*release*.aab' | head -1)" "$aab"
+          gh release upload "$tag" "$aab" --clobber
 
   # Once every build is in: write latest.json from their signatures and publish the release.
   publish:
