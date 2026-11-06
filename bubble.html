@@ -58,6 +58,10 @@
       @keyframes wiggle { 25% { transform: rotate(-7deg); } 60% { transform: rotate(5deg); } 100% { transform: rotate(0); } }
       @keyframes blink { 50% { transform: scaleY(0.1); } }
       @keyframes appear { from { transform: translateY(14px) scale(0.4); opacity: 0; } 70% { transform: translateY(-3px) scale(1.06); } }
+      /* Hidden from its menu or Settings: a squash, a little wave up, then it shrinks into the ground. */
+      button.bye { animation: bye 0.42s cubic-bezier(0.5, 0, 0.75, 0) forwards; pointer-events: none; }
+      @keyframes bye { 25% { transform: scale(1.14, 0.84); } 55% { transform: translateY(-5px) scale(0.9, 1.12); opacity: 1; } to { transform: translateY(12px) scale(0.15); opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) { button.bye { animation: none; opacity: 0; } }
       @keyframes pop { 40% { transform: scale(1.35); } }
       /* Something dragged over it: it opens wide; dropped, it gulps it down. */
       .gulp-mouth { display: none; }

@@ -639,12 +639,31 @@ pub fn get_show_bubble(app: AppHandle) -> bool {
     read_config(&app).show_bubble
 }
 
+/// Counts show/hide switches, so a goodbye still playing doesn't hide a bubble switched back on.
+static SHOW_TURN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 #[tauri::command]
 pub fn set_show_bubble(app: AppHandle, show: bool) -> Result<(), String> {
     update_config(&app, |c| c.show_bubble = show)?;
-    SHOW.store(show, Ordering::Relaxed);
+    let turn = SHOW_TURN.fetch_add(1, Ordering::SeqCst) + 1;
     let _ = app.emit("bubble-pref", show);
-    sync(&app);
+    let on_screen = [window(&app), mini_window(&app)].into_iter().flatten().any(|w| w.is_visible().unwrap_or(false));
+    if show || !on_screen {
+        SHOW.store(show, Ordering::Relaxed);
+        sync(&app);
+        return Ok(());
+    }
+    // Hiding one that's on screen: it waves goodbye first (bubble.html `bye`), then goes.
+    for label in [BUBBLE_LABEL, MINI_LABEL] {
+        let _ = app.emit_to(label, "bubble-bye", ());
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(440));
+        if SHOW_TURN.load(Ordering::SeqCst) == turn {
+            SHOW.store(false, Ordering::Relaxed);
+            sync(&app);
+        }
+    });
     Ok(())
 }
 

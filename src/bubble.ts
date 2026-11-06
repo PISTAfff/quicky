@@ -567,7 +567,13 @@ win.listen("bubble-cheer", async () => {
   cheerPending = true;
   if (await invoke<boolean>("bubble_on_screen").catch(() => false)) cheer();
 });
+// Being hidden (its menu, Settings, the tray): it waves goodbye before Rust takes the window away.
+win.listen("bubble-bye", () => {
+  button.classList.remove("appear", "gulp", "cheer");
+  button.classList.add("bye");
+});
 win.listen("bubble-shown", () => {
+  button.classList.remove("bye");
   // Hop in whenever it comes back on screen (a mini: whenever its app comes to the front), but
   // not when the overlay just handed it back in place.
   if (!veiled && performance.now() > settledUntil) replay(button, "appear");
