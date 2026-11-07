@@ -1,6 +1,11 @@
-**Quicky opens and closes in snotty goo.** Closing, the window wobbles like jelly, melts with drips and gets slurped through a lumpy strand into the bubble (or plops into a puddle when the bubble is off). Opening, the bubble shoots out a strand and the window bulges out of the blob with a jelly bounce. With little goo sounds.
+**Screen tools (new extension).** Install "Screen tools" from Settings, Extensions, then press Ctrl+Shift+D (or use the bubble's menu):
+- **Screenshot** (the default): drag an area, click a window or take the full screen; draw on it, then it's copied and saved as a PNG.
+- **Draw** on your screen: pen, highlighter, eraser, shapes, arrows and text (with outline and spacing), spotlight and laser. Click or Tab to change anything you placed; Ctrl + wheel sizes the tool or the picked item, with a live preview at the pointer.
+- **Record** part of the screen as an MP4 (Windows), with a countdown, pause and an optional microphone.
 
-**Fix:** the sticky trail now stays above other always-on-top windows, like a meeting's picture-in-picture.
+**Change any shortcut** in Settings, Shortcuts, and choose where screenshots and recordings are saved.
+
+**The bubble melts away and wells up in goo** when you hide or show it.
 
 **Windows:** download **Quicky_*_x64-setup.exe** and run it. No admin rights needed. Windows may show "Windows protected your PC" because the installer isn't code-signed yet: click **More info**, then **Run anyway**.
 
