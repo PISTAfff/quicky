@@ -459,17 +459,6 @@ function liveFrame() {
     }
     liveCtx.restore();
   }
-  if (tool === "eraser" && pointer && !through) {
-    liveCtx.save();
-    liveCtx.beginPath();
-    liveCtx.arc(pointer[0], pointer[1], size("eraser"), 0, Math.PI * 2);
-    liveCtx.fillStyle = "rgba(255,255,255,0.25)";
-    liveCtx.fill();
-    liveCtx.lineWidth = 2;
-    liveCtx.strokeStyle = "#2b2540";
-    liveCtx.stroke();
-    liveCtx.restore();
-  }
   if (tool === "laser") {
     // A fading trail behind a glowing dot.
     const now = performance.now();
@@ -740,7 +729,10 @@ function zoomBy(k: number, p: Pt | null) {
   moveSpot();
   schedule();
   refreshButtons();
-  showSize(`${Math.round(toolSize[tool])} px`, p);
+  // The preview grows and shrinks with it (where the pointer is, or by the size buttons).
+  if (p && !brushOverUi) moveBrush();
+  else flashBrush(p ?? sizeButtonsSpot());
+  showSize(`${Math.round(toolSize[tool])} px`, p ?? sizeButtonsSpot());
 }
 
 addEventListener(
@@ -754,6 +746,162 @@ addEventListener(
   },
   { passive: false },
 );
+
+// ---- the brush preview: the tool as it will draw, at the pointer --------------------------------
+// One element, rebuilt only when the tool, its size, colour or text style change, and moved with
+// a transform as the pointer moves (the canvases aren't touched).
+
+const brush = $("brush");
+let brushKey = "";
+/** Where the pointer is for the preview, and whether it's over the bars. */
+let brushAt: Pt | null = null;
+let brushOverUi = false;
+/** A quick pulse somewhere (a size, tool or colour just picked): shown there until then. */
+let flashUntil = 0;
+let flashAt: Pt | null = null;
+let flashTimer = 0;
+/** Where the pointer is on the preview (its anchor), from its top-left. */
+let brushAnchor: Pt = [0, 0];
+
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag: string, attrs: Record<string, string | number>) {
+  const el = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+}
+
+/** Builds the preview for the tool now (only when something it shows changed). */
+function buildBrush() {
+  const s = size();
+  const c = color();
+  const key = [tool, s, c, textStyle.font, textStyle.outline, textStyle.outlineColor, textStyle.spacing].join("|");
+  if (key === brushKey) return;
+  brushKey = key;
+  brush.replaceChildren();
+  brush.className = "brush";
+  if (tool === "pen" || tool === "hl") {
+    // The exact stroke, in its colour, with a thin ink and white ring to show on anything.
+    const d = Math.max(2, s);
+    const dot = document.createElement("div");
+    dot.className = "brush-dot";
+    Object.assign(dot.style, { width: `${d}px`, height: `${d}px`, background: c, opacity: tool === "hl" ? "0.45" : "1" });
+    brush.append(dot);
+    brushAnchor = [d / 2, d / 2];
+  } else if (tool === "eraser") {
+    const d = s * 2;
+    const ring = document.createElement("div");
+    ring.className = "brush-ring";
+    Object.assign(ring.style, { width: `${d}px`, height: `${d}px` });
+    brush.append(ring);
+    brushAnchor = [d / 2, d / 2];
+  } else if (tool === "text") {
+    // A ghost "Aa" in the label's font, size, outline and spacing, from its top-left.
+    const t = document.createElement("span");
+    t.className = "brush-text";
+    t.textContent = "Aa";
+    const oc = outlineColor({ color: c, outlineColor: textStyle.outlineColor });
+    const ow = outlineWidth({ size: s, outline: textStyle.outline }) / 2;
+    Object.assign(t.style, {
+      fontSize: `${s}px`,
+      color: c,
+      fontFamily: `${textStyle.font}, system-ui, sans-serif`,
+      fontWeight: textStyle.font === "Nunito" ? "800" : "600",
+      letterSpacing: `${textStyle.spacing}px`,
+      textShadow: ow ? `${ow}px 0 ${oc}, -${ow}px 0 ${oc}, 0 ${ow}px ${oc}, 0 -${ow}px ${oc}` : "none",
+    });
+    brush.append(t);
+    brushAnchor = [0, 0];
+  } else if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "arrow") {
+    // A small crosshair, and a tiny ghost of the shape beside it at its stroke and colour.
+    const w = Math.min(s, 10);
+    const g = svgEl("svg", { width: 64, height: 50, viewBox: "0 0 64 50" });
+    for (const [x1, y1, x2, y2] of [[0, 8, 16, 8], [8, 0, 8, 16]]) {
+      g.append(svgEl("line", { x1, y1, x2, y2, stroke: "#ffffff", "stroke-width": 3.5, "stroke-linecap": "round" }));
+      g.append(svgEl("line", { x1, y1, x2, y2, stroke: "#2b2540", "stroke-width": 1.5, "stroke-linecap": "round" }));
+    }
+    const ghost = { stroke: c, "stroke-width": w, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round", opacity: 0.75 };
+    if (tool === "rect") g.append(svgEl("rect", { x: 22, y: 20, width: 34, height: 22, rx: 3, ...ghost }));
+    else if (tool === "ellipse") g.append(svgEl("ellipse", { cx: 39, cy: 31, rx: 17, ry: 11, ...ghost }));
+    else {
+      g.append(svgEl("line", { x1: 22, y1: 42, x2: 56, y2: 20, ...ghost }));
+      if (tool === "arrow") g.append(svgEl("path", { d: "M45 19 L56 20 L51 30", ...ghost }));
+    }
+    brush.append(g);
+    brushAnchor = [8, 8];
+  } else {
+    // The spotlight and the laser show themselves.
+    brushAnchor = [0, 0];
+  }
+}
+
+/** Shows the preview where it belongs now, or hides it (over the bars, while dragging a picked
+ *  item or an area, while typing, in click-through). */
+function moveBrush() {
+  const flashing = flashAt && performance.now() < flashUntil;
+  const at = flashing ? flashAt : brushAt;
+  const overPicked = (() => {
+    const pb = pickedBox();
+    if (!pb || !brushAt || editing !== null) return false;
+    const b = pad(pb);
+    return brushAt[0] >= b.x - 9 && brushAt[0] <= b.x + b.w + 9 && brushAt[1] >= b.y - 9 && brushAt[1] <= b.y + b.h + 9;
+  })();
+  const drawable = canDraw() && !through && tool !== "spot" && tool !== "laser";
+  const show = !!at && drawable && (flashing || (!brushOverUi && !itemDrag && !overPicked && !textBox.classList.contains("on")));
+  // The real pointer is hidden while the preview stands in for it.
+  document.body.classList.toggle("brushing", show && !flashing);
+  // Over the picked item: a move or resize pointer instead.
+  if (!selecting()) document.body.style.cursor = canDraw() && overPicked && !itemDrag ? cornerCursor() : "";
+  if (!show || !at) return void (brush.hidden = true);
+  buildBrush();
+  brush.hidden = false;
+  brush.style.transform = `translate(${at[0] - brushAnchor[0]}px, ${at[1] - brushAnchor[1]}px)`;
+}
+
+/** The pointer over the picked item's frame: resize at a corner, move elsewhere. */
+function cornerCursor() {
+  const pb = pickedBox();
+  if (!pb || !brushAt) return "";
+  const cs = corners(pad(pb));
+  const i = cs.findIndex((c) => Math.abs(c[0] - brushAt![0]) <= 9 && Math.abs(c[1] - brushAt![1]) <= 9);
+  return i < 0 ? "move" : i % 2 === 0 ? "nwse-resize" : "nesw-resize";
+}
+
+/** A quick pulse of the preview at a spot (where a tool, colour or size was just picked). */
+function flashBrush(at: Pt | null) {
+  if (!at || !canDraw() || tool === "spot" || tool === "laser") return;
+  flashAt = at;
+  flashUntil = performance.now() + 700;
+  brushKey = "";
+  buildBrush();
+  brush.classList.remove("pulse");
+  void brush.offsetWidth;
+  brush.classList.add("pulse");
+  moveBrush();
+  clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(() => {
+    flashAt = null;
+    brush.classList.remove("pulse");
+    moveBrush();
+  }, 720);
+}
+
+/** The middle of the toolbar's size buttons, just under the bar (where a clicked size shows). */
+function sizeButtonsSpot(): Pt | null {
+  const b = sizeButtons[1]?.getBoundingClientRect();
+  return b ? [b.left + b.width / 2, b.bottom + 34] : null;
+}
+
+addEventListener("pointermove", (e) => {
+  brushAt = at(e);
+  brushOverUi = onUi(e);
+  moveBrush();
+});
+addEventListener("pointerup", () => moveBrush());
+addEventListener("pointerout", (e) => {
+  if (e.relatedTarget) return;
+  brushAt = null;
+  moveBrush();
+});
 
 // ---- text -------------------------------------------------------------------------------------
 
@@ -856,6 +1004,7 @@ function setTextStyle(patch: Partial<TextStyle>) {
   } else if (it?.kind === "text") changePicked((x) => remeasure({ ...x, ...patch }));
   sfx.tap();
   layoutTextBar();
+  moveBrush();
   // Keys go back to the words being typed.
   if (textBox.classList.contains("on")) setTimeout(() => textBox.focus(), 0);
 }
@@ -1064,6 +1213,7 @@ function setTool(t: Tool) {
   sfx.tap();
   refreshButtons();
   layoutTextBar();
+  flashBrush(pointer);
 }
 function setColor(i: number) {
   colorIndex = i;
@@ -1071,6 +1221,7 @@ function setColor(i: number) {
   if (editing === null) changePicked((it) => ({ ...it, color: color() }));
   else items[editing] = { ...items[editing], color: color() };
   refreshButtons();
+  flashBrush(pointer);
 }
 function setSize(i: number) {
   const it = pickedItem();
@@ -1087,6 +1238,8 @@ function setSize(i: number) {
       textBox.style.fontSize = `${size("text")}px`;
       growText();
     }
+    // The new size, shown in the middle of the size buttons for a moment.
+    flashBrush(sizeButtonsSpot());
   }
   moveSpot();
   schedule();
@@ -1169,6 +1322,7 @@ function layout() {
   toolClasses();
   refreshButtons();
   layoutTextBar();
+  moveBrush();
   renderVeil();
   schedule();
   const ui = phase !== "done" && phase !== "countdown" && phase !== "recording";
