@@ -36,6 +36,23 @@ fn file(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     Ok(dir(app)?.join(format!("{id}.html")))
 }
 
+/// The extension is installed on this PC (its file is there). Draw on screen's shortcut and
+/// overlay only work while `draw` is.
+#[cfg(desktop)]
+pub fn installed(app: &AppHandle, id: &str) -> bool {
+    file(app, id).is_ok_and(|p| p.is_file())
+}
+
+/// Installing or removing Draw on screen turns its global shortcut on or off.
+#[cfg(desktop)]
+fn changed(app: &AppHandle, id: &str) {
+    if id == crate::draw::EXTENSION {
+        crate::shortcuts::apply_later(app);
+    }
+}
+#[cfg(mobile)]
+fn changed(_app: &AppHandle, _id: &str) {}
+
 /// Saves a downloaded bundle (raw body; the id in the `x-id` header), replacing any older version.
 #[tauri::command]
 pub fn extension_save(app: AppHandle, request: Request<'_>) -> Result<(), String> {
@@ -44,7 +61,9 @@ pub fn extension_save(app: AppHandle, request: Request<'_>) -> Result<(), String
     let path = file(&app, id)?;
     let tmp = path.with_extension("html.tmp");
     fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    changed(&app, id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -54,10 +73,17 @@ pub fn extension_remove(app: AppHandle, id: String) -> Result<(), String> {
         gone(&w);
         let _ = w.destroy();
     }
+    #[cfg(desktop)]
+    if id == crate::draw::EXTENSION {
+        crate::draw::close(&app);
+    }
     let path = file(&app, &id)?;
     match fs::remove_file(path) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
-        _ => Ok(()),
+        _ => {
+            changed(&app, &id);
+            Ok(())
+        }
     }
 }
 

@@ -20,7 +20,8 @@ import { ContextMenu } from "./ui/ContextMenu";
 import { closeSheet, dropping, focusQuickAdd, setDropping, setSheet, setStaged, sheet, staged } from "./ui/state";
 import { Blob } from "./ui/icons";
 import { invoke } from "@tauri-apps/api/core";
-import { modDown } from "./lib/platform";
+import { locals } from "./lib/shortcuts";
+import { matches } from "./lib/keys";
 import { byUrgency, isLater, shortDueLabel, type Attachment, type Task } from "./lib/model";
 
 type Mode = "mini" | "list" | "board";
@@ -98,10 +99,10 @@ export default function App() {
     const minute = setInterval(tick, 60_000);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && sheet()) closeSheet();
-      else if (modDown(e) && e.key.toLowerCase() === "n") {
+      else if (matches(e, locals().add)) {
         e.preventDefault();
         focusQuickAdd();
-      } else if (modDown(e) && e.key.toLowerCase() === "f" && dataDir()) {
+      } else if (matches(e, locals().search) && dataDir()) {
         e.preventDefault();
         setSheet({ kind: "search" });
       }

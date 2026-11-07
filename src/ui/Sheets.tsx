@@ -10,6 +10,7 @@ import { SettingsSheet } from "./sheets/SettingsSheet";
 import { AccountSheet } from "./sheets/AccountSheet";
 import { ExtensionsSheet } from "./sheets/ExtensionsSheet";
 import { FeedbackSheet } from "./sheets/FeedbackSheet";
+import { ShortcutsSheet } from "./sheets/ShortcutsSheet";
 
 export function Sheets() {
   return (
@@ -24,6 +25,7 @@ export function Sheets() {
         : s.kind === "account" ? <AccountSheet />
         : s.kind === "extensions" ? <ExtensionsSheet />
         : s.kind === "feedback" ? <FeedbackSheet />
+        : s.kind === "shortcuts" ? <ShortcutsSheet />
         : <SettingsSheet />
       }
     </Show>

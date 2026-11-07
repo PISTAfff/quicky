@@ -8,7 +8,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [solid()],
   build: {
-    rollupOptions: { input: { main: "index.html", bubble: "bubble.html", reminder: "reminder.html", fx: "fx.html", balloon: "balloon.html", menu: "menu.html", extension: "extension.html", trail: "trail.html", squish: "squish.html", mobile: "mobile.html" } },
+    rollupOptions: { input: { main: "index.html", bubble: "bubble.html", reminder: "reminder.html", fx: "fx.html", balloon: "balloon.html", menu: "menu.html", extension: "extension.html", trail: "trail.html", squish: "squish.html", draw: "draw.html", mobile: "mobile.html" } },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

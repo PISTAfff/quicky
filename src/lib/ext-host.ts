@@ -8,6 +8,8 @@ import nunitoUrl from "@fontsource-variable/nunito/files/nunito-latin-wght-norma
 
 /** Extensions that may read and change Quicky's tasks (the Calendar). */
 export const TASKS_ALLOWED = ["calendar"];
+/** The extension that may open the screen-drawing overlay (`{qx:1, type:"draw"}`). */
+export const DRAW_ALLOWED = "draw";
 
 export type TaskAnswer = { ok: boolean; data?: unknown; error?: string };
 
@@ -20,6 +22,10 @@ export interface HostOptions {
   pickColor: (post: (msg: object) => void) => Promise<string | null>;
   /** A calendar event was changed through the frame. */
   onEventsChanged: () => void;
+  /** Opens Draw on screen, for DRAW_ALLOWED only (absent: not on this system, like the phone). */
+  draw?: () => Promise<void>;
+  /** Shortcut labels the frame shows (Draw on screen's), sent with `hello` and as `keys`. */
+  keys?: () => Promise<Record<string, string>>;
 }
 
 /** Only the project routes (and who is signed in) are open to extensions. */
@@ -76,7 +82,7 @@ export function hostExtension(frame: HTMLIFrameElement, opt: HostOptions) {
     if (e.source !== frame.contentWindow || !e.data || e.data.qx !== 1) return;
     const m = e.data as { type: string; id?: number; method?: string; path?: string; body?: unknown; projectId?: string };
     if (m.type === "ready") {
-      post({ type: "hello", user: readAccount()?.user ?? null, theme: themeForFrame() });
+      post({ type: "hello", user: readAccount()?.user ?? null, theme: themeForFrame(), keys: (await opt.keys?.().catch(() => null)) ?? {} });
       // Quicky's own fonts: the frame can't fetch the app's files, so it gets their bytes.
       void Promise.all(
         [
@@ -135,6 +141,14 @@ export function hostExtension(frame: HTMLIFrameElement, opt: HostOptions) {
         }
       } catch {
         fail(0, "Can't reach Quicky's server. Check your internet connection");
+      }
+    } else if (m.type === "draw") {
+      if (id !== DRAW_ALLOWED || !opt.draw) return post({ type: "reply", id: m.id, ok: false, status: 403, error: "Drawing on screen isn't available here" });
+      try {
+        await opt.draw();
+        post({ type: "reply", id: m.id, ok: true, status: 200 });
+      } catch (err) {
+        post({ type: "reply", id: m.id, ok: false, status: 400, error: String(err) });
       }
     } else if (m.type === "pick-color") {
       const hex = await opt.pickColor(post).catch(() => null);

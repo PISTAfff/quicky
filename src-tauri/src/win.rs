@@ -714,3 +714,109 @@ pub fn taskbar() -> Option<(Rect, u32)> {
     }
     Some((Rect { left: d.rc.left, top: d.rc.top, right: d.rc.right, bottom: d.rc.bottom }, d.uEdge))
 }
+
+/// Pictures of the screen (Draw on screen's screenshot) work here.
+pub const CAN_CAPTURE: bool = true;
+
+/// A picture of the screen (RGBA): the area at `x`, `y` (physical px, any monitors).
+pub fn capture(x: i32, y: i32, width: u32, height: u32) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        CAPTUREBLT, DIB_RGB_COLORS, SRCCOPY,
+    };
+    let (w, h) = (width as i32, height as i32);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    unsafe {
+        let mut bi: BITMAPINFO = std::mem::zeroed();
+        bi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bi.bmiHeader.biWidth = w;
+        bi.bmiHeader.biHeight = -h; // top-down rows
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        let screen = GetDC(std::ptr::null_mut());
+        if screen.is_null() {
+            return None;
+        }
+        let dc = CreateCompatibleDC(screen);
+        let mut bits = std::ptr::null_mut();
+        let bmp = if dc.is_null() { std::ptr::null_mut() } else { CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0) };
+        let mut out = None;
+        if !bmp.is_null() && !bits.is_null() {
+            let old = SelectObject(dc, bmp);
+            if BitBlt(dc, 0, 0, w, h, screen, x, y, SRCCOPY | CAPTUREBLT) != 0 {
+                let src = std::slice::from_raw_parts(bits as *const u8, (w * h * 4) as usize);
+                out = Some(src.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], 255]).collect());
+            }
+            SelectObject(dc, old);
+            DeleteObject(bmp);
+        }
+        if !dc.is_null() {
+            DeleteDC(dc);
+        }
+        ReleaseDC(std::ptr::null_mut(), screen);
+        out
+    }
+}
+
+/// Puts a picture (RGBA) on the clipboard, for pasting into any app.
+pub fn copy_image(rgba: &[u8], width: u32, height: u32) -> bool {
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::Graphics::Gdi::{BITMAPINFOHEADER, BI_RGB};
+    use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    /// A device-independent bitmap: what every app pastes.
+    const CF_DIB: u32 = 8;
+    let (w, h) = (width as usize, height as usize);
+    if w == 0 || h == 0 || rgba.len() < w * h * 4 {
+        return false;
+    }
+    let head = std::mem::size_of::<BITMAPINFOHEADER>();
+    unsafe {
+        // Another app may have the clipboard open for a moment.
+        let mut open = false;
+        for _ in 0..10 {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                open = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        if !open {
+            return false;
+        }
+        EmptyClipboard();
+        let mem = GlobalAlloc(GMEM_MOVEABLE, head + w * h * 4);
+        let mut done = false;
+        if !mem.is_null() {
+            let p = GlobalLock(mem) as *mut u8;
+            if !p.is_null() {
+                let mut bi: BITMAPINFOHEADER = std::mem::zeroed();
+                bi.biSize = head as u32;
+                bi.biWidth = w as i32;
+                bi.biHeight = h as i32; // bottom-up rows, what pasting apps expect
+                bi.biPlanes = 1;
+                bi.biBitCount = 32;
+                bi.biCompression = BI_RGB;
+                bi.biSizeImage = (w * h * 4) as u32;
+                std::ptr::copy_nonoverlapping(&bi as *const BITMAPINFOHEADER as *const u8, p, head);
+                let dst = std::slice::from_raw_parts_mut(p.add(head), w * h * 4);
+                for (row, out) in dst.chunks_exact_mut(w * 4).enumerate() {
+                    let src = &rgba[(h - 1 - row) * w * 4..][..w * 4];
+                    for (d, s) in out.as_chunks_mut::<4>().0.iter_mut().zip(src.as_chunks::<4>().0) {
+                        d.copy_from_slice(&[s[2], s[1], s[0], 255]);
+                    }
+                }
+                GlobalUnlock(mem);
+                done = !SetClipboardData(CF_DIB, mem).is_null();
+            }
+            if !done {
+                GlobalFree(mem);
+            }
+        }
+        CloseClipboard();
+        done
+    }
+}

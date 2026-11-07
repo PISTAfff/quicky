@@ -68,9 +68,9 @@ fn build(app: &AppHandle) -> Option<tauri::WebviewWindow> {
 
 /// All the screens together: the top-left and size (physical px) of the area they cover, and the
 /// scale of the one under `at` (the strand can be dragged onto any of them).
-type Desk = ((i32, i32), (u32, u32), f64);
+pub(crate) type Desk = ((i32, i32), (u32, u32), f64);
 
-fn desk(app: &AppHandle, (x, y): (i32, i32)) -> Option<Desk> {
+pub(crate) fn desk(app: &AppHandle, (x, y): (i32, i32)) -> Option<Desk> {
     let screens = app.available_monitors().ok()?;
     let (mut l, mut t, mut r, mut b) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
     let mut scale = None;

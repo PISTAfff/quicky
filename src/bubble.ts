@@ -369,6 +369,8 @@ async function openContextMenu() {
     await invoke("set_bubble_locked", { locked, space: forSpace });
   };
   add("Open Quicky", () => invoke("open_from_bubble"));
+  // Draw on screen, once its extension is installed (its shortcut works only then too).
+  if (readInstalled().some((i) => i.id === "draw")) add("Draw on screen", () => invoke("draw_open").catch(() => {}));
   // Installed extensions (Settings → Online), each opening its own window.
   const sub: MenuEntry[] = [];
   const subAdd = (text: string, run?: () => unknown) => {

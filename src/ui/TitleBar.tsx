@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Blob, IClose, IGear, IMax, IPin, ISearch, IUnmax } from "./icons";
 import { pinned, setPinned, setSheet } from "./state";
 import { data, flush, space } from "../lib/store";
-import { MOD_KEY, QUICK_KEY } from "../lib/platform";
+import { globalLabel, localLabel } from "../lib/shortcuts";
 
 const win = getCurrentWindow();
 
@@ -38,7 +38,7 @@ export function TitleBar() {
         </Show>
       </div>
       <div class="winbtns">
-        <button class="wb" aria-label="Search all tasks" title={`Search all tasks (${MOD_KEY}F)`} onClick={() => setSheet({ kind: "search" })}>
+        <button class="wb" aria-label="Search all tasks" title={localLabel("search") ? `Search all tasks (${localLabel("search")})` : "Search all tasks"} onClick={() => setSheet({ kind: "search" })}>
           <ISearch size={14} />
         </button>
         <button class="wb" aria-label="Settings" title="Settings: colours, startup, data folder" onClick={() => setSheet({ kind: "settings" })}>
@@ -67,7 +67,7 @@ export function TitleBar() {
         <button
           class="wb close"
           aria-label="Close to tray"
-          title={`Close (keeps running in the tray, ${QUICK_KEY} to open)`}
+          title={globalLabel("quick") ? `Close (keeps running in the tray, ${globalLabel("quick")} to open)` : "Close (keeps running in the tray)"}
           onClick={async () => {
             await flush();
             await invoke("hide_main");

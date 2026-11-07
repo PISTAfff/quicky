@@ -13,6 +13,8 @@ mod balloon;
 #[cfg(desktop)]
 mod bubble;
 #[cfg(desktop)]
+mod draw;
+#[cfg(desktop)]
 mod fx;
 #[cfg(desktop)]
 mod trail;
@@ -26,6 +28,8 @@ mod menu;
 mod picker;
 #[cfg(desktop)]
 mod reminder;
+#[cfg(desktop)]
+mod shortcuts;
 #[cfg(desktop)]
 mod tray;
 // Native window calls behind one set of functions: Win32 on Windows, AppKit and CoreGraphics on
@@ -49,7 +53,7 @@ use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 #[cfg(desktop)]
 use tauri_plugin_autostart::ManagerExt as _;
 #[cfg(desktop)]
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg(desktop)]
 const STARTUP_ARG: &str = "--startup";
@@ -93,44 +97,26 @@ pub fn run() {
             unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
         }
     }
-    // Ctrl+Space. macOS also gets Option+Space: Ctrl+Space switches keyboard input sources there,
-    // and when that's turned on macOS keeps the key for itself (its own shortcuts come first).
-    let ctrl_space = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
-    #[cfg(target_os = "macos")]
-    let quick_keys = [Shortcut::new(Some(Modifiers::ALT), Code::Space), ctrl_space];
-    #[cfg(not(target_os = "macos"))]
-    let quick_keys = [ctrl_space];
-    // Ctrl+Shift+Space shows or hides the bubble (macOS also Option+Shift+Space, like quick add).
-    let ctrl_shift_space = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
-    #[cfg(target_os = "macos")]
-    let bubble_keys = [Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space), ctrl_shift_space];
-    #[cfg(not(target_os = "macos"))]
-    let bubble_keys = [ctrl_shift_space];
-
     tauri::Builder::default()
         // Launched by Windows at sign-in: start tucked away (tray + bubble only).
         .plugin(tauri_plugin_autostart::Builder::new().arg(STARTUP_ARG).build())
         // A second launch just brings up the running Quicky. `--preview-reminder` instead shows the
         // sample reminder (same as Settings → Reminders → Preview), handy for checking the overlay.
+        // `--draw` opens Draw on screen (when its extension is installed), like its shortcut.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if args.iter().any(|a| a == "--preview-reminder") {
                 let _ = app.emit_to("main", "preview-reminder", ());
+            } else if args.iter().any(|a| a == "--draw") {
+                draw::open(app);
             } else {
                 main_window::show_main(app)
             }
         }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    if event.state() != ShortcutState::Pressed {
-                        return;
-                    }
-                    if quick_keys.contains(shortcut) {
-                        main_window::quick_add(app);
-                    } else if bubble_keys.contains(shortcut) {
-                        // The saved choice, not what's on screen: a goodbye still playing counts as hidden.
-                        let show = !read_config(app).show_bubble;
-                        let _ = bubble::set_show_bubble(app.clone(), show);
+                .with_handler(|app, shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        shortcuts::fire(app, shortcut);
                     }
                 })
                 .build(),
@@ -141,18 +127,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            for key in quick_keys {
-                if let Err(e) = app.global_shortcut().register(key) {
-                    eprintln!("The quick-add shortcut {key:?} is taken by another app: {e}");
-                }
-            }
-            for key in bubble_keys {
-                if let Err(e) = app.global_shortcut().register(key) {
-                    eprintln!("The show/hide bubble shortcut {key:?} is taken by another app: {e}");
-                }
-            }
-
             let handle = app.handle().clone();
+            // Quick add, the bubble and Draw on screen, as Settings → Shortcuts has them.
+            shortcuts::apply(&handle);
             let cfg = read_config(&handle);
             if !cfg.autostart_initialized {
                 let _ = app.autolaunch().enable();
@@ -194,7 +171,7 @@ pub fn run() {
                 }
                 // Closing the app hides it to the tray (Ctrl+Space and the bubble keep working);
                 // closing the bubble (Alt+F4) just switches the bubble off.
-                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu" | "squish") => {
+                WindowEvent::CloseRequested { api, .. } if !matches!(window.label(), "fx" | "balloon" | "menu" | "squish" | "draw") => {
                     api.prevent_close();
                     if matches!(window.label(), bubble::BUBBLE_LABEL | bubble::MINI_LABEL) {
                         // Only when the user closed one (Alt+F4 on it, so it's in front): closing the
@@ -293,7 +270,19 @@ pub fn run() {
             extensions::open_extension,
             extensions::extension_ready,
             icons::extension_icon,
-            picker::pick_screen_color
+            picker::pick_screen_color,
+            shortcuts::shortcuts_get,
+            shortcuts::shortcut_set,
+            shortcuts::shortcuts_reset,
+            shortcuts::shortcuts_pause,
+            shortcuts::shortcuts_retry,
+            draw::draw_open,
+            draw::draw_close,
+            draw::draw_ready,
+            draw::draw_info,
+            draw::draw_passthrough,
+            draw::draw_toolbar,
+            draw::draw_capture
         ])
         .build(tauri::generate_context!())
         .expect("error while building Quicky")

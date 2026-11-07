@@ -662,3 +662,14 @@ button.swatch.custom { padding: 0; display: grid; place-items: center; }
 .ext-card .box-label { flex-wrap: wrap; }
 .ext-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .ext-actions .btn.ghost { margin-left: auto; }
+/* Settings → Shortcuts: what it does, its keys, then Change / Reset. */
+.shortcut-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "what actions" "keys actions"; gap: 4px 10px; align-items: center; padding: 8px 0; border-top: 1.5px solid var(--line); }
+.shortcut-row:first-of-type { border-top: 0; }
+.shortcut-what { grid-area: what; display: flex; flex-direction: column; gap: 2px; font-weight: 800; }
+.shortcut-keys { grid-area: keys; display: flex; flex-wrap: wrap; gap: 6px; }
+.shortcut-keys .kbd { font-size: 12px; color: var(--ink); border-color: var(--edge); background: var(--card); }
+.shortcut-keys .kbd.none { color: var(--muted); border-color: var(--line); }
+.shortcut-keys .kbd.taken { color: var(--danger); border-color: var(--danger); }
+.shortcut-keys .kbd.recording { color: var(--on-accent); background: var(--accent); border-color: var(--edge); }
+.shortcut-actions { grid-area: actions; display: flex; gap: 6px; }
+.shortcut-error { color: var(--danger); font-weight: 800; }

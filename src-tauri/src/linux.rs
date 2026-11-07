@@ -265,3 +265,24 @@ pub fn busy() -> bool {
 pub fn taskbar() -> Option<(Rect, u32)> {
     None
 }
+
+/// Pictures of the screen (Draw on screen's screenshot), read from the root window.
+pub const CAN_CAPTURE: bool = true;
+
+/// A picture of the screen (RGBA): the area at `px`, `py` (physical px).
+pub fn capture(px: i32, py: i32, width: u32, height: u32) -> Option<Vec<u8>> {
+    use x11rb::protocol::xproto::ImageFormat;
+    let x = x()?;
+    let conn = x.conn.lock().unwrap_or_else(|e| e.into_inner());
+    let (w, h) = (width.min(u16::MAX as u32) as u16, height.min(u16::MAX as u32) as u16);
+    let img = conn.get_image(ImageFormat::Z_PIXMAP, x.root, px as i16, py as i16, w, h, !0).ok()?.reply().ok()?;
+    let n = w as usize * h as usize;
+    // 24- and 32-bit visuals store a pixel as B, G, R, (pad) on little-endian servers.
+    (img.depth >= 24 && img.data.len() >= n * 4).then(|| img.data.as_chunks::<4>().0.iter().take(n).flat_map(|p| [p[2], p[1], p[0], 255]).collect())
+}
+
+/// Pictures can't be put on the clipboard here yet (X11 hands them out on request): the
+/// screenshot is only saved.
+pub fn copy_image(_rgba: &[u8], _width: u32, _height: u32) -> bool {
+    false
+}

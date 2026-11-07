@@ -3,6 +3,7 @@
 
 use crate::data::write_atomic;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -40,6 +41,9 @@ pub struct Config {
     pub(crate) stuck_apps: Vec<StuckApp>,
     /// The sticky trail a dragged bubble or mini leaves is switched off (on unless the user says).
     pub(crate) trail_off: bool,
+    /// Global shortcuts the user changed (`shortcuts.rs`): action id → its keys in the shortcut
+    /// plugin's format ("Ctrl+Shift+D"); an empty list is no shortcut. Absent: the default.
+    pub(crate) shortcuts: HashMap<String, Vec<String>>,
 }
 
 impl Default for Config {
@@ -52,6 +56,7 @@ impl Default for Config {
             bubble_locked: false,
             stuck_apps: Vec::new(),
             trail_off: false,
+            shortcuts: HashMap::new(),
         }
     }
 }

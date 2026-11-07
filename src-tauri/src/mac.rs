@@ -413,3 +413,15 @@ pub fn busy() -> bool {
 pub fn taskbar() -> Option<(Rect, u32)> {
     None
 }
+
+/// No pictures of the screen yet (macOS asks for screen recording permission first): Draw on
+/// screen hides its screenshot button.
+pub const CAN_CAPTURE: bool = false;
+
+pub fn capture(_x: i32, _y: i32, _width: u32, _height: u32) -> Option<Vec<u8>> {
+    None
+}
+
+pub fn copy_image(_rgba: &[u8], _width: u32, _height: u32) -> bool {
+    false
+}

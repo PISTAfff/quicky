@@ -3,11 +3,13 @@
 // `lib/ext-host.ts`, which makes the project API calls for it with the user's session and passes
 // live updates on.
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { emitTo } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { readAccount, readInstalled } from "./lib/cloud";
 import { followTheme } from "./lib/theme-colors";
-import { hostExtension, TASKS_ALLOWED, type TaskAnswer } from "./lib/ext-host";
+import { DRAW_ALLOWED, hostExtension, TASKS_ALLOWED, type TaskAnswer } from "./lib/ext-host";
+import { label } from "./lib/keys";
+import { OS } from "./lib/platform";
 import { followWindowAnim } from "./lib/winanim";
 import { sendExtensionIcon } from "./lib/ext-icon";
 
@@ -89,7 +91,10 @@ async function start() {
     },
     // A calendar event changed: Quicky's reminders read them again.
     onEventsChanged: () => void emitTo("main", "calendar-changed").catch(() => {}),
+    // Draw on screen: its window starts the overlay and shows its shortcut as Settings has it.
+    ...(id === DRAW_ALLOWED ? { draw: () => invoke<void>("draw_open"), keys: drawKeys } : {}),
   });
+  if (id === DRAW_ALLOWED) void listen("shortcuts-changed", async () => post({ type: "keys", keys: await drawKeys() }));
 
   // Answers about Quicky's tasks, and word that they changed.
   if (TASKS_ALLOWED.includes(id)) {
@@ -100,6 +105,14 @@ async function start() {
     });
     void win.listen("tasks-changed", () => post({ type: "tasks-changed" }));
   }
+}
+
+/** Draw on screen's shortcut as shown ("" when it has none, or another app has it). */
+async function drawKeys(): Promise<Record<string, string>> {
+  const all = await invoke<{ id: string; keys: string[]; taken: string[] }[]>("shortcuts_get").catch(() => []);
+  const d = all.find((s) => s.id === "draw");
+  const k = d?.keys.find((k) => !d.taken.includes(k));
+  return { draw: k ? label(k, OS) : "" };
 }
 
 void start();

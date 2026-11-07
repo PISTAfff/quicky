@@ -12,12 +12,13 @@ export type Sheet =
   | { kind: "account" }
   | { kind: "extensions" }
   | { kind: "feedback" }
+  | { kind: "shortcuts" }
   | null;
 
 export const [sheet, setSheet] = createSignal<Sheet>(null);
 
 /** Panels opened from Settings go back to Settings when closed (the rest close outright). */
-const FROM_SETTINGS = ["account", "extensions", "feedback"];
+const FROM_SETTINGS = ["account", "extensions", "feedback", "shortcuts"];
 export const closeSheet = () => {
   const s = sheet();
   setSheet(s && FROM_SETTINGS.includes(s.kind) ? { kind: "settings" } : null);

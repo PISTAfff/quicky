@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import { QUICK_KEY } from "../lib/platform";
+import { globalLabel } from "../lib/shortcuts";
 import { sfx } from "../lib/sfx";
 import { Blob } from "./icons";
 
@@ -29,7 +29,8 @@ const STEPS = [
     art: "menu",
   },
   {
-    title: `${QUICK_KEY} from anywhere`,
+    // Shown with the quick-add shortcut as Settings → Shortcuts has it.
+    title: "from anywhere",
     text: "Adds a task without leaving what you're doing: to the app's own list if it has a mini, otherwise to the general one.",
     art: "key",
   },
@@ -59,11 +60,11 @@ export function Tour() {
               <div class="tour-menu"><i /><i /><i /></div>
             </Show>
             <Show when={s().art === "key"}>
-              <kbd class="tour-key">{QUICK_KEY}</kbd>
+              <kbd class="tour-key">{globalLabel("quick") || "Set a shortcut in Settings"}</kbd>
               <span class="tour-blob small"><Blob size={26} /></span>
             </Show>
           </div>
-          <h2>{s().title}</h2>
+          <h2>{s().art === "key" ? (globalLabel("quick") ? `${globalLabel("quick")} from anywhere` : "Add from anywhere") : s().title}</h2>
           <p>{s().text}</p>
           <div class="tour-dots" aria-hidden="true">
             <For each={STEPS}>{(_, i) => <i classList={{ on: i() === step() }} />}</For>

@@ -2,7 +2,7 @@
 // they stay in the user's own folder. Online projects live in the PROJECT extension.
 // Plain TS (no Solid store) so the extension window's page can share it.
 import { invoke } from "@tauri-apps/api/core";
-import { ipcBytes } from "./platform";
+import { IS_MOBILE, ipcBytes } from "./platform";
 
 export const API = "https://quicky-api.pistasspot.com";
 const ACCOUNT_KEY = "quicky-account";
@@ -202,7 +202,11 @@ function writeInstalled(list: Installed[]) {
   } catch {}
 }
 
-export const listExtensions = () => api<{ extensions: Extension[] }>("GET", "/api/extensions").then((r) => r.extensions);
+/** Extensions that need the desktop (Draw on screen draws over the PC's screens): not offered on the phone. */
+const DESKTOP_ONLY = ["draw"];
+
+export const listExtensions = () =>
+  api<{ extensions: Extension[] }>("GET", "/api/extensions").then((r) => r.extensions.filter((x) => !(IS_MOBILE && DESKTOP_ONLY.includes(x.id))));
 
 const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
