@@ -68,6 +68,18 @@
       .act button.wide.on { background: var(--accent-soft); color: var(--accent-ink); }
       .hint { padding: 6px 6px 6px 14px; gap: 10px; font-weight: 800; }
       .hint .muted { color: var(--muted); font-weight: 700; }
+      /* The text style bar: small word buttons and steppers. */
+      .textbar { gap: 6px; padding: 5px 6px 5px 12px; }
+      .textbar button.wide { height: 30px; padding: 0 9px; font-size: 12px; }
+      .textbar button.wide.on { background: var(--accent); color: var(--on-accent); }
+      .textbar button.step { width: 30px; padding: 0; justify-content: center; font-size: 16px; }
+      .textbar .muted { margin-left: 6px; font-size: 12px; }
+      .textbar .value { min-width: 30px; text-align: center; font: 800 12px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+      /* The size while the zoom shortcut changes it. */
+      .sizebubble {
+        position: fixed; left: 0; top: 0; padding: 4px 9px; border-radius: 10px; background: var(--solid); color: var(--on-solid); border: 2px solid var(--edge);
+        font: 800 12px/1.2 ui-monospace, "Cascadia Mono", Consolas, monospace; pointer-events: none; box-shadow: 2px 2px 0 var(--edge);
+      }
       /* Recording: the stop bar. */
       .recbar { padding: 6px 6px 6px 12px; gap: 8px; }
       .recbar .dot { width: 12px; height: 12px; border-radius: 50%; background: #ff3b4e; box-shadow: 0 0 0 3px color-mix(in srgb, #ff3b4e 30%, transparent); animation: blink 1.2s ease-in-out infinite; }
@@ -116,6 +128,8 @@
     <textarea id="text" rows="1" spellcheck="false" aria-label="Text label"></textarea>
     <div id="bar" class="bar" role="toolbar" aria-label="Screen tools"></div>
     <div id="hint" class="hint" hidden></div>
+    <div id="textbar" class="hint textbar" role="toolbar" aria-label="Text style" hidden></div>
+    <div id="sizebubble" class="sizebubble" aria-live="polite" hidden></div>
     <div id="act" class="act" role="toolbar" aria-label="Chosen area" hidden></div>
     <div id="count" class="count" hidden aria-live="assertive"></div>
     <div id="recbar" class="recbar" role="toolbar" aria-label="Recording" hidden></div>

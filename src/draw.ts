@@ -13,25 +13,21 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { followTheme } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
 import { OS } from "./lib/platform";
+import { bbox, clampSize, hits, norm, resizeBy, scaleAbout, topAt, translate, type Box, type Item, type Pt, type TextStyle, type Tool } from "./lib/ink";
 
 followTheme();
 
 type Mode = "shot" | "draw" | "record";
 type Phase = "select" | "chosen" | "countdown" | "recording" | "done";
-type Tool = "pen" | "hl" | "eraser" | "rect" | "ellipse" | "line" | "arrow" | "text" | "spot" | "laser";
-type Pt = [number, number];
-type Box = { x: number; y: number; w: number; h: number };
-type Item =
-  | { kind: "pen" | "hl"; color: string; size: number; pts: Pt[] }
-  | { kind: "rect" | "ellipse" | "line" | "arrow"; color: string; size: number; a: Pt; b: Pt }
-  | { kind: "text"; color: string; size: number; at: Pt; text: string; w: number; h: number };
+type TextItem = Extract<Item, { kind: "text" }>;
 interface Info {
   geometry: { width: number; height: number; screen: number[]; screens: number[][]; windows: number[][]; mode: Mode } | null;
   canCapture: boolean;
   canRecord: boolean;
 }
 
-/** Each tool's three sizes (stroke width; the eraser's radius; text height; the spotlight's radius). */
+/** Each tool's three preset sizes (stroke width; the eraser's radius; text height; the
+ *  spotlight's radius). The zoom shortcut sets any size in between (`SIZE_RANGE`). */
 const SIZES: Record<Tool, [number, number, number]> = {
   pen: [3, 6, 12], hl: [14, 24, 38], eraser: [10, 22, 42], rect: [3, 5, 9], ellipse: [3, 5, 9], line: [3, 5, 9], arrow: [3, 5, 9],
   text: [20, 32, 52], spot: [100, 160, 240], laser: [4, 6, 9],
@@ -72,7 +68,14 @@ let annotate = false;
 let windowsCss: Box[] = [];
 let tool: Tool = "pen";
 let colorIndex = 0;
-let sizeIndex = 1;
+/** Each tool's size now (a preset, or what the zoom shortcut made it). */
+const toolSize = Object.fromEntries(Object.entries(SIZES).map(([t, s]) => [t, s[1]])) as Record<Tool, number>;
+/** How new text labels look (and the picked one, when it's text). */
+const textStyle: TextStyle = { font: "Fredoka", outline: 1, outlineColor: "auto", spacing: 0, leading: 1.2 };
+/** The placed item picked again (index into `items`), to move, resize, restyle or delete. */
+let picked: number | null = null;
+/** The text label being edited again (its index), while the text box is open on it. */
+let editing: number | null = null;
 let items: Item[] = [];
 const undoStack: Item[][] = [];
 const redoStack: Item[][] = [];
@@ -80,7 +83,7 @@ let through = false;
 
 const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#6d4cff";
 const color = () => (COLORS[colorIndex] === "accent" ? accent() : COLORS[colorIndex]);
-const size = (t: Tool = tool) => SIZES[t][sizeIndex];
+const size = (t: Tool = tool) => toolSize[t];
 /** Physical px per CSS px: the screens' real size over the page's (not devicePixelRatio, which
  *  is off when screens of different scales are side by side). */
 const physScale = () => (info.geometry ? info.geometry.width / innerWidth : devicePixelRatio || 1);
@@ -121,8 +124,23 @@ function halo(hex: string) {
   return lum > 0.6 ? "#2b2540" : "#ffffff";
 }
 
-const font = (px: number) => `600 ${px}px Fredoka, Nunito, system-ui, sans-serif`;
-const norm = (a: Pt, b: Pt): [number, number, number, number] => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])];
+const font = (px: number, family: TextStyle["font"] = "Fredoka") =>
+  `${family === "Nunito" ? 800 : 600} ${px}px ${family}, ${family === "Nunito" ? "Fredoka" : "Nunito"}, system-ui, sans-serif`;
+/** The outline's width for a size (none, thin, thick) and its colour. */
+const outlineWidth = (t: Pick<TextItem, "size" | "outline">) => (t.outline === 0 ? 0 : t.outline === 1 ? Math.max(2, t.size / 8) : Math.max(4, t.size / 4));
+const outlineColor = (t: Pick<TextItem, "color" | "outlineColor">) => (t.outlineColor === "ink" ? "#2b2540" : t.outlineColor === "white" ? "#ffffff" : halo(t.color));
+
+/** A text label's box as drawn (its spacing and outline included). */
+function measure(t: TextItem) {
+  inkCtx.save();
+  inkCtx.font = font(t.size, t.font);
+  inkCtx.letterSpacing = `${t.spacing}px`;
+  const lines = t.text.split("\n");
+  const w = Math.max(...lines.map((l) => inkCtx.measureText(l).width));
+  inkCtx.restore();
+  const o = outlineWidth(t);
+  return { w: w + o, h: (lines.length - 1) * t.size * t.leading + t.size * 1.2 + o };
+}
 
 function paint(c: CanvasRenderingContext2D, it: Item) {
   c.save();
@@ -177,14 +195,16 @@ function paint(c: CanvasRenderingContext2D, it: Item) {
     c.lineTo(bx, by);
     c.stroke();
   } else if (it.kind === "text") {
-    c.font = font(it.size);
+    c.font = font(it.size, it.font);
+    c.letterSpacing = `${it.spacing}px`;
     c.textBaseline = "top";
-    c.lineWidth = Math.max(3, it.size / 6);
-    c.strokeStyle = halo(it.color);
+    const ow = outlineWidth(it);
+    c.lineWidth = ow;
+    c.strokeStyle = outlineColor(it);
     it.text.split("\n").forEach((line, i) => {
-      const y = it.at[1] + i * it.size * 1.2;
-      c.strokeText(line, it.at[0], y);
-      c.fillText(line, it.at[0], y);
+      const x = it.at[0] + ow / 2, y = it.at[1] + ow / 2 + i * it.size * it.leading;
+      if (ow) c.strokeText(line, x, y);
+      c.fillText(line, x, y);
     });
   }
   c.restore();
@@ -199,7 +219,8 @@ function clearCanvas(c: CanvasRenderingContext2D, el: HTMLCanvasElement) {
 
 function render() {
   clearCanvas(inkCtx, ink);
-  for (const it of items) paint(inkCtx, it);
+  // A text label being edited is shown by the text box instead.
+  items.forEach((it, i) => i !== editing && paint(inkCtx, it));
   refreshButtons();
 }
 
@@ -358,6 +379,7 @@ function commit(next: Item[], before = items) {
 function undo() {
   const prev = undoStack.pop();
   if (!prev) return;
+  picked = null;
   redoStack.push(items);
   items = prev;
   sfx.undo();
@@ -366,6 +388,7 @@ function undo() {
 function redo() {
   const next = redoStack.pop();
   if (!next) return;
+  picked = null;
   undoStack.push(items);
   items = next;
   sfx.tap();
@@ -373,39 +396,13 @@ function redo() {
 }
 function clear() {
   if (!items.length) return;
+  pick(null);
   commit([]);
   sfx.delete();
 }
 
 // ---- the eraser: takes away whole items it touches ---------------------------------------------
 
-function segDist([px, py]: Pt, [ax, ay]: Pt, [bx, by]: Pt) {
-  const dx = bx - ax, dy = by - ay;
-  const l = dx * dx + dy * dy;
-  const t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-function outline(it: Item): Pt[] {
-  if (it.kind === "pen" || it.kind === "hl") return it.pts;
-  if (it.kind === "line" || it.kind === "arrow") return [it.a, it.b];
-  if (it.kind === "rect") {
-    const [x, y, w, h] = norm(it.a, it.b);
-    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
-  }
-  if (it.kind === "ellipse") {
-    const [x, y, w, h] = norm(it.a, it.b);
-    return Array.from({ length: 49 }, (_, i) => [x + w / 2 + (w / 2) * Math.cos((i / 48) * Math.PI * 2), y + h / 2 + (h / 2) * Math.sin((i / 48) * Math.PI * 2)] as Pt);
-  }
-  return [];
-}
-function hits(it: Item, p: Pt, r: number) {
-  if (it.kind === "text") return p[0] >= it.at[0] - r && p[0] <= it.at[0] + it.w + r && p[1] >= it.at[1] - r && p[1] <= it.at[1] + it.h + r;
-  const o = outline(it);
-  const reach = r + it.size / 2;
-  if (o.length === 1) return Math.hypot(p[0] - o[0][0], p[1] - o[0][1]) <= reach;
-  for (let i = 1; i < o.length; i++) if (segDist(p, o[i - 1], o[i]) <= reach) return true;
-  return false;
-}
 function eraseAt(p: Pt) {
   const left = items.filter((it) => !hits(it, p, size("eraser")));
   if (left.length !== items.length) {
@@ -437,13 +434,31 @@ function constrain(kind: Tool, a: Pt, b: Pt): Pt {
   return [a[0] + len * Math.cos(ang), a[1] + len * Math.sin(ang)];
 }
 
-const at = (e: PointerEvent): Pt => [e.clientX, e.clientY];
+const at = (e: MouseEvent): Pt => [e.clientX, e.clientY];
 
 function liveFrame() {
   frame = 0;
   clearCanvas(liveCtx, live);
   if (drawing) paint(liveCtx, drawing);
   if (!canDraw()) return;
+  const pb = pickedBox();
+  if (pb && editing === null) {
+    // The picked item: a dashed frame with a handle at each corner (drag them to resize).
+    const b = pad(pb);
+    liveCtx.save();
+    liveCtx.strokeStyle = accent();
+    liveCtx.lineWidth = 2;
+    liveCtx.setLineDash([6, 4]);
+    liveCtx.strokeRect(b.x, b.y, b.w, b.h);
+    liveCtx.setLineDash([]);
+    liveCtx.fillStyle = "#ffffff";
+    liveCtx.strokeStyle = "#2b2540";
+    for (const [x, y] of corners(b)) {
+      liveCtx.fillRect(x - 5, y - 5, 10, 10);
+      liveCtx.strokeRect(x - 5, y - 5, 10, 10);
+    }
+    liveCtx.restore();
+  }
   if (tool === "eraser" && pointer && !through) {
     liveCtx.save();
     liveCtx.beginPath();
@@ -496,7 +511,50 @@ function moveSpot() {
   spot.style.background = `radial-gradient(circle ${r}px at ${pointer[0]}px ${pointer[1]}px, transparent 97%, rgba(16, 12, 30, 0.66) 100%)`;
 }
 
-const onUi = (e: Event) => [bar, hintEl, act, recbar, card, textBox].some((el) => el.contains(e.target as Node));
+const onUi = (e: Event) => [bar, hintEl, act, recbar, card, textBox, $("textbar")].some((el) => el.contains(e.target as Node));
+
+// ---- picking placed items again ---------------------------------------------------------------
+
+/** Moving or resizing the picked item: the items before, where the drag began, the item as it
+ *  was, and the corner it resizes from (null: moving). */
+let itemDrag: { before: Item[]; start: Pt; orig: Item; anchor: Pt | null; moved: boolean } | null = null;
+/** Where a press began, to tell a click on a placed item (picks it) from drawing. */
+let pressAt: Pt | null = null;
+
+const pad = (b: Box): Box => ({ x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 });
+const corners = (b: Box): Pt[] => [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
+const pickedItem = () => (picked !== null ? (items[picked] ?? null) : null);
+const pickedBox = () => {
+  const it = pickedItem();
+  return it ? bbox(it) : null;
+};
+
+/** Picks a placed item (null: none). The toolbar shows its colour, and its text style. */
+function pick(i: number | null) {
+  picked = i;
+  const it = pickedItem();
+  if (it) {
+    const ci = COLORS.findIndex((c) => (c === "accent" ? accent() : c) === it.color);
+    if (ci >= 0) colorIndex = ci;
+    if (it.kind === "text") Object.assign(textStyle, { font: it.font, outline: it.outline, outlineColor: it.outlineColor, spacing: it.spacing, leading: it.leading });
+  }
+  refreshButtons();
+  layoutTextBar();
+  schedule();
+}
+
+/** Changes the picked item, as one step to undo. */
+function changePicked(fn: (it: Item) => Item) {
+  const it = pickedItem();
+  if (!it || picked === null) return false;
+  const next = items.slice();
+  next[picked] = fn(it);
+  commit(next);
+  return true;
+}
+
+/** A text label with its box measured again (after its words, size or style changed). */
+const remeasure = (it: Item): Item => (it.kind === "text" ? { ...it, ...measure(it) } : it);
 
 addEventListener("pointerdown", (e) => {
   if (onUi(e) || e.button !== 0 || through || phase === "done" || phase === "countdown" || phase === "recording") return;
@@ -507,12 +565,31 @@ addEventListener("pointerdown", (e) => {
     return;
   }
   if (!canDraw()) return;
+  if (tool === "spot" || tool === "laser") return;
+  // The picked item: drag it to move it, or a corner to resize it.
+  const pb = pickedBox();
+  if (pb && tool !== "eraser" && editing === null) {
+    const b = pad(pb);
+    const cs = corners(b);
+    const p = pointer;
+    const corner = cs.findIndex((c) => Math.abs(c[0] - p[0]) <= 9 && Math.abs(c[1] - p[1]) <= 9);
+    if (corner >= 0 || (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h)) {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      itemDrag = { before: items, start: p, orig: pickedItem()!, anchor: corner >= 0 ? cs[(corner + 2) % 4] : null, moved: false };
+      return;
+    }
+  }
   if (tool === "text") {
     e.preventDefault();
     if (textBox.classList.contains("on")) return finishText();
+    // On a placed item: pick it (double-click a label to change its words); elsewhere: a new label.
+    const hit = topAt(items, pointer);
+    if (hit !== null) return pick(hit);
+    pick(null);
     return startText(pointer);
   }
-  if (tool === "spot" || tool === "laser") return;
+  pick(null);
+  pressAt = pointer;
   (e.target as Element).setPointerCapture?.(e.pointerId);
   if (tool === "eraser") {
     erasing = { before: items };
@@ -535,6 +612,24 @@ addEventListener("pointermove", (e) => {
     selectCursor(p);
     return;
   }
+  if (itemDrag && picked !== null) {
+    const p = at(e);
+    const d = itemDrag;
+    if (!d.moved && Math.hypot(p[0] - d.start[0], p[1] - d.start[1]) < 3) return;
+    d.moved = true;
+    let next: Item;
+    if (!d.anchor) next = translate(d.orig, p[0] - d.start[0], p[1] - d.start[1]);
+    else {
+      // From the opposite corner: as far as the pointer is now, over as far as it began.
+      const k = Math.hypot(p[0] - d.anchor[0], p[1] - d.anchor[1]) / Math.max(1, Math.hypot(d.start[0] - d.anchor[0], d.start[1] - d.anchor[1]));
+      next = scaleAbout(d.orig, d.anchor, Math.max(0.05, k), measure);
+    }
+    items = d.before.slice();
+    items[picked] = next;
+    render();
+    schedule();
+    return;
+  }
   const events = e.getCoalescedEvents?.() ?? [e];
   for (const ev of events.length ? events : [e]) {
     const p = at(ev);
@@ -555,11 +650,25 @@ addEventListener("pointermove", (e) => {
 
 addEventListener("pointerup", (e) => {
   if (selDrag) return endSelect(at(e));
+  if (itemDrag) {
+    const d = itemDrag;
+    itemDrag = null;
+    if (d.moved) commit(items, d.before);
+    return schedule();
+  }
   if (drawing) {
     const d = drawing;
     drawing = null;
+    const start = pressAt;
+    pressAt = null;
+    const p = at(e);
+    const near = (q: Pt) => !!start && Math.hypot(q[0] - start[0], q[1] - start[1]) < 3;
+    const still = near(p) && ("pts" in d ? d.pts.every(near) : true);
+    // A click on a placed item picks it instead of drawing a dot.
+    const hit = still && start ? topAt(items, start) : null;
+    if (hit !== null) pick(hit);
     // A click with a shape tool draws nothing.
-    if (!("a" in d) || Math.hypot(d.b[0] - d.a[0], d.b[1] - d.a[1]) > 3) commit([...items, d]);
+    else if (!("a" in d) || Math.hypot(d.b[0] - d.a[0], d.b[1] - d.a[1]) > 3) commit([...items, d]);
   }
   if (erasing) {
     if (erasing.before !== items) commit(items, erasing.before);
@@ -573,18 +682,126 @@ addEventListener("pointerout", (e) => {
   pointer = null;
   schedule();
 });
+// Double-click a placed label to change its words.
+addEventListener("dblclick", (e) => {
+  if (onUi(e) || !canDraw()) return;
+  const hit = topAt(items, at(e));
+  if (hit !== null && items[hit].kind === "text") editText(hit);
+});
+
+// ---- the zoom shortcut: Ctrl + wheel (or a touchpad pinch, or Ctrl + / Ctrl -) ------------------
+
+const sizeBubble = $("sizebubble");
+let bubbleTimer = 0;
+let zoomBefore: Item[] | null = null;
+let zoomTimer = 0;
+function showSize(text: string, p: Pt | null) {
+  sizeBubble.textContent = text;
+  sizeBubble.hidden = false;
+  const [x, y] = p ?? [innerWidth / 2, innerHeight / 2];
+  sizeBubble.style.left = `${Math.min(innerWidth - 90, x + 18)}px`;
+  sizeBubble.style.top = `${Math.max(6, y - 36)}px`;
+  clearTimeout(bubbleTimer);
+  bubbleTimer = window.setTimeout(() => (sizeBubble.hidden = true), 800);
+}
+
+/** Grows (k > 1) or shrinks the picked item, else the tool's size. */
+function zoomBy(k: number, p: Pt | null) {
+  if (!canDraw()) return;
+  const it = pickedItem();
+  if (it?.kind === "text" && editing !== null) {
+    // The words being typed: their size.
+    const next = clampSize("text", it.size * k);
+    items[editing] = { ...it, size: next };
+    textBox.style.fontSize = `${next}px`;
+    growText();
+    return showSize(`${Math.round(next)} px`, p);
+  }
+  if (it && picked !== null && editing === null) {
+    // One step to undo for the whole gesture.
+    zoomBefore ??= items;
+    items = items.slice();
+    items[picked] = resizeBy(it, k, measure);
+    render();
+    schedule();
+    showSize(`${Math.round(items[picked].size)} px`, p);
+    clearTimeout(zoomTimer);
+    zoomTimer = window.setTimeout(() => {
+      if (zoomBefore) commit(items, zoomBefore);
+      zoomBefore = null;
+    }, 450);
+    return;
+  }
+  toolSize[tool] = clampSize(tool, toolSize[tool] * k);
+  if (textBox.classList.contains("on")) {
+    textBox.style.fontSize = `${size("text")}px`;
+    growText();
+  }
+  moveSpot();
+  schedule();
+  refreshButtons();
+  showSize(`${Math.round(toolSize[tool])} px`, p);
+}
+
+addEventListener(
+  "wheel",
+  (e) => {
+    // Plain scrolling does nothing here; with Ctrl or ⌘ (a touchpad pinch sends Ctrl) it sizes.
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const k = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.002));
+    zoomBy(Math.max(0.5, Math.min(2, k)), [e.clientX, e.clientY]);
+  },
+  { passive: false },
+);
 
 // ---- text -------------------------------------------------------------------------------------
 
 let textAt: Pt = [0, 0];
+/** The text box takes a label's look, so typing shows what will be drawn. */
+function styleTextBox(t: { size: number; color: string } & TextStyle) {
+  const oc = outlineColor(t);
+  const ow = outlineWidth(t) / 2;
+  Object.assign(textBox.style, {
+    fontSize: `${t.size}px`,
+    color: t.color,
+    fontFamily: `${t.font}, system-ui, sans-serif`,
+    fontWeight: t.font === "Nunito" ? "800" : "600",
+    letterSpacing: `${t.spacing}px`,
+    lineHeight: String(t.leading),
+    textShadow: ow ? `${ow}px 0 ${oc}, -${ow}px 0 ${oc}, 0 ${ow}px ${oc}, 0 -${ow}px ${oc}, ${ow}px ${ow}px ${oc}, -${ow}px -${ow}px ${oc}` : "none",
+  });
+  growText();
+}
 function startText(p: Pt) {
   textAt = p;
-  const c = color();
-  Object.assign(textBox.style, { left: `${p[0]}px`, top: `${p[1]}px`, fontSize: `${size("text")}px`, color: c, textShadow: `0 0 3px ${halo(c)}` });
+  editing = null;
+  Object.assign(textBox.style, { left: `${p[0]}px`, top: `${p[1]}px` });
   textBox.value = "";
   textBox.classList.add("on");
-  growText();
+  styleTextBox({ size: size("text"), color: color(), ...textStyle });
+  layoutTextBar();
   setTimeout(() => textBox.focus(), 0);
+}
+/** Opens a placed label's words again. */
+function editText(i: number) {
+  const it = items[i];
+  if (it?.kind !== "text") return;
+  finishText();
+  pick(i);
+  editing = i;
+  textAt = it.at;
+  const ow = outlineWidth(it) / 2;
+  Object.assign(textBox.style, { left: `${it.at[0] + ow}px`, top: `${it.at[1] + ow}px` });
+  textBox.value = it.text;
+  textBox.classList.add("on");
+  styleTextBox(it);
+  render();
+  schedule();
+  setTimeout(() => {
+    textBox.focus();
+    textBox.select();
+  }, 0);
 }
 function growText() {
   textBox.style.width = "0px";
@@ -598,16 +815,85 @@ function finishText() {
   const text = textBox.value.replace(/\s+$/, "");
   textBox.classList.remove("on");
   textBox.blur();
-  if (!text.trim()) return;
-  const px = size("text");
-  inkCtx.save();
-  inkCtx.font = font(px);
-  const lines = text.split("\n");
-  const w = Math.max(...lines.map((l) => inkCtx.measureText(l).width));
-  inkCtx.restore();
-  commit([...items, { kind: "text", color: color(), size: px, at: textAt, text, w, h: lines.length * px * 1.2 }]);
+  const i = editing;
+  editing = null;
+  if (i !== null) {
+    // A placed label: its new words (or gone, when they were all taken out).
+    const it = items[i];
+    if (it?.kind !== "text") return render();
+    if (!text.trim()) {
+      pick(null);
+      return commit(items.filter((_, j) => j !== i));
+    }
+    const next = items.slice();
+    next[i] = remeasure({ ...it, text });
+    commit(next);
+    return pick(i);
+  }
+  render();
+  if (!text.trim()) return layoutTextBar();
+  const t: TextItem = { kind: "text", color: color(), size: size("text"), at: textAt, text, w: 0, h: 0, ...textStyle };
+  commit([...items, remeasure(t)]);
+  layoutTextBar();
 }
 textBox.addEventListener("blur", () => finishText());
+
+// ---- the text style bar: font, outline, letter and line spacing ---------------------------------
+
+const textBar = $("textbar");
+// Clicking the bars keeps the words being typed open (the text box keeps its focus).
+for (const el of [textBar, bar]) el.addEventListener("mousedown", (e) => textBox.classList.contains("on") && e.preventDefault());
+function setTextStyle(patch: Partial<TextStyle>) {
+  Object.assign(textStyle, patch);
+  const it = pickedItem();
+  if (textBox.classList.contains("on")) {
+    styleTextBox({ size: it && editing !== null ? it.size : size("text"), color: it && editing !== null ? it.color : color(), ...textStyle });
+    if (it?.kind === "text" && editing !== null) {
+      // Changed while its words are open: kept with the words when they're done.
+      items = items.slice();
+      items[editing] = remeasure({ ...it, ...patch });
+    }
+  } else if (it?.kind === "text") changePicked((x) => remeasure({ ...x, ...patch }));
+  sfx.tap();
+  layoutTextBar();
+  // Keys go back to the words being typed.
+  if (textBox.classList.contains("on")) setTimeout(() => textBox.focus(), 0);
+}
+
+/** Shown under the toolbar while the Text tool is on or a label is picked. */
+function layoutTextBar() {
+  const show = canDraw() && !through && (tool === "text" || pickedItem()?.kind === "text");
+  textBar.hidden = !show;
+  if (!show) return;
+  textBar.replaceChildren();
+  const label = (t: string) => textBar.append(Object.assign(document.createElement("span"), { className: "muted", textContent: t }));
+  const choice = (text: string, title: string, on: boolean, run: () => void) => {
+    const b = button(textBar, "", title, run, `wide${on ? " on" : ""}`, text);
+    b.setAttribute("aria-pressed", String(on));
+  };
+  label("Font");
+  choice("Fredoka", "Rounded letters", textStyle.font === "Fredoka", () => setTextStyle({ font: "Fredoka" }));
+  choice("Nunito", "Plain letters", textStyle.font === "Nunito", () => setTextStyle({ font: "Nunito" }));
+  label("Outline");
+  ([[0, "None"], [1, "Thin"], [2, "Thick"]] as const).forEach(([o, name]) => choice(name, `${name} outline`, textStyle.outline === o, () => setTextStyle({ outline: o })));
+  if (textStyle.outline) {
+    const next = { auto: "ink", ink: "white", white: "auto" } as const;
+    const names = { auto: "Auto colour", ink: "Ink", white: "White" };
+    choice(names[textStyle.outlineColor], "The outline's colour (auto picks ink or white to stand out from the text)", false, () => setTextStyle({ outlineColor: next[textStyle.outlineColor] }));
+  }
+  const stepper = (name: string, value: string, minus: () => void, plus: () => void) => {
+    label(name);
+    button(textBar, "", `Less ${name.toLowerCase()} spacing`, minus, "wide step", "−");
+    textBar.append(Object.assign(document.createElement("span"), { className: "value", textContent: value }));
+    button(textBar, "", `More ${name.toLowerCase()} spacing`, plus, "wide step", "+");
+  };
+  const sp = (v: number) => Math.max(-4, Math.min(40, Math.round(v * 10) / 10));
+  stepper("Letters", `${textStyle.spacing}`, () => setTextStyle({ spacing: sp(textStyle.spacing - 1) }), () => setTextStyle({ spacing: sp(textStyle.spacing + 1) }));
+  const ld = (v: number) => Math.max(0.8, Math.min(3, Math.round(v * 10) / 10));
+  stepper("Lines", `${textStyle.leading.toFixed(1)}×`, () => setTextStyle({ leading: ld(textStyle.leading - 0.1) }), () => setTextStyle({ leading: ld(textStyle.leading + 0.1) }));
+  const b = bar.getBoundingClientRect();
+  placeNear(textBar, b.left, b.bottom + 10);
+}
 
 // ---- buttons ----------------------------------------------------------------------------------
 
@@ -742,12 +1028,16 @@ function refreshButtons() {
     b.style.background = c;
     b.classList.toggle("on", i === colorIndex);
     b.setAttribute("aria-pressed", String(i === colorIndex));
-    // The laser has its own red, and the spotlight and eraser no colour.
-    b.disabled = tool === "spot" || tool === "laser" || tool === "eraser";
+    // The laser has its own red, and the spotlight and eraser no colour (a picked item has one).
+    b.disabled = !pickedItem() && (tool === "spot" || tool === "laser" || tool === "eraser");
   });
+  const it = pickedItem();
+  const sizeOf = it ? it.size : toolSize[tool];
+  const presets = SIZES[it ? it.kind : tool];
   sizeButtons.forEach((b, i) => {
-    b.classList.toggle("on", i === sizeIndex);
-    b.setAttribute("aria-pressed", String(i === sizeIndex));
+    const on = Math.abs(sizeOf - presets[i]) < 0.05;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
   });
   undoBtn.disabled = !undoStack.length;
   redoBtn.disabled = !redoStack.length;
@@ -764,6 +1054,7 @@ function toolClasses() {
 
 function setTool(t: Tool) {
   finishText();
+  pick(null);
   if (through && (t === "spot" || t === "laser")) setThrough(false);
   tool = t;
   trail.length = 0;
@@ -772,17 +1063,30 @@ function setTool(t: Tool) {
   schedule();
   sfx.tap();
   refreshButtons();
+  layoutTextBar();
 }
 function setColor(i: number) {
   colorIndex = i;
   if (textBox.classList.contains("on")) textBox.style.color = color();
+  if (editing === null) changePicked((it) => ({ ...it, color: color() }));
+  else items[editing] = { ...items[editing], color: color() };
   refreshButtons();
 }
 function setSize(i: number) {
-  sizeIndex = i;
-  if (textBox.classList.contains("on")) {
-    textBox.style.fontSize = `${size("text")}px`;
+  const it = pickedItem();
+  if (it && editing === null) {
+    // The picked item takes its kind's preset (text: its height; the rest: their line).
+    changePicked((x) => remeasure({ ...x, size: SIZES[x.kind][i] }));
+  } else if (it && editing !== null) {
+    items[editing] = { ...it, size: SIZES.text[i] };
+    textBox.style.fontSize = `${SIZES.text[i]}px`;
     growText();
+  } else {
+    toolSize[tool] = SIZES[tool][i];
+    if (textBox.classList.contains("on")) {
+      textBox.style.fontSize = `${size("text")}px`;
+      growText();
+    }
   }
   moveSpot();
   schedule();
@@ -864,6 +1168,7 @@ async function setMode(m: Mode) {
 function layout() {
   toolClasses();
   refreshButtons();
+  layoutTextBar();
   renderVeil();
   schedule();
   const ui = phase !== "done" && phase !== "countdown" && phase !== "recording";
@@ -1220,6 +1525,11 @@ function startBarDrag(e: PointerEvent) {
 const KEYS: Record<string, Tool> = { p: "pen", h: "hl", e: "eraser", r: "rect", o: "ellipse", a: "arrow", l: "line", t: "text", s: "spot", x: "laser" };
 addEventListener("keydown", (e) => {
   shift = e.shiftKey;
+  // The zoom shortcut from the keyboard (typing a label too: it sizes the words).
+  if ((OS === "mac" ? e.metaKey : e.ctrlKey) && ["=", "+", "-", "_"].includes(e.key) && canDraw()) {
+    e.preventDefault();
+    return zoomBy(e.key === "-" || e.key === "_" ? 1 / 1.15 : 1.15, pointer);
+  }
   if (document.activeElement === textBox) {
     if (e.key === "Escape") {
       textBox.value = "";
@@ -1238,7 +1548,8 @@ addEventListener("keydown", (e) => {
   const mod = OS === "mac" ? e.metaKey : e.ctrlKey;
   const k = e.key.toLowerCase();
   if (e.key === "Escape") {
-    // One step back at a time: drawing on the area, the chosen area, then leaving.
+    // One step back at a time: the picked item, drawing on the area, the chosen area, then leaving.
+    if (pickedItem()) return pick(null);
     if (mode === "shot" && annotate) {
       annotate = false;
       return layout();
@@ -1255,6 +1566,13 @@ addEventListener("keydown", (e) => {
     return void (mode === "shot" ? capture() : startRecording());
   }
   if (!canDraw()) return;
+  // Tab and Shift+Tab go through the placed items (the toolbar's own buttons keep Tab).
+  if (e.key === "Tab" && items.length && !bar.contains(document.activeElement) && !textBar.contains(document.activeElement)) {
+    e.preventDefault();
+    const n = items.length;
+    const cur = pickedItem() ? picked! : e.shiftKey ? 0 : -1;
+    return pick((cur + (e.shiftKey ? -1 : 1) + n) % n);
+  }
   if (mod && k === "z") {
     e.preventDefault();
     return e.shiftKey ? redo() : undo();
@@ -1264,7 +1582,18 @@ addEventListener("keydown", (e) => {
     return redo();
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if ((e.key === "Delete" || e.key === "Backspace") && pickedItem()) {
+    // Just the picked item.
+    const i = picked!;
+    pick(null);
+    commit(items.filter((_, j) => j !== i));
+    return sfx.delete();
+  }
   if (e.key === "Delete") return clear();
+  if (e.key === "Enter" && pickedItem()?.kind === "text") {
+    e.preventDefault();
+    return editText(picked!);
+  }
   if (KEYS[k] && !(mode === "shot" && (KEYS[k] === "spot" || KEYS[k] === "laser"))) return setTool(KEYS[k]);
   if (["1", "2", "3"].includes(e.key)) setSize(Number(e.key) - 1);
 });
