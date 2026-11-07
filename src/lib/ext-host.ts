@@ -8,8 +8,9 @@ import nunitoUrl from "@fontsource-variable/nunito/files/nunito-latin-wght-norma
 
 /** Extensions that may read and change Quicky's tasks (the Calendar). */
 export const TASKS_ALLOWED = ["calendar"];
-/** The extension that may open the screen-drawing overlay (`{qx:1, type:"draw"}`). */
+/** The extension that may open the screen tools (`{qx:1, type:"draw", mode}`). */
 export const DRAW_ALLOWED = "draw";
+const DRAW_MODES = ["shot", "draw", "record"];
 
 export type TaskAnswer = { ok: boolean; data?: unknown; error?: string };
 
@@ -22,9 +23,10 @@ export interface HostOptions {
   pickColor: (post: (msg: object) => void) => Promise<string | null>;
   /** A calendar event was changed through the frame. */
   onEventsChanged: () => void;
-  /** Opens Draw on screen, for DRAW_ALLOWED only (absent: not on this system, like the phone). */
-  draw?: () => Promise<void>;
-  /** Shortcut labels the frame shows (Draw on screen's), sent with `hello` and as `keys`. */
+  /** Opens the screen tools in a mode, for DRAW_ALLOWED only (absent: not on this system, like
+   *  the phone). */
+  draw?: (mode: string) => Promise<void>;
+  /** Shortcut labels the frame shows (the screen tools'), sent with `hello` and as `keys`. */
   keys?: () => Promise<Record<string, string>>;
 }
 
@@ -143,9 +145,11 @@ export function hostExtension(frame: HTMLIFrameElement, opt: HostOptions) {
         fail(0, "Can't reach Quicky's server. Check your internet connection");
       }
     } else if (m.type === "draw") {
-      if (id !== DRAW_ALLOWED || !opt.draw) return post({ type: "reply", id: m.id, ok: false, status: 403, error: "Drawing on screen isn't available here" });
+      if (id !== DRAW_ALLOWED || !opt.draw) return post({ type: "reply", id: m.id, ok: false, status: 403, error: "The screen tools aren't available here" });
+      const mode = String((e.data as { mode?: unknown }).mode ?? "shot");
+      if (!DRAW_MODES.includes(mode)) return post({ type: "reply", id: m.id, ok: false, status: 400, error: "No such mode" });
       try {
-        await opt.draw();
+        await opt.draw(mode);
         post({ type: "reply", id: m.id, ok: true, status: 200 });
       } catch (err) {
         post({ type: "reply", id: m.id, ok: false, status: 400, error: String(err) });

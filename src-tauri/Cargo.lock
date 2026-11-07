@@ -2947,6 +2947,7 @@ dependencies = [
  "tauri-plugin-quicky-android",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "windows",
  "windows-sys 0.59.0",
  "x11rb",
 ]

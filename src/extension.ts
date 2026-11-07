@@ -91,8 +91,8 @@ async function start() {
     },
     // A calendar event changed: Quicky's reminders read them again.
     onEventsChanged: () => void emitTo("main", "calendar-changed").catch(() => {}),
-    // Draw on screen: its window starts the overlay and shows its shortcut as Settings has it.
-    ...(id === DRAW_ALLOWED ? { draw: () => invoke<void>("draw_open"), keys: drawKeys } : {}),
+    // The screen tools: their window opens them and shows their shortcuts as Settings has them.
+    ...(id === DRAW_ALLOWED ? { draw: (mode: string) => invoke<void>("draw_open", { mode }), keys: drawKeys } : {}),
   });
   if (id === DRAW_ALLOWED) void listen("shortcuts-changed", async () => post({ type: "keys", keys: await drawKeys() }));
 
@@ -107,12 +107,16 @@ async function start() {
   }
 }
 
-/** Draw on screen's shortcut as shown ("" when it has none, or another app has it). */
+/** The screen tools' shortcuts as shown ("" when one has none, or another app has it), and
+ *  which modes this system can do. */
 async function drawKeys(): Promise<Record<string, string>> {
   const all = await invoke<{ id: string; keys: string[]; taken: string[] }[]>("shortcuts_get").catch(() => []);
-  const d = all.find((s) => s.id === "draw");
-  const k = d?.keys.find((k) => !d.taken.includes(k));
-  return { draw: k ? label(k, OS) : "" };
+  const show = (id: string) => {
+    const d = all.find((s) => s.id === id);
+    const k = d?.keys.find((k) => !d.taken.includes(k));
+    return k ? label(k, OS) : "";
+  };
+  return { screen: show("screen"), draw: show("draw"), record: show("record"), os: OS };
 }
 
 void start();

@@ -820,3 +820,31 @@ pub fn copy_image(rgba: &[u8], width: u32, height: u32) -> bool {
         done
     }
 }
+
+/// The app windows on screen, topmost first, by their visible frames (Quicky's own left out):
+/// the screen tools' "click a window to take just that window".
+pub fn window_rects() -> Vec<Rect> {
+    unsafe extern "system" fn visit(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let out = unsafe { &mut *(lparam as *mut Vec<Rect>) };
+        let hwnd = hwnd as Hwnd;
+        if !is_ours(hwnd) && usable(hwnd) && let Some(r) = frame(hwnd) && r.right - r.left >= 40 && r.bottom - r.top >= 40 {
+            out.push(r);
+        }
+        1
+    }
+    let mut out: Vec<Rect> = Vec::new();
+    unsafe { EnumWindows(Some(visit), &mut out as *mut Vec<Rect> as LPARAM) };
+    out
+}
+
+/// Keeps one of Quicky's windows out of screen pictures and recordings (the screen tools while
+/// recording: their stop bar and frame stay on screen but not in the video), or lets it back in.
+pub fn exclude_from_capture(w: &tauri::WebviewWindow, exclude: bool) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
+    let Some(hwnd) = own(w) else { return };
+    unsafe { SetWindowDisplayAffinity(h(hwnd), if exclude { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE }) };
+}
+
+#[path = "win_record.rs"]
+mod record;
+pub use record::{Recorder, CAN_RECORD};

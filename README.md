@@ -29,7 +29,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 |---|---|
 | **Ctrl+Space** (also **⌥ Space** on macOS) | Open Quicky from anywhere and jump to the add box (in an app with a mini, that app's list); press it again to close Quicky |
 | **Ctrl+Shift+Space** (also **⌥⇧ Space** on macOS) | Show or hide the bubble |
-| **Ctrl+Shift+D** (**⌥⇧ D** on macOS) | Draw on screen, once the Draw on screen extension is installed (also from the bubble's right-click menu); **Esc** leaves |
+| **Ctrl+Shift+D** (**⌥⇧ D** on macOS) | The screen tools, once their extension is installed (also from the bubble's right-click menu): opens in Screenshot; **Esc** leaves |
 | **Enter** | Add the task |
 | **Click the circle** | To do → Doing → Done |
 | **Right-click the circle** | Step back |
@@ -40,7 +40,7 @@ On first launch Quicky asks where to keep your data and creates a `Quicky` folde
 
 Every shortcut above with Ctrl (or ⌘ / ⌥) can be changed in **Settings → Shortcuts**: choose *Change* and press the new keys, *Reset* puts one back. They're kept per PC, and Quicky says so when another app already has the keys you picked.
 
-- **Draw on screen** (an extension: Settings → Extensions): pen, highlighter and eraser in a few colours (Quicky's first) and sizes, rectangles, ellipses, lines, arrows and text, a spotlight and a laser pointer for presenting, undo, redo and clear, all from a toolbar you can drag anywhere. *Click-through* keeps the drawing up while you use the apps underneath; the camera button copies a screenshot of the screen with your drawing and saves it to Pictures › Quicky (Windows and Linux). Leaving clears the drawing.
+- **Screen tools** (an extension: Settings → Extensions), with three modes on a toolbar you can drag anywhere. It always opens in **Screenshot**: the screen freezes, you drag an area (handles adjust it, Shift keeps it square), click a window, or choose Full screen, can draw on it, and it's copied and saved to Pictures › Quicky (Windows and Linux). **Draw**: pen, highlighter and eraser in a few colours (Quicky's first) and sizes, rectangles, ellipses, lines, arrows and text, a spotlight and a laser pointer for presenting, undo, redo and clear; *click-through* keeps the drawing up while you use the apps underneath. **Record** (Windows): choose an area the same way, then a 3-2-1 and it records an MP4 to Videos › Quicky, with your microphone if you turn it on and an optional ring around clicks. Settings has where screenshots and recordings go, and separate shortcuts for Draw and Record. Leaving clears the drawing.
 
 - **Carry-over:** anything not done moves to today, tinted peach with a "Carried · 2nd day" label.
 - **Repeats:** the repeat button in the add box opens a day picker: choose exactly which days (S M T W T F S) or Every day. Pick exact weekdays, pause, or stop a repeat from the task or the Repeats list. Each repeat appears once per matching day and never duplicates.

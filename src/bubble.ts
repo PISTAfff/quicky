@@ -9,6 +9,7 @@ import { saveBlob } from "./lib/media";
 import type { Attachment } from "./lib/model";
 import type { MenuEntry } from "./lib/menus";
 import { openExtension, readInstalled } from "./lib/cloud";
+import { OS } from "./lib/platform";
 
 // Events are heard with `win.listen` (only those sent to this window), never the global `listen`,
 // which hears events sent to any window: the bubble would act on the mini's veil, menu picks, etc.
@@ -369,8 +370,20 @@ async function openContextMenu() {
     await invoke("set_bubble_locked", { locked, space: forSpace });
   };
   add("Open Quicky", () => invoke("open_from_bubble"));
-  // Draw on screen, once its extension is installed (its shortcut works only then too).
-  if (readInstalled().some((i) => i.id === "draw")) add("Draw on screen", () => invoke("draw_open").catch(() => {}));
+  // The screen tools, once their extension is installed (their shortcuts work only then too).
+  // macOS can't take screenshots or record yet, and Linux can't record.
+  if (readInstalled().some((i) => i.id === "draw")) {
+    const tools: MenuEntry[] = [];
+    const toolAdd = (text: string, mode: string) => {
+      const id = `t${tools.length}`;
+      actions.set(id, () => invoke("draw_open", { mode }).catch(() => {}));
+      tools.push({ id, text });
+    };
+    if (OS !== "mac") toolAdd("Take a screenshot", "shot");
+    toolAdd("Draw on screen", "draw");
+    if (OS === "windows") toolAdd("Record the screen", "record");
+    items.push({ id: "screen", text: "Screen tools", sub: tools });
+  }
   // Installed extensions (Settings → Online), each opening its own window.
   const sub: MenuEntry[] = [];
   const subAdd = (text: string, run?: () => unknown) => {

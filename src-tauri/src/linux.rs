@@ -286,3 +286,30 @@ pub fn capture(px: i32, py: i32, width: u32, height: u32) -> Option<Vec<u8>> {
 pub fn copy_image(_rgba: &[u8], _width: u32, _height: u32) -> bool {
     false
 }
+
+/// No picking a window by clicking it here yet: dragging an area and Full screen still work.
+pub fn window_rects() -> Vec<Rect> {
+    Vec::new()
+}
+
+pub fn exclude_from_capture(_w: &WebviewWindow, _exclude: bool) {}
+
+/// Recording the screen isn't available on Linux yet: the screen tools' Record is turned off.
+pub const CAN_RECORD: bool = false;
+
+pub struct Recorder;
+
+impl Recorder {
+    pub fn start(_area: Rect, _path: &std::path::Path, _audio: bool, _clicks: bool, _fps: u32) -> Result<Self, String> {
+        Err("Recording the screen isn't available on Linux yet".into())
+    }
+    pub fn frame(&mut self, _at: i64) -> Result<(), String> {
+        Ok(())
+    }
+    pub fn audio(&mut self, _pcm: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+    pub fn finish(self) -> Result<(), String> {
+        Ok(())
+    }
+}

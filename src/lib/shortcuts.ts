@@ -7,8 +7,8 @@ import { listen } from "@tauri-apps/api/event";
 import { IS_MOBILE, OS } from "./platform";
 import { label, normalize } from "./keys";
 
-export type GlobalId = "quick" | "bubble" | "draw";
-/** `taken`: keys another app owns; `available`: false for Draw on screen without its extension. */
+export type GlobalId = "quick" | "bubble" | "screen" | "draw" | "record";
+/** `taken`: keys another app owns; `available`: false for the screen tools without their extension. */
 export interface GlobalShortcut { id: GlobalId; keys: string[]; defaults: string[]; taken: string[]; available: boolean }
 
 const [globals, setGlobals] = createSignal<GlobalShortcut[]>([]);

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Draw on screen</title>
+    <title>Screen tools</title>
     <link rel="stylesheet" href="/src/tokens.css" />
     <style>
       /* A see-through window over every screen. The near-invisible fill keeps clicks on empty
@@ -10,13 +10,15 @@
       html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; user-select: none; }
       body { background: rgba(0, 0, 0, 0.01); font: 700 13px/1.3 "Nunito", "Segoe UI", system-ui, sans-serif; color: var(--ink); cursor: crosshair; }
       body.through { background: transparent; cursor: default; }
-      body.laser { cursor: none; }
-      body.spot, body.eraser { cursor: none; }
+      body.laser, body.spot, body.eraser { cursor: none; }
       body.text { cursor: text; }
       canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+      #frozen { display: none; }
+      body.frozen #frozen { display: block; }
       /* The spotlight: everything dimmed except a circle around the pointer. */
       #spot { position: fixed; inset: 0; pointer-events: none; display: none; }
       body.spot #spot { display: block; }
+      [hidden] { display: none !important; }
 
       /* Text labels are typed here, then drawn into the picture. */
       #text {
@@ -26,34 +28,71 @@
       }
       #text.on { display: block; }
 
-      /* The toolbar: a Quicky sticker (ink outline, hard shadow), draggable by its grip. */
-      .bar {
+      /* Bars: Quicky stickers (ink outline, hard shadow). */
+      .bar, .act, .hint, .recbar, .card {
         position: fixed; left: 0; top: 0; display: flex; align-items: center; gap: 4px; padding: 6px; background: var(--card); color: var(--ink);
         border: 2.5px solid var(--edge); border-radius: 18px; box-shadow: 4px 4px 0 var(--edge); cursor: default; touch-action: none;
-        animation: bar-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
       }
-      @keyframes bar-in { from { transform: scale(0.6) translateY(-14px); opacity: 0; } }
+      .bar { animation: pop-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+      .act, .hint, .recbar { animation: pop-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+      @keyframes pop-in { from { transform: scale(0.6) translateY(-12px); opacity: 0; } }
       .sep { width: 2px; height: 26px; margin: 0 3px; border-radius: 2px; background: var(--line); flex-shrink: 0; }
-      .bar button {
-        width: 34px; height: 34px; border: 2px solid transparent; border-radius: 11px; background: transparent; color: inherit; display: grid; place-items: center;
-        padding: 0; cursor: pointer; font: inherit; flex-shrink: 0; transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+      button { font: inherit; color: inherit; }
+      .bar button, .act button, .hint button, .recbar button, .card button.ib {
+        width: 34px; height: 34px; border: 2px solid transparent; border-radius: 11px; background: transparent; display: grid; place-items: center;
+        padding: 0; cursor: pointer; flex-shrink: 0; transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.5);
       }
-      .bar button:hover { background: var(--soft); transform: translateY(-1px); }
-      .bar button:active { transform: scale(0.92); }
-      .bar button.on { background: var(--accent); color: var(--on-accent); border-color: var(--edge); }
-      .bar button:disabled { opacity: 0.35; cursor: default; transform: none; background: transparent; }
-      .bar button:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 1px; }
-      .bar svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-      .bar [hidden] { display: none; }
+      button:hover:not(:disabled) { background: var(--soft); transform: translateY(-1px); }
+      button:active:not(:disabled) { transform: scale(0.94); }
+      button.on { background: var(--accent); color: var(--on-accent); border-color: var(--edge); }
+      button:disabled { opacity: 0.35; cursor: default; }
+      button:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 1px; }
+      svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
       .bar .grip { width: 18px; cursor: grab; color: var(--muted); }
       .bar .grip:hover { background: transparent; transform: none; }
       .bar .grip:active { cursor: grabbing; }
+      /* Screenshot / Draw / Record. */
+      .modes { display: flex; gap: 2px; padding: 2px; border-radius: 13px; background: var(--soft); }
+      .bar .modes button { width: auto; height: 32px; padding: 0 10px; gap: 6px; display: flex; align-items: center; font-weight: 800; }
       .bar .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--edge); }
       .bar .swatch:hover { background: var(--c); }
       .bar .swatch.on { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); background: var(--c); border-color: var(--edge); }
       .bar .size i { display: block; border-radius: 50%; background: currentColor; }
       .bar .close:hover { background: var(--danger); color: #fff; }
-
+      .tools { display: contents; }
+      /* Buttons with words. */
+      .act button.wide, .hint button.wide, .recbar button.wide, .card button.wide {
+        width: auto; height: 34px; padding: 0 12px; gap: 6px; display: flex; align-items: center; font-weight: 800; border-color: var(--edge); background: var(--card);
+      }
+      .act button.wide.primary { background: var(--accent); color: var(--on-accent); }
+      .act button.wide.on { background: var(--accent-soft); color: var(--accent-ink); }
+      .hint { padding: 6px 6px 6px 14px; gap: 10px; font-weight: 800; }
+      .hint .muted { color: var(--muted); font-weight: 700; }
+      /* Recording: the stop bar. */
+      .recbar { padding: 6px 6px 6px 12px; gap: 8px; }
+      .recbar .dot { width: 12px; height: 12px; border-radius: 50%; background: #ff3b4e; box-shadow: 0 0 0 3px color-mix(in srgb, #ff3b4e 30%, transparent); animation: blink 1.2s ease-in-out infinite; }
+      .recbar.paused .dot { animation: none; background: var(--muted); box-shadow: none; }
+      .recbar .time { font: 800 15px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; min-width: 52px; }
+      .recbar .stop { background: #ff3b4e; color: #fff; border-color: var(--edge); }
+      @keyframes blink { 50% { opacity: 0.35; } }
+      /* The 3-2-1 before recording. */
+      .count {
+        position: fixed; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; display: grid; place-items: center;
+        background: var(--accent); color: var(--on-accent); border: 3px solid var(--edge); box-shadow: 5px 5px 0 var(--edge);
+        font: 700 64px/1 "Fredoka", "Nunito", system-ui, sans-serif; pointer-events: none;
+      }
+      .count.tick { animation: tick 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+      @keyframes tick { from { transform: scale(0.4); } 40% { transform: scale(1.08); } }
+      /* After a screenshot or recording: what was saved, and where. */
+      .card { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; width: 300px; border-radius: 16px; animation: card-in 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+      @keyframes card-in { from { transform: translateY(24px) scale(0.9); opacity: 0; } }
+      .card img { width: 100%; max-height: 160px; object-fit: contain; border-radius: 10px; border: 2px solid var(--edge); background: var(--soft); display: block; }
+      .card .head { display: flex; align-items: center; gap: 8px; }
+      .card .head b { flex: 1; font-size: 14px; }
+      .card .where { color: var(--muted); font-size: 12px; word-break: break-all; }
+      .card .row { display: flex; gap: 6px; flex-wrap: wrap; }
+      .card .film { height: 70px; border-radius: 10px; border: 2px solid var(--edge); background: var(--solid); color: var(--on-solid); display: grid; place-items: center; }
+      .card .film svg { width: 32px; height: 32px; }
       .toast {
         position: fixed; left: 0; top: 0; padding: 7px 12px; background: var(--solid); color: var(--on-solid); border: 2px solid var(--edge); border-radius: 12px;
         box-shadow: 3px 3px 0 var(--edge); white-space: nowrap; pointer-events: none; opacity: 0; transform: translateY(-6px); transition: opacity 0.18s, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.4);
@@ -62,18 +101,25 @@
       .flash { position: fixed; inset: 0; background: #fff; pointer-events: none; animation: flash 0.35s ease-out forwards; }
       @keyframes flash { from { opacity: 0.55; } to { opacity: 0; } }
       @media (prefers-reduced-motion: reduce) {
-        .bar, .flash { animation: none; }
+        .bar, .act, .hint, .recbar, .card, .count.tick, .recbar .dot { animation: none; }
         .flash { display: none; }
-        .bar button, .toast { transition: none; }
+        button, .toast { transition: none; }
       }
     </style>
   </head>
   <body>
+    <canvas id="frozen" aria-hidden="true"></canvas>
     <canvas id="ink" aria-hidden="true"></canvas>
     <canvas id="live" aria-hidden="true"></canvas>
+    <canvas id="veil" aria-hidden="true"></canvas>
     <div id="spot" aria-hidden="true"></div>
     <textarea id="text" rows="1" spellcheck="false" aria-label="Text label"></textarea>
-    <div id="bar" class="bar" role="toolbar" aria-label="Draw on screen"></div>
+    <div id="bar" class="bar" role="toolbar" aria-label="Screen tools"></div>
+    <div id="hint" class="hint" hidden></div>
+    <div id="act" class="act" role="toolbar" aria-label="Chosen area" hidden></div>
+    <div id="count" class="count" hidden aria-live="assertive"></div>
+    <div id="recbar" class="recbar" role="toolbar" aria-label="Recording" hidden></div>
+    <div id="card" class="card" role="status" hidden></div>
     <div id="toast" class="toast" role="status"></div>
     <script type="module" src="/src/draw.ts"></script>
   </body>

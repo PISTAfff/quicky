@@ -153,4 +153,14 @@ export const sfx = {
   /** Voice note start / stop. */
   recStart: () => play([{ f: 660, d: 0.07, g: 0.4 }, { f: 990, d: 0.09, t: 0.07, g: 0.4 }]),
   recStop: () => play([{ f: 990, d: 0.07, g: 0.4 }, { f: 660, d: 0.09, t: 0.07, g: 0.4 }]),
+  /** A screenshot taken: a soft two-blade shutter. */
+  shutter: () =>
+    play([
+      { f: 2400, to: 900, d: 0.035, type: "triangle", g: 0.28 },
+      { f: 1900, to: 700, d: 0.05, t: 0.06, type: "triangle", g: 0.22 },
+    ]),
+  /** Screen recording: the countdown's ticks, then start and stop (a rising and a falling pair). */
+  countTick: () => play([{ f: 880, d: 0.06, type: "triangle", g: 0.3 }]),
+  screenRecStart: () => play([{ f: 523, d: 0.09, g: 0.4 }, { f: 784, d: 0.09, t: 0.08, g: 0.4 }, { f: 1047, d: 0.14, t: 0.16, g: 0.35 }]),
+  screenRecStop: () => play([{ f: 1047, d: 0.09, g: 0.35 }, { f: 784, d: 0.09, t: 0.08, g: 0.4 }, { f: 523, d: 0.16, t: 0.16, g: 0.4 }]),
 };

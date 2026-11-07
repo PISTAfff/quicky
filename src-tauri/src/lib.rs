@@ -27,6 +27,8 @@ mod menu;
 #[cfg(desktop)]
 mod picker;
 #[cfg(desktop)]
+mod record;
+#[cfg(desktop)]
 mod reminder;
 #[cfg(desktop)]
 mod shortcuts;
@@ -67,6 +69,8 @@ fn system_busy() -> bool {
 
 #[cfg(desktop)]
 pub(crate) fn quit(app: &AppHandle) {
+    // A recording going on is finished first (a cut-off MP4 doesn't play).
+    let _ = record::stop(app);
     // Let the page flush its pending save before the process goes away.
     let _ = app.emit("flush", ());
     let app = app.clone();
@@ -102,12 +106,13 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().arg(STARTUP_ARG).build())
         // A second launch just brings up the running Quicky. `--preview-reminder` instead shows the
         // sample reminder (same as Settings → Reminders → Preview), handy for checking the overlay.
-        // `--draw` opens Draw on screen (when its extension is installed), like its shortcut.
+        // `--draw [shot|draw|record]` opens or leaves the screen tools (when their extension is
+        // installed), like their shortcut.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if args.iter().any(|a| a == "--preview-reminder") {
                 let _ = app.emit_to("main", "preview-reminder", ());
-            } else if args.iter().any(|a| a == "--draw") {
-                draw::open(app);
+            } else if let Some(i) = args.iter().position(|a| a == "--draw") {
+                draw::toggle(app, args.get(i + 1).map(String::as_str).unwrap_or("shot"));
             } else {
                 main_window::show_main(app)
             }
@@ -161,6 +166,7 @@ pub fn run() {
                     reminder::dismiss(app);
                 }
                 WindowEvent::Destroyed if window.label() == "reminder" => reminder::destroyed(app),
+                WindowEvent::Destroyed if window.label() == draw::LABEL => draw::destroyed(app),
                 // An extension window squishes away before it really closes (its own close button
                 // and Alt+F4 both come here).
                 WindowEvent::CloseRequested { api, .. } if window.label().starts_with(extensions::LABEL_PREFIX) => {
@@ -282,7 +288,18 @@ pub fn run() {
             draw::draw_info,
             draw::draw_passthrough,
             draw::draw_toolbar,
-            draw::draw_capture
+            draw::draw_frozen,
+            draw::draw_windows,
+            draw::draw_refreeze,
+            draw::draw_save_png,
+            draw::draw_reveal,
+            draw::draw_open_file,
+            draw::capture_dirs,
+            draw::set_capture_dir,
+            record::rec_start,
+            record::rec_audio,
+            record::rec_pause,
+            record::rec_stop
         ])
         .build(tauri::generate_context!())
         .expect("error while building Quicky")

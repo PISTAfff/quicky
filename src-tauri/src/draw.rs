@@ -1,94 +1,136 @@
-//! Draw on screen: a see-through window over every screen (`draw.html`) to draw, write and point
-//! on, with its toolbar. Opened and closed by its global shortcut, the bubble's menu or the Draw
-//! extension's window, and only while that extension is installed. The window is made each time
-//! and destroyed on leaving, so leaving clears the drawing.
-//! Click-through: the window lets the pointer through to the apps underneath except over the
-//! toolbar (a loop here watches the pointer, since the page can't see it while clicks pass).
-//! Screenshot: the page sends its drawing as a PNG; the window steps aside while the screen is
-//! read (`win::capture`), the drawing goes on top, and the picture is saved to Pictures\Quicky and
-//! copied (`win::copy_image`).
+//! The screen tools: a see-through window over every screen (`draw.html`) with three modes:
+//! Screenshot (the default each time: the screen is frozen as it was, the user picks an area or a
+//! window, may draw on it, and it's copied and saved), Draw (pen, shapes, text, spotlight, laser
+//! over the live screen) and Record (`record.rs`). Opened by its global shortcuts, the bubble's
+//! menu or the extension's window, and only while that extension (`draw`) is installed. The
+//! window is made each time and destroyed on leaving, so leaving clears the drawing.
+//! Click-through (Draw, and the stop bar and toasts): the window lets the pointer through to the
+//! apps underneath except over the toolbar (a loop here watches the pointer, since the page can't
+//! see it while clicks pass).
 
 use crate::reminder::BROWSER_ARGS;
 use crate::win;
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::ipc::Request;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::ipc::{Request, Response};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// The extension that gates it.
 pub const EXTENSION: &str = "draw";
-const LABEL: &str = "draw";
+pub const LABEL: &str = "draw";
+/// The modes it opens in.
+pub const MODES: [&str; 3] = ["shot", "draw", "record"];
 
-/// Where the window is (physical px: all the screens together) and the screen the pointer was on
-/// when it opened, relative to the window (the toolbar starts at its top).
-#[derive(Clone, Copy, Serialize)]
+/// Where the window is (physical px: all the screens together), the screens and app windows in
+/// it (relative to it, app windows topmost first) and the screen the pointer was on, and the
+/// mode it opened in.
+#[derive(Clone, Serialize)]
 struct Geometry {
     x: i32,
     y: i32,
     width: u32,
     height: u32,
     screen: [i32; 4],
+    screens: Vec<[i32; 4]>,
+    windows: Vec<[i32; 4]>,
+    mode: &'static str,
 }
 
 static GEOM: Mutex<Option<Geometry>> = Mutex::new(None);
+/// The screen as it was when Screenshot began (RGBA, the window's size).
+static FROZEN: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+/// Files saved this time (only these can be opened or shown in their folder from the page).
+static SAVED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 /// Each opening; the loop of an older one stops.
 static RUN: AtomicU64 = AtomicU64::new(0);
 static OPENING: AtomicBool = AtomicBool::new(false);
 /// Click-through is on.
 static PASS: AtomicBool = AtomicBool::new(false);
-/// The toolbar (physical px, relative to the window: left, top, right, bottom).
+/// The part that still catches the pointer in click-through (physical px, relative to the
+/// window: left, top, right, bottom).
 static BAR: Mutex<[i32; 4]> = Mutex::new([0; 4]);
 
-fn window(app: &AppHandle) -> Option<WebviewWindow> {
+pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(LABEL)
 }
 
-/// The shortcut: opens it, or leaves when it's open.
-pub fn toggle(app: &AppHandle) {
-    if window(app).is_some() {
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A mode this system can do (Screenshot needs a picture of the screen, Record a recorder);
+/// anything else opens in Draw.
+fn usable_mode(mode: &str) -> &'static str {
+    match mode {
+        "shot" if win::CAN_CAPTURE => "shot",
+        "record" if win::CAN_RECORD => "record",
+        _ => "draw",
+    }
+}
+
+/// A shortcut (or `--draw`): opens in `mode`, or leaves when it's open. While recording it stops
+/// the recording instead (the page saves it and says where).
+pub fn toggle(app: &AppHandle, mode: &str) {
+    if crate::record::active() {
+        let _ = app.emit_to(LABEL, "draw-stop", ());
+    } else if window(app).is_some() {
         close(app);
     } else {
-        open(app);
+        open(app, mode);
     }
 }
 
 /// Opens it (or brings it forward). Builds on a thread of its own: callers may be on the main
 /// thread, where making a window deadlocks on Windows.
-pub fn open(app: &AppHandle) {
+pub fn open(app: &AppHandle, mode: &str) {
     if !crate::extensions::installed(app, EXTENSION) || OPENING.swap(true, Ordering::SeqCst) {
         return;
     }
+    let mode = usable_mode(mode);
     let app = app.clone();
     std::thread::spawn(move || {
-        build(&app);
+        build(&app, mode);
         OPENING.store(false, Ordering::SeqCst);
     });
 }
 
-fn build(app: &AppHandle) {
+fn build(app: &AppHandle, mode: &'static str) {
     if let Some(w) = window(app) {
-        let _ = w.set_ignore_cursor_events(false);
-        PASS.store(false, Ordering::SeqCst);
         win::force_foreground(&w);
         return;
     }
     let (cx, cy) = win::cursor();
     let Some((origin, size, _)) = crate::trail::desk(app, (cx, cy)) else { return };
+    let rel = |l: i32, t: i32, w: i32, h: i32| [l - origin.0, t - origin.1, w, h];
     let mut screen = [0, 0, size.0 as i32, size.1 as i32];
+    let mut screens = Vec::new();
     for m in app.available_monitors().unwrap_or_default() {
         let (p, s) = (m.position(), m.size());
+        let r = rel(p.x, p.y, s.width as i32, s.height as i32);
         if cx >= p.x && cy >= p.y && cx < p.x + s.width as i32 && cy < p.y + s.height as i32 {
-            screen = [p.x - origin.0, p.y - origin.1, s.width as i32, s.height as i32];
+            screen = r;
         }
+        screens.push(r);
     }
-    *GEOM.lock().unwrap_or_else(|e| e.into_inner()) = Some(Geometry { x: origin.0, y: origin.1, width: size.0, height: size.1, screen });
+    // Screenshot shows the screen as it was when asked, before this window is on it.
+    let mut windows = Vec::new();
+    *lock(&FROZEN) = None;
+    if mode == "shot" {
+        *lock(&FROZEN) = win::capture(origin.0, origin.1, size.0, size.1);
+    }
+    if mode != "draw" {
+        windows = win::window_rects().into_iter().map(|r| rel(r.left, r.top, r.right - r.left, r.bottom - r.top)).collect();
+    }
+    *lock(&GEOM) = Some(Geometry { x: origin.0, y: origin.1, width: size.0, height: size.1, screen, screens, windows, mode });
+    lock(&SAVED).clear();
     PASS.store(false, Ordering::SeqCst);
     let run = RUN.fetch_add(1, Ordering::SeqCst) + 1;
     let Ok(w) = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("draw.html".into()))
-        .title("Draw on screen")
+        .title("Screen tools")
         .additional_browser_args(BROWSER_ARGS)
         .decorations(false)
         .transparent(true)
@@ -129,11 +171,11 @@ fn keep(app: &AppHandle, run: u64) {
     while RUN.load(Ordering::SeqCst) == run {
         let Some(w) = window(app) else { break };
         let want = PASS.load(Ordering::SeqCst) && {
-            let g = *GEOM.lock().unwrap_or_else(|e| e.into_inner());
-            let [l, t, r, b] = *BAR.lock().unwrap_or_else(|e| e.into_inner());
+            let g = lock(&GEOM).as_ref().map(|g| (g.x, g.y));
+            let [l, t, r, b] = *lock(&BAR);
             let (x, y) = win::cursor();
-            g.is_none_or(|g| {
-                let (x, y) = (x - g.x, y - g.y);
+            g.is_none_or(|(gx, gy)| {
+                let (x, y) = (x - gx, y - gy);
                 // A little margin, so the pointer is caught before it reaches a button.
                 !(x >= l - 8 && x < r + 8 && y >= t - 8 && y < b + 8)
             })
@@ -150,22 +192,39 @@ fn keep(app: &AppHandle, run: u64) {
     }
 }
 
-/// Leaves: the window goes, and the drawing with it.
+/// Leaves: a recording still going is finished first (a cut-off MP4 doesn't play), then the
+/// window goes, and the drawing with it.
 pub fn close(app: &AppHandle) {
+    let _ = crate::record::stop(app);
     RUN.fetch_add(1, Ordering::SeqCst);
     PASS.store(false, Ordering::SeqCst);
+    *lock(&FROZEN) = None;
     if let Some(w) = window(app) {
         let _ = w.destroy();
     }
 }
 
-/// Opens it: the bubble's menu and the Draw extension's "Start drawing".
+/// The window went away some other way (Alt+F4): don't leave a recording unfinished.
+pub fn destroyed(app: &AppHandle) {
+    RUN.fetch_add(1, Ordering::SeqCst);
+    *lock(&FROZEN) = None;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let _ = crate::record::stop(&app);
+    });
+}
+
+/// Opens it: the bubble's menu and the extension's buttons (`mode`: shot, draw or record).
 #[tauri::command]
-pub async fn draw_open(app: AppHandle) -> Result<(), String> {
+pub async fn draw_open(app: AppHandle, mode: Option<String>) -> Result<(), String> {
     if !crate::extensions::installed(&app, EXTENSION) {
-        return Err("Install Draw on screen from Settings → Extensions first".into());
+        return Err("Install the screen tools from Settings → Extensions first".into());
     }
-    open(&app);
+    let mode = mode.unwrap_or_else(|| "shot".into());
+    if !MODES.contains(&mode.as_str()) {
+        return Err("No such mode".into());
+    }
+    open(&app, &mode);
     Ok(())
 }
 
@@ -183,11 +242,51 @@ pub async fn draw_ready(app: AppHandle) {
     }
 }
 
-/// Where the window is, and whether a screenshot can be taken here.
+/// Where the window is, what's on the screens, and what this system can do.
 #[tauri::command]
 pub fn draw_info() -> Value {
-    let g = *GEOM.lock().unwrap_or_else(|e| e.into_inner());
-    json!({ "geometry": g, "canCapture": win::CAN_CAPTURE })
+    let g = lock(&GEOM).clone();
+    json!({ "geometry": g, "canCapture": win::CAN_CAPTURE, "canRecord": win::CAN_RECORD })
+}
+
+/// The frozen screen (RGBA, the window's size; empty when there's none).
+#[tauri::command]
+pub fn draw_frozen() -> Response {
+    Response::new(lock(&FROZEN).clone().unwrap_or_default())
+}
+
+/// Screenshot again after Draw or Record: the window steps aside while the screen is read (its
+/// drawing stays in the page and goes on top).
+#[tauri::command]
+pub async fn draw_refreeze(app: AppHandle) -> Result<(), String> {
+    let w = window(&app).ok_or("The screen tools aren't open")?;
+    let g = lock(&GEOM).clone().ok_or("The screen tools aren't open")?;
+    #[cfg(windows)]
+    win::set_invisible(&w, true);
+    #[cfg(not(windows))]
+    let _ = w.hide();
+    std::thread::sleep(Duration::from_millis(if cfg!(windows) { 120 } else { 250 }));
+    let shot = win::capture(g.x, g.y, g.width, g.height);
+    #[cfg(windows)]
+    win::set_invisible(&w, false);
+    #[cfg(not(windows))]
+    {
+        let _ = w.show();
+        win::force_foreground(&w);
+    }
+    let shot = shot.ok_or("Couldn't take a picture of the screen")?;
+    *lock(&FROZEN) = Some(shot);
+    Ok(())
+}
+
+/// The app windows on screen now (relative to the window, topmost first), for picking one by
+/// clicking it after switching to Screenshot or Record.
+#[tauri::command]
+pub fn draw_windows() -> Vec<[i32; 4]> {
+    let mut geom = lock(&GEOM);
+    let Some(g) = geom.as_mut() else { return Vec::new() };
+    g.windows = win::window_rects().into_iter().map(|r| [r.left - g.x, r.top - g.y, r.right - r.left, r.bottom - r.top]).collect();
+    g.windows.clone()
 }
 
 /// Click-through on or off.
@@ -199,41 +298,48 @@ pub async fn draw_passthrough(app: AppHandle, on: bool) {
     }
 }
 
-/// Where the toolbar is now (physical px, relative to the window).
+/// The part that catches the pointer in click-through (physical px, relative to the window).
 #[tauri::command]
 pub fn draw_toolbar(rect: [i32; 4]) {
-    *BAR.lock().unwrap_or_else(|e| e.into_inner()) = rect;
+    *lock(&BAR) = rect;
 }
 
 /// A file name the page suggested, kept to plain characters.
-fn clean_name(name: &str) -> String {
+pub(crate) fn clean_name(name: &str) -> String {
     let s: String = name.chars().filter(|c| c.is_alphanumeric() || " -_.".contains(*c)).take(80).collect();
     let s = s.trim().trim_matches('.').to_string();
-    if s.is_empty() { "Drawing".into() } else { s }
+    if s.is_empty() { "Screenshot".into() } else { s }
 }
 
-/// The drawing (RGBA, `ow`×`oh`) laid over the screen's picture (RGBA, `w`×`h`), stretched to
-/// it if their sizes differ.
-fn composite(shot: &mut [u8], w: u32, h: u32, over: &[u8], ow: u32, oh: u32) {
-    if ow == 0 || oh == 0 {
-        return;
-    }
-    for y in 0..h {
-        let sy = (y as u64 * oh as u64 / h as u64) as usize;
-        for x in 0..w {
-            let sx = (x as u64 * ow as u64 / w as u64) as usize;
-            let o = &over[(sy * ow as usize + sx) * 4..][..4];
-            let a = o[3] as u32;
-            if a == 0 {
-                continue;
-            }
-            let d = &mut shot[((y * w + x) * 4) as usize..][..4];
-            for i in 0..3 {
-                d[i] = ((o[i] as u32 * a + d[i] as u32 * (255 - a) + 127) / 255) as u8;
-            }
-            d[3] = 255;
+/// Where screenshots (`videos` false) or recordings go: the user's choice, else Pictures\Quicky
+/// or Videos\Quicky.
+pub(crate) fn folder(app: &AppHandle, videos: bool) -> Result<PathBuf, String> {
+    let cfg = crate::config::read_config(app);
+    let chosen = if videos { cfg.videos_dir } else { cfg.shots_dir };
+    let dir = match chosen {
+        Some(d) => PathBuf::from(d),
+        None => {
+            let base = if videos { app.path().video_dir() } else { app.path().picture_dir() };
+            base.map_err(|e| e.to_string())?.join("Quicky")
         }
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't use the folder {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// A new file in `dir` named `name` (with " (2)" and up when it's taken).
+pub(crate) fn fresh_path(dir: &std::path::Path, name: &str, ext: &str) -> PathBuf {
+    let mut path = dir.join(format!("{name}.{ext}"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{name} ({n}).{ext}"));
+        n += 1;
     }
+    path
+}
+
+pub(crate) fn remember(path: &std::path::Path) {
+    lock(&SAVED).push(path.to_path_buf());
 }
 
 fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
@@ -252,62 +358,57 @@ fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     Ok((rgba, w, h))
 }
 
-fn encode_png(rgba: &[u8], w: u32, h: u32) -> Result<Vec<u8>, String> {
-    let mut out = Vec::new();
-    {
-        let mut enc = png::Encoder::new(&mut out, w, h);
-        enc.set_color(png::ColorType::Rgba);
-        enc.set_depth(png::BitDepth::Eight);
-        enc.set_compression(png::Compression::Fast);
-        let mut writer = enc.write_header().map_err(|e| e.to_string())?;
-        writer.write_image_data(rgba).map_err(|e| e.to_string())?;
-    }
-    Ok(out)
+/// Saves a screenshot the page made (raw body: a PNG; `x-name`: the file name) and copies it.
+/// Answers where it went and whether it was copied.
+#[tauri::command]
+pub async fn draw_save_png(app: AppHandle, request: Request<'_>) -> Result<Value, String> {
+    let png = crate::data::body_bytes(&request)?.into_owned();
+    let name = clean_name(request.headers().get("x-name").and_then(|v| v.to_str().ok()).unwrap_or_default());
+    let dir = folder(&app, false)?;
+    let path = fresh_path(&dir, &name, "png");
+    std::fs::write(&path, &png).map_err(|e| e.to_string())?;
+    remember(&path);
+    let copied = decode_png(&png).is_ok_and(|(rgba, w, h)| win::copy_image(&rgba, w, h));
+    Ok(json!({ "path": path.to_string_lossy(), "folder": dir.to_string_lossy(), "copied": copied }))
 }
 
-/// Saves a picture of the screen with the drawing on it (raw body: the drawing as a PNG the size
-/// of the window; `x-name`: the file name) and copies it. Answers where it went and whether it
-/// was copied.
+fn saved(path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    if lock(&SAVED).contains(&p) { Ok(p) } else { Err("Not a file Quicky saved".into()) }
+}
+
+/// Shows a screenshot or recording saved this time in its folder.
 #[tauri::command]
-pub async fn draw_capture(app: AppHandle, request: Request<'_>) -> Result<Value, String> {
-    if !win::CAN_CAPTURE {
-        return Err("Screenshots aren't available on this system yet".into());
-    }
-    let w = window(&app).ok_or("Draw on screen isn't open")?;
-    let g = (*GEOM.lock().unwrap_or_else(|e| e.into_inner())).ok_or("Draw on screen isn't open")?;
-    let drawing = crate::data::body_bytes(&request)?.into_owned();
-    let name = clean_name(request.headers().get("x-name").and_then(|v| v.to_str().ok()).unwrap_or_default());
+pub async fn draw_reveal(path: String) -> Result<(), String> {
+    tauri_plugin_opener::reveal_item_in_dir(saved(&path)?).map_err(|e| e.to_string())
+}
 
-    // The window steps aside (with its toolbar) while the screen is read.
-    #[cfg(windows)]
-    win::set_invisible(&w, true);
-    #[cfg(not(windows))]
-    let _ = w.hide();
-    std::thread::sleep(Duration::from_millis(if cfg!(windows) { 120 } else { 250 }));
-    let shot = win::capture(g.x, g.y, g.width, g.height);
-    #[cfg(windows)]
-    win::set_invisible(&w, false);
-    #[cfg(not(windows))]
+/// Opens a screenshot or recording saved this time in its app.
+#[tauri::command]
+pub async fn draw_open_file(path: String) -> Result<(), String> {
+    tauri_plugin_opener::open_path(saved(&path)?, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Where screenshots and recordings go now, and whether that's the default.
+#[tauri::command]
+pub fn capture_dirs(app: AppHandle) -> Value {
+    let cfg = crate::config::read_config(&app);
+    let show = |videos: bool| folder(&app, videos).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    json!({ "shots": show(false), "videos": show(true), "shotsCustom": cfg.shots_dir.is_some(), "videosCustom": cfg.videos_dir.is_some() })
+}
+
+/// A new folder for screenshots (`kind` "shots") or recordings ("videos"); None: the default.
+#[tauri::command]
+pub fn set_capture_dir(app: AppHandle, kind: String, path: Option<String>) -> Result<(), String> {
+    if let Some(p) = &path
+        && !std::path::Path::new(p).is_dir()
     {
-        let _ = w.show();
-        win::force_foreground(&w);
+        return Err("That folder doesn't exist".into());
     }
-    let mut rgba = shot.filter(|s| s.len() == g.width as usize * g.height as usize * 4).ok_or("Couldn't take a picture of the screen")?;
-    let (over, ow, oh) = decode_png(&drawing)?;
-    composite(&mut rgba, g.width, g.height, &over, ow, oh);
-    let png = encode_png(&rgba, g.width, g.height)?;
-
-    let dir = app.path().picture_dir().map_err(|e| e.to_string())?.join("Quicky");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let mut path = dir.join(format!("{name}.png"));
-    let mut n = 2;
-    while path.exists() {
-        path = dir.join(format!("{name} ({n}).png"));
-        n += 1;
-    }
-    std::fs::write(&path, &png).map_err(|e| e.to_string())?;
-    let copied = win::copy_image(&rgba, g.width, g.height);
-    Ok(json!({ "path": path.to_string_lossy(), "copied": copied }))
+    crate::config::update_config(&app, |c| match kind.as_str() {
+        "videos" => c.videos_dir = path,
+        _ => c.shots_dir = path,
+    })
 }
 
 #[cfg(test)]
@@ -316,29 +417,28 @@ mod tests {
 
     #[test]
     fn file_names_stay_plain() {
-        assert_eq!(clean_name("Drawing 2026-11-07 at 14.03.22"), "Drawing 2026-11-07 at 14.03.22");
+        assert_eq!(clean_name("Screenshot 2026-11-07 at 14.03.22"), "Screenshot 2026-11-07 at 14.03.22");
         assert_eq!(clean_name("../../evil\\name"), "evilname");
-        assert_eq!(clean_name("..."), "Drawing");
-        assert_eq!(clean_name(""), "Drawing");
+        assert_eq!(clean_name("..."), "Screenshot");
+        assert_eq!(clean_name(""), "Screenshot");
     }
 
     #[test]
-    fn drawing_goes_on_top_of_the_screen() {
-        let mut shot = vec![10, 20, 30, 255, 10, 20, 30, 255];
-        // Opaque red over the first pixel, nothing over the second.
-        composite(&mut shot, 2, 1, &[255, 0, 0, 255, 0, 0, 0, 0], 2, 1);
-        assert_eq!(shot, vec![255, 0, 0, 255, 10, 20, 30, 255]);
-        // Half see-through, stretched from one pixel to both.
-        let mut shot = vec![0, 0, 0, 255, 0, 0, 0, 255];
-        composite(&mut shot, 2, 1, &[255, 255, 255, 128], 1, 1);
-        assert_eq!(&shot[..3], &[128, 128, 128]);
-        assert_eq!(&shot[4..7], &[128, 128, 128]);
+    fn taken_names_get_a_number() {
+        let dir = std::env::temp_dir().join(format!("quicky-names-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = fresh_path(&dir, "Shot", "png");
+        assert_eq!(first.file_name().unwrap(), "Shot.png");
+        std::fs::write(&first, b"x").unwrap();
+        assert_eq!(fresh_path(&dir, "Shot", "png").file_name().unwrap(), "Shot (2).png");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn pictures_survive_a_round_trip() {
-        let rgba = vec![1, 2, 3, 255, 4, 5, 6, 128];
-        let png = encode_png(&rgba, 2, 1).unwrap();
-        assert_eq!(decode_png(&png).unwrap(), (rgba, 2, 1));
+    fn modes_fall_back_to_draw_where_they_cant_work() {
+        assert_eq!(usable_mode("draw"), "draw");
+        assert_eq!(usable_mode("nonsense"), "draw");
+        assert_eq!(usable_mode("shot"), if win::CAN_CAPTURE { "shot" } else { "draw" });
+        assert_eq!(usable_mode("record"), if win::CAN_RECORD { "record" } else { "draw" });
     }
 }

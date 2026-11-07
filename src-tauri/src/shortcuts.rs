@@ -1,9 +1,11 @@
-//! Quicky's global shortcuts: quick add (open or close Quicky), show or hide the bubble, and draw
-//! on screen. Each has default keys per system; Settings → Shortcuts changes them (`shortcuts` in
+//! Quicky's global shortcuts: quick add (open or close Quicky), show or hide the bubble, and the
+//! screen tools (opening in Screenshot, or straight in Draw or Record). Each has default keys per
+//! system (Draw and Record none: Ctrl+Shift+S and Ctrl+Shift+R are Save As and reload in most
+//! apps, too common to take from every app); Settings → Shortcuts changes them (`shortcuts` in
 //! the config, per PC). They're registered here, live: changing one re-registers them all, and a
 //! combination another app owns is reported as taken (the old keys stay).
-//! Draw on screen's keys are only registered while the Draw extension is installed, so Quicky
-//! doesn't take Ctrl+Shift+D from other apps for nothing.
+//! The screen tools' keys are only registered while their extension (`draw`) is installed, so
+//! Quicky doesn't take Ctrl+Shift+D from other apps for nothing.
 
 use crate::config::{read_config, update_config, Config};
 use serde::Serialize;
@@ -17,11 +19,18 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 pub enum Action {
     Quick,
     Bubble,
-    Draw,
+    /// The screen tools, opening in this mode (`draw::MODES`).
+    Screen(&'static str),
 }
 
 /// Every global shortcut and its id (the config's and the page's name for it).
-const ACTIONS: [(Action, &str); 3] = [(Action::Quick, "quick"), (Action::Bubble, "bubble"), (Action::Draw, "draw")];
+const ACTIONS: [(Action, &str); 5] = [
+    (Action::Quick, "quick"),
+    (Action::Bubble, "bubble"),
+    (Action::Screen("shot"), "screen"),
+    (Action::Screen("draw"), "draw"),
+    (Action::Screen("record"), "record"),
+];
 
 /// The keys each action has until the user changes them. macOS also gets Option versions of the
 /// Ctrl ones: Ctrl+Space switches keyboard input sources there, and macOS keeps it when that's on.
@@ -31,8 +40,8 @@ fn defaults(id: &str, mac: bool) -> Vec<String> {
         ("quick", false) => &["Ctrl+Space"],
         ("bubble", true) => &["Alt+Shift+Space", "Ctrl+Shift+Space"],
         ("bubble", false) => &["Ctrl+Shift+Space"],
-        ("draw", true) => &["Alt+Shift+D"],
-        ("draw", false) => &["Ctrl+Shift+D"],
+        ("screen", true) => &["Alt+Shift+D"],
+        ("screen", false) => &["Ctrl+Shift+D"],
         _ => &[],
     };
     keys.iter().map(|k| k.to_string()).collect()
@@ -49,6 +58,9 @@ fn keys_of(cfg: &Config, id: &str) -> Vec<String> {
 static ACTIVE: Mutex<Vec<(Shortcut, Action)>> = Mutex::new(Vec::new());
 /// Keys that couldn't be registered (another app has them), by action id.
 static TAKEN: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+/// One `apply` at a time: two at once (a pause ending while new keys are saved) would each find
+/// the other's keys registered and report them taken.
+static APPLYING: Mutex<()> = Mutex::new(());
 /// Settings is recording a new combination: nothing is registered meanwhile, so the keys reach
 /// the page (a registered one never does).
 static PAUSED: AtomicBool = AtomicBool::new(false);
@@ -95,7 +107,7 @@ pub fn fire(app: &AppHandle, shortcut: &Shortcut) {
             let show = !read_config(app).show_bubble;
             let _ = crate::bubble::set_show_bubble(app.clone(), show);
         }
-        Some(Action::Draw) => crate::draw::toggle(app),
+        Some(Action::Screen(mode)) => crate::draw::toggle(app, mode),
         None => {}
     }
 }
@@ -103,6 +115,8 @@ pub fn fire(app: &AppHandle, shortcut: &Shortcut) {
 /// Registers every shortcut as the config says (after letting go of the old ones). Waits on the
 /// main thread: call it from start-up or another thread, never from a sync command.
 pub fn apply(app: &AppHandle) {
+    // Held across the main-thread waits: nothing on the main thread takes it.
+    let _one = APPLYING.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     let mut active = Vec::new();
@@ -111,7 +125,7 @@ pub fn apply(app: &AppHandle) {
         let cfg = read_config(app);
         let draw = crate::extensions::installed(app, crate::draw::EXTENSION);
         for (action, id) in ACTIONS {
-            if action == Action::Draw && !draw {
+            if matches!(action, Action::Screen(_)) && !draw {
                 continue;
             }
             for keys in keys_of(&cfg, id) {
@@ -148,7 +162,7 @@ pub struct ShortcutInfo {
     defaults: Vec<String>,
     /// Keys another app owns (they do nothing in Quicky).
     taken: Vec<String>,
-    /// Draw on screen without its extension: the keys are kept, but not registered.
+    /// The screen tools without their extension: the keys are kept, but not registered.
     available: bool,
 }
 
@@ -165,7 +179,7 @@ pub fn shortcuts_get(app: AppHandle) -> Vec<ShortcutInfo> {
             keys: keys_of(&cfg, id),
             defaults: defaults(id, MAC),
             taken: taken.iter().filter(|(t, _)| t == id).map(|(_, k)| k.clone()).collect(),
-            available: action != Action::Draw || draw,
+            available: !matches!(action, Action::Screen(_)) || draw,
         })
         .collect()
 }
@@ -254,7 +268,9 @@ fn what(id: &str) -> &'static str {
     match id {
         "quick" => "open Quicky",
         "bubble" => "show or hide the bubble",
-        _ => "draw on screen",
+        "screen" => "open the screen tools",
+        "draw" => "draw on screen",
+        _ => "record the screen",
     }
 }
 
@@ -295,7 +311,8 @@ mod tests {
             let mut seen = Vec::new();
             for (_, id) in ACTIONS {
                 let keys = defaults(id, mac);
-                assert!(!keys.is_empty(), "{id} has no default");
+                // Draw and Record start unbound (see the top of this file).
+                assert_eq!(keys.is_empty(), matches!(id, "draw" | "record"), "{id}'s default");
                 for k in keys {
                     let (s, c) = validate(&k).unwrap();
                     assert_eq!(c, k, "defaults are written canonically");

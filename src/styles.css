@@ -673,3 +673,7 @@ button.swatch.custom { padding: 0; display: grid; place-items: center; }
 .shortcut-keys .kbd.recording { color: var(--on-accent); background: var(--accent); border-color: var(--edge); }
 .shortcut-actions { grid-area: actions; display: flex; gap: 6px; }
 .shortcut-error { color: var(--danger); font-weight: 800; }
+/* Settings: where screenshots and recordings go. */
+.folder-row { display: flex; flex-direction: column; gap: 6px; }
+.folder-row + .folder-row { margin-top: 10px; }
+.folder-row .row-gap { align-self: flex-start; }

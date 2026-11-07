@@ -44,6 +44,10 @@ pub struct Config {
     /// Global shortcuts the user changed (`shortcuts.rs`): action id → its keys in the shortcut
     /// plugin's format ("Ctrl+Shift+D"); an empty list is no shortcut. Absent: the default.
     pub(crate) shortcuts: HashMap<String, Vec<String>>,
+    /// Where the screen tools save screenshots and recordings (None: Pictures\Quicky and
+    /// Videos\Quicky).
+    pub(crate) shots_dir: Option<String>,
+    pub(crate) videos_dir: Option<String>,
 }
 
 impl Default for Config {
@@ -57,6 +61,8 @@ impl Default for Config {
             stuck_apps: Vec::new(),
             trail_off: false,
             shortcuts: HashMap::new(),
+            shots_dir: None,
+            videos_dir: None,
         }
     }
 }

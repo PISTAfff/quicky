@@ -11,7 +11,9 @@ type Row = { kind: "global"; id: GlobalId; text: string; note?: string } | { kin
 const ROWS: Row[] = [
   { kind: "global", id: "quick", text: "Open Quicky and add a task", note: "Press it again to close Quicky" },
   { kind: "global", id: "bubble", text: "Show or hide the bubble" },
+  { kind: "global", id: "screen", text: "Screen tools", note: "Opens in Screenshot; pick Draw or Record from its toolbar" },
   { kind: "global", id: "draw", text: "Draw on screen" },
+  { kind: "global", id: "record", text: "Record the screen" },
   { kind: "local", id: "add", text: "Jump to the add box" },
   { kind: "local", id: "search", text: "Search all tasks" },
 ];
@@ -47,16 +49,19 @@ export function ShortcutsSheet() {
     }
   };
 
-  const stop = () => {
+  /** Done recording. `resume` false when new keys are being saved: `shortcut_set` registers
+   *  them all itself, and a second register at the same time would find its own keys taken. */
+  const stop = (resume = true) => {
     if (recording() === null) return;
     setRecording(null);
     setHeld("");
     removeEventListener("keydown", onKey, true);
     removeEventListener("keyup", onKeyUp, true);
-    removeEventListener("blur", stop);
-    void invoke("shortcuts_pause", { paused: false }).catch(() => {});
+    removeEventListener("blur", onBlur);
+    if (resume) void invoke("shortcuts_pause", { paused: false }).catch(() => {});
   };
   let current: Row | null = null;
+  const onBlur = () => stop();
   const onKeyUp = (e: KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -69,7 +74,7 @@ export function ShortcutsSheet() {
     e.stopPropagation();
     if (e.code === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) return stop();
     if (e.code === "Backspace" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
-      stop();
+      stop(r.kind === "local");
       return void save(r, []);
     }
     const accel = fromEvent(e);
@@ -78,7 +83,7 @@ export function ShortcutsSheet() {
     if (why) return setError(r, why);
     const other = usedBy(r, normalize(accel)!);
     if (other) return setError(r, `Already used for "${other.text}"`);
-    stop();
+    stop(r.kind === "local");
     void save(r, [accel]);
   };
   const record = (r: Row) => {
@@ -88,11 +93,11 @@ export function ShortcutsSheet() {
     setRecording(key(r));
     addEventListener("keydown", onKey, true);
     addEventListener("keyup", onKeyUp, true);
-    addEventListener("blur", stop);
+    addEventListener("blur", onBlur);
     // Registered keys never reach the page: let go of them while recording.
     void invoke("shortcuts_pause", { paused: true }).catch(() => {});
   };
-  onCleanup(stop);
+  onCleanup(() => stop());
 
   const resetAll = async () => {
     stop();
@@ -119,7 +124,7 @@ export function ShortcutsSheet() {
                       <small class="muted">{r.kind === "global" && r.note}</small>
                     </Show>
                     <Show when={unavailable(r)}>
-                      <small class="muted">Works once the Draw on screen extension is installed (Settings → Extensions)</small>
+                      <small class="muted">Works once the Screen tools extension is installed (Settings → Extensions)</small>
                     </Show>
                     <Show when={errors()[key(r)]}>
                       <small class="shortcut-error" role="alert">{errors()[key(r)]}</small>
@@ -145,7 +150,7 @@ export function ShortcutsSheet() {
                   <div class="shortcut-actions">
                     <Show
                       when={recording() !== key(r)}
-                      fallback={<button class="btn small" onClick={stop}>Cancel</button>}
+                      fallback={<button class="btn small" onClick={() => stop()}>Cancel</button>}
                     >
                       <button class="btn small" onClick={() => record(r)} aria-label={`Change the shortcut to ${r.text.toLowerCase()}`}>Change</button>
                     </Show>

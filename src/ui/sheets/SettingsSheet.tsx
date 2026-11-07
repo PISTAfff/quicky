@@ -15,7 +15,7 @@ import { readQuiet, writeQuiet } from "../../lib/reminders";
 import { showTour } from "../Tour";
 import { previewReminder } from "../../lib/reminders";
 import { readSfx, sfx, writeSfx } from "../../lib/sfx";
-import { PRIVACY_URL, readAccount } from "../../lib/cloud";
+import { PRIVACY_URL, readAccount, readInstalled } from "../../lib/cloud";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { setSyncOn, syncNow, syncOn, syncStatus } from "../../lib/sync";
 import { IBell, IClose, IPin2, IFolder } from "../icons";
@@ -205,6 +205,9 @@ export function SettingsSheet() {
         </small>
       </div>
       </Show>
+      <Show when={!IS_MOBILE && readInstalled().some((i) => i.id === "draw")}>
+        <CaptureFolders />
+      </Show>
       {/* The phone app is updated by installing a new APK. */}
       <Show when={!IS_MOBILE}>
       <div class="box">
@@ -314,6 +317,44 @@ export function SettingsSheet() {
         </div>
       </Show>
     </Panel>
+  );
+}
+
+/** Settings → where the screen tools save screenshots and recordings (per PC). */
+function CaptureFolders() {
+  type Dirs = { shots: string; videos: string; shotsCustom: boolean; videosCustom: boolean };
+  const [dirs, setDirs] = createSignal<Dirs | null>(null);
+  const load = () => invoke<Dirs>("capture_dirs").then(setDirs).catch(() => {});
+  void load();
+  const pick = async (kind: "shots" | "videos") => {
+    const picked = await open({ directory: true, title: kind === "shots" ? "Where should screenshots go?" : "Where should recordings go?" });
+    if (typeof picked !== "string") return;
+    await invoke("set_capture_dir", { kind, path: picked }).catch((e) => showToast(String(e)));
+    void load();
+  };
+  const reset = async (kind: "shots" | "videos") => {
+    await invoke("set_capture_dir", { kind, path: null }).catch((e) => showToast(String(e)));
+    void load();
+  };
+  const Row = (p: { kind: "shots" | "videos"; title: string }) => (
+    <div class="folder-row">
+      <span class="box-label">{p.title}</span>
+      <code class="path">{dirs()?.[p.kind] ?? ""}</code>
+      <span class="row-gap">
+        <button class="btn small" onClick={() => void pick(p.kind)}>Change…</button>
+        <Show when={dirs()?.[p.kind === "shots" ? "shotsCustom" : "videosCustom"]}>
+          <button class="btn small ghost-soft" onClick={() => void reset(p.kind)}>Reset</button>
+        </Show>
+      </span>
+    </div>
+  );
+  return (
+    <div class="box">
+      <Row kind="shots" title="Screenshots go to" />
+      <Show when={OS === "windows"}>
+        <Row kind="videos" title="Recordings go to" />
+      </Show>
+    </div>
   );
 }
 
