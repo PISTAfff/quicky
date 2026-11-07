@@ -741,7 +741,10 @@ addEventListener(
     // Plain scrolling does nothing here; with Ctrl or ⌘ (a touchpad pinch sends Ctrl) it sizes.
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    const k = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.002));
+    // A mouse wheel (whole notches) sizes the other way round: wheel down grows, wheel up shrinks.
+    // A touchpad pinch (small fractional steps) keeps its natural direction: spread to grow.
+    const notch = e.deltaMode === 1 || (Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 50);
+    const k = Math.exp((notch ? 1 : -1) * e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.002));
     zoomBy(Math.max(0.5, Math.min(2, k)), [e.clientX, e.clientY]);
   },
   { passive: false },
