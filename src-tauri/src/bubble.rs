@@ -33,6 +33,9 @@ const MARGIN: f64 = -6.0; // the blob sits ~23 px inside its (roomy) window
 pub static SHOW: AtomicBool = AtomicBool::new(true);
 /// A full-screen reminder is up: keep the bubbles out of its way.
 pub static OVERLAY_UP: AtomicBool = AtomicBool::new(false);
+/// Switched on and welling up in the fx overlay (`fx::presence`): the real bubbles wait for the
+/// handoff.
+pub static ENTERING: AtomicBool = AtomicBool::new(false);
 
 /// Logical px of the mini Quicky shown inside an app (smaller window, smaller blob).
 pub const MINI: f64 = 64.0;
@@ -397,7 +400,7 @@ pub fn place(app: &AppHandle) {
 /// only while the app in front has one. While the overlay plays a big moment the mini stays as it
 /// is (the overlay shows or hides it at the handoff).
 pub fn sync(app: &AppHandle) {
-    let want = SHOW.load(Ordering::Relaxed) && !OVERLAY_UP.load(Ordering::Relaxed) && !main_on_screen(app);
+    let want = SHOW.load(Ordering::Relaxed) && !OVERLAY_UP.load(Ordering::Relaxed) && !ENTERING.load(Ordering::SeqCst) && !main_on_screen(app);
     if let Some(b) = window(app) {
         show(app, &b, want);
     }
@@ -530,6 +533,8 @@ fn stick(app: &AppHandle, under: &AppWindow, rect: Rect, spot: (i32, i32)) -> Re
 /// Background loop: drag tracking, focus tracking, staying on top of the taskbar, following a
 /// stuck app's window, and nudging the main page to check reminders.
 pub fn housekeeping(app: &AppHandle) {
+    // The overlay for big moments, made ahead so switching the bubble on or off plays at once.
+    fx::prewarm(app);
     let app = app.clone();
     std::thread::spawn(move || {
         let mut last_tick = Instant::now();
@@ -647,13 +652,42 @@ pub fn set_show_bubble(app: AppHandle, show: bool) -> Result<(), String> {
     update_config(&app, |c| c.show_bubble = show)?;
     let turn = SHOW_TURN.fetch_add(1, Ordering::SeqCst) + 1;
     let _ = app.emit("bubble-pref", show);
-    let on_screen = [window(&app), mini_window(&app)].into_iter().flatten().any(|w| w.is_visible().unwrap_or(false));
-    if show || !on_screen {
+    // Switched back while it was still melting away or welling up: that ends now, and the bubble
+    // simply hops in (or is gone).
+    if fx::playing() && (ENTERING.load(Ordering::SeqCst) || !SHOW.load(Ordering::Relaxed)) {
         SHOW.store(show, Ordering::Relaxed);
+        fx::cut(&app);
+        sync(&app);
+        if show {
+            let _ = app.emit_to(BUBBLE_LABEL, "bubble-shown", ());
+        }
+        return Ok(());
+    }
+    let on_screen = [window(&app), mini_window(&app)].into_iter().flatten().any(|w| w.is_visible().unwrap_or(false));
+    if show {
+        // Off screen and allowed to show: it wells up out of a puddle (fx), shown at the handoff.
+        let can = !on_screen && !OVERLAY_UP.load(Ordering::Relaxed) && !main_on_screen(&app);
+        SHOW.store(true, Ordering::Relaxed);
+        ENTERING.store(can, Ordering::SeqCst);
+        if !(can && fx::presence(&app, true)) {
+            ENTERING.store(false, Ordering::SeqCst);
+            sync(&app);
+        }
+        return Ok(());
+    }
+    if !on_screen {
+        SHOW.store(false, Ordering::Relaxed);
         sync(&app);
         return Ok(());
     }
-    // Hiding one that's on screen: it waves goodbye first (bubble.html `bye`), then goes.
+    // Hiding one that's on screen: it melts away in the fx overlay (veiled meanwhile, hidden at
+    // the handoff).
+    SHOW.store(false, Ordering::Relaxed);
+    if fx::presence(&app, false) {
+        return Ok(());
+    }
+    SHOW.store(true, Ordering::Relaxed);
+    // Another moment is playing: a little goodbye of its own (bubble.html `bye`), then it goes.
     for label in [BUBBLE_LABEL, MINI_LABEL] {
         let _ = app.emit_to(label, "bubble-bye", ());
     }
@@ -904,7 +938,9 @@ pub fn mini_pop(app: AppHandle) {
         let _ = app.emit("stuck-apps", ());
     }
     match (from, home_center(&app)) {
-        (Some(from), Some(home)) => fx::play(&app, Kind::Pop, from, from, home, exe.map(|e| space_key(&e)), push),
+        (Some(from), Some(home)) => {
+            fx::play(&app, Kind::Pop, from, from, home, exe.map(|e| space_key(&e)), push);
+        }
         _ => apply(&app, false),
     }
 }
@@ -953,7 +989,9 @@ pub fn unstick_bubble(app: AppHandle, exe: String) -> Result<(), String> {
     update_config(&app, |c| c.stuck_apps.retain(|s| !s.exe.eq_ignore_ascii_case(&exe)))?;
     let _ = app.emit("stuck-apps", ());
     match (from, home_center(&app)) {
-        (Some(from), Some(home)) => fx::play(&app, Kind::Hide, from, from, home, Some(key), (0.0, 0.0)),
+        (Some(from), Some(home)) => {
+            fx::play(&app, Kind::Hide, from, from, home, Some(key), (0.0, 0.0));
+        }
         _ => apply(&app, true),
     }
     Ok(())

@@ -12,7 +12,7 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { onAccent, storedAccent } from "./lib/theme-colors";
 import { sfx } from "./lib/sfx";
 
-type Kind = "split" | "pop" | "hide";
+type Kind = "split" | "pop" | "hide" | "bye" | "hello";
 interface Pt {
   x: number;
   y: number;
@@ -28,6 +28,9 @@ interface Payload {
   space: string | null;
   /** Pop: which way it was being pushed (into the wall), unit length. */
   push?: Pt;
+  /** Bye: whether the bubble and the mini are on screen (and melt away). */
+  bubble?: boolean;
+  hasMini?: boolean;
 }
 interface Counts {
   open: number;
@@ -486,6 +489,182 @@ function burst(p: Payload, hard: boolean): Step {
   };
 }
 
+/** Plain goo circles for puddles, drips and splats, redrawn every frame in their own group. */
+type Dot = [number, number, number];
+function drawDots(layer: SVGGElement, dots: Dot[]) {
+  layer.replaceChildren(...dots.filter((d) => d[2] > 3.6).map(([x, y, r]) => el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: r.toFixed(1), fill: ACCENT })));
+}
+
+/** A puddle `r` wide each way from `at`: a row of dots, low and flat (thinner towards its rims). */
+function puddleDots(out: Dot[], at: Pt, r: number) {
+  if (r <= 3.6) return;
+  for (const f of [-1, -0.66, -0.33, 0, 0.33, 0.66, 1]) out.push([at.x + f * r * 1.15, at.y + Math.abs(f) * 2, Math.max(4, r * 0.4 * (1 - Math.abs(f) * 0.35))]);
+}
+
+/** The bubble switched off: it (and a mini on screen) wobbles, melts down into a puddle with
+ *  drips, splats, and soaks away. */
+function melt(p: Payload, clearFace: boolean): Step {
+  const WOBBLE = 130;
+  const MELT = 290;
+  const GONE = 520;
+  const mess = el("g", {}, goo);
+  const blobs: { body: Body; at: Pt; k: number; drips: { off: number; len: number; bulb: number }[]; splats: { ang: number; dist: number; r: number }[] }[] = [];
+  const add = (at: Pt, k: number) => {
+    const body = new Body();
+    body.at(at);
+    body.k = k;
+    body.face = clearFace ? "clear" : "happy";
+    const s = k / NORMAL;
+    blobs.push({
+      body,
+      at,
+      k,
+      drips: [-0.55, 0.1, 0.6].map((off) => ({ off: off + rand(-0.1, 0.1), len: rand(12, 24) * s, bulb: rand(4.5, 6.5) * s })),
+      splats: Array.from({ length: 6 }, () => ({ ang: rand(0, Math.PI * 2), dist: rand(24, 40) * s, r: rand(4.5, 7.5) * s })),
+    });
+  };
+  if (p.bubble !== false) add({ x: p.from.x, y: p.from.y + NORMAL_DY }, NORMAL);
+  if (p.hasMini) add({ x: p.mini.x, y: p.mini.y + MINI_DY }, MINI);
+  let heard = 0;
+
+  return (t) => {
+    const dots: Dot[] = [];
+    if (heard === 0 && t >= WOBBLE) {
+      heard = 1;
+      sfx.goo(0.8);
+    } else if (heard === 1 && t >= MELT) {
+      heard = 2;
+      sfx.goo(1);
+    }
+    for (const { body, at, k, drips, splats } of blobs) {
+      const half = 17 * k;
+      const s = k / NORMAL;
+      if (t < WOBBLE) {
+        // Jelly: a wobble that grows, eyes squeezed.
+        const w = Math.sin((t / WOBBLE) * Math.PI * 2.5) * (t / WOBBLE);
+        body.gooey = t > 40;
+        body.sx = 1 + 0.13 * w;
+        body.sy = 1 - 0.11 * w;
+        body.at(at);
+        if (t > 50) body.face = "squeeze";
+      } else if (t < MELT) {
+        // Melting down: it slumps flat (its bottom stays put) and drips off its edge, a puddle
+        // spreading under it.
+        const q = (t - WOBBLE) / (MELT - WOBBLE);
+        const e = q * q;
+        body.gooey = true;
+        body.sy = lerp(1, 0.3, e);
+        body.sx = lerp(1, 1.8, e);
+        body.at({ x: at.x, y: at.y + half * (1 - body.sy) });
+        const bottom = at.y + half - 2;
+        puddleDots(dots, { x: at.x, y: bottom }, half * 1.15 * e);
+        for (const d of drips) {
+          const len = d.len * Math.sin(Math.PI * Math.min(1, q * 1.2));
+          const x = at.x + d.off * half * body.sx * 0.9;
+          for (let j = 0; j <= 4; j++) dots.push([x, bottom + (len * j) / 4, 4.4]);
+          dots.push([x, bottom + len + d.bulb * 0.5, d.bulb]);
+        }
+      } else {
+        // A puddle that splats out, then soaks away.
+        body.shown = false;
+        const q = clamp((t - MELT) / (GONE - MELT), 0, 1);
+        const soak = 1 - q * q;
+        const P = { x: at.x, y: at.y + half - 2 };
+        puddleDots(dots, P, half * 1.15 * soak);
+        const fling = easeOutCubic(q / 0.35);
+        for (const sp of splats) dots.push([P.x + Math.cos(sp.ang) * sp.dist * 1.4 * fling, P.y + Math.sin(sp.ang) * sp.dist * 0.4 * fling, sp.r * soak]);
+        // The drips' bulbs fall into it.
+        for (const d of drips) {
+          const fall = Math.min(1, q * 2.5);
+          dots.push([at.x + d.off * half * 1.6, P.y + d.len + 30 * s * fall * fall, d.bulb * (1 - fall)]);
+        }
+      }
+      body.draw();
+    }
+    drawDots(mess, dots);
+    return { handoff: t >= MELT, done: t >= GONE };
+  };
+}
+
+/** The bubble switched on: a puddle bubbles up at its spot, the bubble rises out of it with a
+ *  jelly overshoot, drips fall back and soak away, and its face blinks on. */
+function welling(p: Payload, clearFace: boolean): Step {
+  const BUBBLE = 170;
+  const RISE = BUBBLE + 210;
+  const SETTLE = RISE + 110;
+  const READY = 620;
+  const mess = el("g", {}, goo);
+  const at = { x: p.from.x, y: p.from.y + NORMAL_DY };
+  const half = 17 * NORMAL;
+  const P = { x: at.x, y: at.y + half - 3 };
+  const body = new Body();
+  body.shown = false;
+  body.gooey = true;
+  body.face = "clear";
+  const pops = Array.from({ length: 5 }, (_, i) => ({ x: rand(-0.7, 0.7) * half, at: i * 30 + rand(0, 20), r: rand(4.5, 7) }));
+  const drips = [-0.35, 0.3].map((off) => ({ off, at: RISE + rand(0, 40) }));
+  let heard = 0;
+
+  return (t) => {
+    const dots: Dot[] = [];
+    if (heard === 0) {
+      heard = 1;
+      sfx.goo(0.6);
+    } else if (heard === 1 && t >= BUBBLE) {
+      heard = 2;
+      sfx.stick();
+    } else if (heard === 2 && t >= SETTLE + 20) {
+      heard = 3;
+      sfx.tap();
+    }
+    if (t < BUBBLE) {
+      // A puddle wells up and bubbles.
+      const q = t / BUBBLE;
+      puddleDots(dots, P, lerp(5, half * 1.2, easeOutCubic(q)));
+      for (const b of pops) {
+        const a = (t - b.at) / 90;
+        if (a < 0 || a > 1) continue;
+        dots.push([P.x + b.x * q, P.y - 6 - a * 16, b.r * Math.sin(Math.PI * a)]);
+      }
+    } else if (t < RISE) {
+      // It rises out of the puddle, overshooting like jelly; the puddle is drawn up into it.
+      const q = (t - BUBBLE) / (RISE - BUBBLE);
+      const e = 1 - Math.exp(-6 * q) * Math.cos(9 * q);
+      body.shown = true;
+      body.k = NORMAL * lerp(0.35, 1, e);
+      const squash = Math.sin(Math.PI * Math.min(1, q * 1.3)) * (1 - q);
+      body.sx = 1 - 0.2 * squash;
+      body.sy = 1 + 0.24 * squash;
+      body.at({ x: at.x, y: lerp(P.y, at.y, clamp(e, 0, 1.15)) });
+      puddleDots(dots, P, half * 1.2 * (1 - 0.75 * q * q));
+    } else {
+      // Settling with a wobble; two drips fall back into what's left of the puddle, which soaks.
+      const q = clamp((t - RISE) / (SETTLE - RISE), 0, 1);
+      const w = Math.exp((-6 * (t - RISE)) / 200) * Math.cos(((t - RISE) / 1000) * 2 * Math.PI * 6);
+      body.k = NORMAL;
+      body.at(at);
+      body.sx = 1 + 0.07 * w;
+      body.sy = 1 - 0.06 * w;
+      puddleDots(dots, P, half * 0.3 * (1 - q));
+      for (const d of drips) {
+        const f = clamp((t - d.at) / 140, 0, 1);
+        if (f <= 0 || f >= 1) continue;
+        dots.push([at.x + d.off * half, at.y + half + f * f * 22, 5.5 * (1 - f * 0.6)]);
+      }
+      if (t >= SETTLE) {
+        // Crisp again, exactly like the real bubble, and the face blinks on.
+        body.gooey = false;
+        if (t >= READY - 40) Object.assign(body, { sx: 1, sy: 1 });
+        const blink = t > SETTLE + 70 && t < SETTLE + 110;
+        body.face = t < SETTLE + 20 || blink ? "clear" : clearFace ? "clear" : "happy";
+      }
+    }
+    body.draw();
+    drawDots(mess, dots);
+    return { handoff: t >= READY, done: t >= READY + 40 };
+  };
+}
+
 // ---- run ----------------------------------------------------------------------------------
 function counts(timeout: number): Promise<Counts | null> {
   return new Promise((resolve) => {
@@ -527,19 +706,23 @@ async function play(p: Payload & { run: number }) {
   for (const layer of [crisp, goo, faces, bits]) layer.replaceChildren();
   sparks.length = 0;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    await invoke("fx_handoff").catch(() => {});
-    return void invoke("fx_done");
+    await invoke("fx_handoff", { run: p.run }).catch(() => {});
+    return void invoke("fx_done", { run: p.run });
   }
   const c = await counts(150);
   const openIn = (space: string | null) => (c ? (space ? c.spaces?.[space] ?? 0 : c.open) : 1);
-  const step = p.kind === "split" ? split(p, openIn(p.space) === 0, openIn(null) === 0) : burst(p, p.kind === "pop");
+  const step =
+    p.kind === "split" ? split(p, openIn(p.space) === 0, openIn(null) === 0)
+    : p.kind === "bye" ? melt(p, openIn(null) === 0)
+    : p.kind === "hello" ? welling(p, openIn(null) === 0)
+    : burst(p, p.kind === "pop");
 
   // Draw the first frame (identical to the bubble) before this window shows; Rust then shows it
   // and hides the real bubble's blob.
   step(0, 0);
   await frameOrSoon();
   await frameOrSoon();
-  await invoke("fx_ready").catch(() => {});
+  await invoke("fx_ready", { run: p.run }).catch(() => {});
 
   let handed = false;
   let last = await frame();
@@ -550,17 +733,18 @@ async function play(p: Payload & { run: number }) {
     last = now;
     const { handoff, done } = step(now - t0, dt);
     stepSparks(dt);
+    if (p.run !== current) return; // a newer moment took over (or this one was cut short)
     if (handoff && !handed) {
       handed = true;
-      void invoke("fx_handoff");
+      void invoke("fx_handoff", { run: p.run });
     }
     if (done && sparks.length === 0) break;
     if (p.run !== current) return; // a newer moment took over
   }
-  if (!handed) await invoke("fx_handoff").catch(() => {});
+  if (!handed) await invoke("fx_handoff", { run: p.run }).catch(() => {});
   // Nothing left drawn for the next time the window shows.
   for (const layer of [crisp, goo, faces, bits]) layer.replaceChildren();
-  void invoke("fx_done");
+  void invoke("fx_done", { run: p.run });
 }
 
 void listen<Payload & { run: number }>("fx-play", ({ payload }) => void play(payload));
