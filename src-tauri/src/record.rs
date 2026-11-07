@@ -93,7 +93,7 @@ fn run(rec: &mut win::Recorder, rx: &Receiver<Msg>) -> Result<(), String> {
 /// named `name`, with the microphone's sound when `mic` and a ring around clicks when `clicks`.
 #[tauri::command]
 pub async fn rec_start(app: AppHandle, rect: [i32; 4], mic: bool, clicks: bool, name: String) -> Result<(), String> {
-    if !win::CAN_RECORD {
+    if !win::can_record() {
         return Err("Recording the screen isn't available on this system yet".into());
     }
     if active() {

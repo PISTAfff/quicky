@@ -295,7 +295,9 @@ pub fn window_rects() -> Vec<Rect> {
 pub fn exclude_from_capture(_w: &WebviewWindow, _exclude: bool) {}
 
 /// Recording the screen isn't available on Linux yet: the screen tools' Record is turned off.
-pub const CAN_RECORD: bool = false;
+pub fn can_record() -> bool {
+    false
+}
 
 pub struct Recorder;
 

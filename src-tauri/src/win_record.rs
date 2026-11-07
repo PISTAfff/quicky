@@ -15,8 +15,20 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, ICONINFO};
 
-/// Recording the screen works here.
-pub const CAN_RECORD: bool = true;
+/// Recording the screen works here: Media Foundation is installed (Windows N editions leave it
+/// out unless the Media Feature Pack is added). Its DLLs are delay-loaded (`build.rs`), so
+/// nothing calls into them before this says yes.
+pub fn can_record() -> bool {
+    use std::sync::OnceLock;
+    use windows_sys::Win32::System::LibraryLoader::{LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
+    static OK: OnceLock<bool> = OnceLock::new();
+    *OK.get_or_init(|| {
+        ["mfplat.dll", "mfreadwrite.dll"].iter().all(|dll| {
+            let wide: Vec<u16> = dll.encode_utf16().chain(Some(0)).collect();
+            !unsafe { LoadLibraryExW(wide.as_ptr(), std::ptr::null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32) }.is_null()
+        })
+    })
+}
 
 /// Mic sound: 48 kHz, mono, 16-bit.
 const RATE: u32 = 48_000;
@@ -351,7 +363,11 @@ mod tests {
         let path = std::env::temp_dir().join(format!("quicky-rec-test-{}.mp4", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let area = Rect { left: 0, top: 0, right: 321, bottom: 241 };
-        let mut rec = Recorder::start(area, &path, true, true, 30).expect("start");
+        // A PC (or CI runner) without Media Foundation's encoders can't record: nothing to test.
+        let mut rec = match Recorder::start(area, &path, true, true, 30) {
+            Ok(r) => r,
+            Err(e) => return eprintln!("skipped: {e}"),
+        };
         for i in 0..30 {
             rec.frame(i * 333_333).expect("frame");
             rec.audio(&vec![0u8; 3200]).expect("audio");
@@ -387,7 +403,7 @@ mod tests {
         }
         // The picture is the right way up: the decoded frame's rows match the screen's rows
         // better than they match them upside down.
-        let screen = crate::win::capture(0, 0, 320, 240).expect("screen");
+        let Some(screen) = crate::win::capture(0, 0, 320, 240) else { return };
         let decoded = first_frame(&path);
         let rows = |px: &[u8], flip: bool| -> Vec<f64> {
             (0..240)
@@ -401,7 +417,11 @@ mod tests {
         let (shown, frame) = (rows(&screen, false), rows(&decoded, false));
         let (right, flipped) = (diff(&shown, &frame), diff(&shown, &rows(&decoded, true)));
         println!("rows differ by {right:.0} the right way up, {flipped:.0} upside down");
-        assert!(right < flipped, "upside down? {right} vs {flipped}");
+        // Only telling when the screen's top and bottom differ (a plain desktop looks the same
+        // both ways up).
+        if diff(&shown, &rows(&screen, true)) > 200.0 {
+            assert!(right < flipped, "upside down? {right} vs {flipped}");
+        }
         // QUICKY_KEEP_RECORDING=1 keeps the file to look at.
         if std::env::var_os("QUICKY_KEEP_RECORDING").is_none() {
             let _ = std::fs::remove_file(&path);

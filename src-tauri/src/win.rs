@@ -847,4 +847,4 @@ pub fn exclude_from_capture(w: &tauri::WebviewWindow, exclude: bool) {
 
 #[path = "win_record.rs"]
 mod record;
-pub use record::{Recorder, CAN_RECORD};
+pub use record::{can_record, Recorder};

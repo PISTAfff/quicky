@@ -67,7 +67,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 fn usable_mode(mode: &str) -> &'static str {
     match mode {
         "shot" if win::CAN_CAPTURE => "shot",
-        "record" if win::CAN_RECORD => "record",
+        "record" if win::can_record() => "record",
         _ => "draw",
     }
 }
@@ -120,6 +120,9 @@ fn build(app: &AppHandle, mode: &'static str) {
     let mut windows = Vec::new();
     *lock(&FROZEN) = None;
     if mode == "shot" {
+        // A moment for whatever asked to get off the screen (the bubble's menu hides as its pick
+        // arrives here).
+        std::thread::sleep(Duration::from_millis(90));
         *lock(&FROZEN) = win::capture(origin.0, origin.1, size.0, size.1);
     }
     if mode != "draw" {
@@ -246,7 +249,7 @@ pub async fn draw_ready(app: AppHandle) {
 #[tauri::command]
 pub fn draw_info() -> Value {
     let g = lock(&GEOM).clone();
-    json!({ "geometry": g, "canCapture": win::CAN_CAPTURE, "canRecord": win::CAN_RECORD })
+    json!({ "geometry": g, "canCapture": win::CAN_CAPTURE, "canRecord": win::can_record() })
 }
 
 /// The frozen screen (RGBA, the window's size; empty when there's none).
@@ -439,6 +442,6 @@ mod tests {
         assert_eq!(usable_mode("draw"), "draw");
         assert_eq!(usable_mode("nonsense"), "draw");
         assert_eq!(usable_mode("shot"), if win::CAN_CAPTURE { "shot" } else { "draw" });
-        assert_eq!(usable_mode("record"), if win::CAN_RECORD { "record" } else { "draw" });
+        assert_eq!(usable_mode("record"), if win::can_record() { "record" } else { "draw" });
     }
 }
